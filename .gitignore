@@ -1,0 +1,7 @@
+# IDE / Agent configs (local)
+.claude/settings.local.json
+.continue/
+.trae/
+
+# Temporary files
+.tmp-*/

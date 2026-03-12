@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "read-arxiv-paper": {
+      "source": "karpathy/nanochat",
+      "sourceType": "github",
+      "computedHash": "c16b842e6e87c4380f57b3a26b4db77f8f169821a3bc386f36510cbd37f2352d"
+    }
+  }
+}

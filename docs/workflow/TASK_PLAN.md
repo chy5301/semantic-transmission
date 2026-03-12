@@ -29,7 +29,7 @@
 - **目标**: 搜索并评估可加速调研工作流的 Claude Code skill（如网页内容抓取、论文搜索、文档生成等），确认安全性后安装到项目级别
 - **背景信息**: Claude Code 支持通过 skill 扩展能力。本工作流的调研任务涉及大量网页搜索、论文阅读、信息整理等工作，合适的 skill 可以显著提升效率。需要在 skill 市场中搜索相关工具，评估其功能匹配度、安全性（是否有恶意代码、权限是否合理）和社区信誉（Star 数、安装量、维护者），然后将通过评估的 skill 安装到项目级别供后续任务使用。
 - **涉及文件**:
-  - `docs/workflow/skill-evaluation.md`（新建，skill 评估记录）
+  - `docs/research/skill-evaluation.md`（新建，skill 评估记录）
 - **具体步骤**:
   1. 使用 `npx skills find` 搜索与调研相关的 skill（关键词：research、web、fetch、paper、arxiv、document、summary 等）
   2. 筛选可能有用的 skill 候选清单
