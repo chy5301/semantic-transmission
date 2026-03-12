@@ -1,0 +1,41 @@
+{
+  "version": "1.1",
+  "initCommit": "ce654455d302a5e68146e04bd1c2b9b2619f7132",
+  "taskName": "research-semantic-transmission",
+  "primaryType": "generic",
+  "secondaryTags": ["integration"],
+  "taskPrefix": "G",
+  "constraints": {
+    "maxFilesPerTask": 8,
+    "maxHoursPerTask": 3
+  },
+  "stateFiles": {
+    "analysis": "docs/workflow/TASK_ANALYSIS.md",
+    "plan": "docs/workflow/TASK_PLAN.md",
+    "status": "docs/workflow/TASK_STATUS.md",
+    "dependencyMap": "docs/workflow/DEPENDENCY_MAP.md"
+  },
+  "phases": [
+    {
+      "name": "Phase 0: 准备",
+      "exitCriteria": "调研框架和目录结构就绪，调研范围明确，辅助工具就绪"
+    },
+    {
+      "name": "Phase 1: 论文与项目调研",
+      "exitCriteria": "核心论文和开源项目收集完成，各方案优劣已整理"
+    },
+    {
+      "name": "Phase 2: 模型能力调研",
+      "exitCriteria": "关键模型（理解/生成/控制）能力评估完成"
+    },
+    {
+      "name": "Phase 3: 汇总与选型报告",
+      "exitCriteria": "调研报告完成，技术选型建议明确"
+    }
+  ],
+  "projectContext": {
+    "description": "语义传输预研项目阶段一：调研与方案选型",
+    "buildCommand": "",
+    "testCommand": ""
+  }
+}
