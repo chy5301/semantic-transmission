@@ -24,6 +24,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - 模型：qwen_3_4b (text encoder)、z_image_turbo_bf16 (diffusion)、ae (VAE)、Z-Image-Turbo-Fun-Controlnet-Union (controlnet)
 - `docs/` — 文档目录（待填充调研报告等）
 
+## 文档规范
+
+- 文档中的流程图、拓扑图等使用 Mermaid 格式（```mermaid），不使用 ASCII art
+- `docs/research/` — 调研产出文档（论文综述、项目评估、模型对比、工作流分析）
+- `docs/workflow/` — 结构化工作流管理文件（TASK_PLAN.md、TASK_STATUS.md 等）
+
 ## 技术栈（规划中）
 
 - **ComfyUI API 模式**：通过 HTTP API 调用 ComfyUI 工作流（本机未安装 ComfyUI，需远程调用或部署）

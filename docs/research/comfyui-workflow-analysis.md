@@ -17,69 +17,85 @@
 
 工作流分为**外层**和**子图**两部分。子图 `Z-Image-Turbo Fun Control to Image` 封装了模型加载和推理逻辑。
 
+```mermaid
+graph TD
+    subgraph outer["外层拓扑"]
+        LoadImage["#58 LoadImage<br/>加载输入图像"]
+        ImageScale["#62 ImageScaleToMaxDimension<br/>缩放至最大 2048px, lanczos"]
+        CannyNode["#57 Canny<br/>边缘提取 (low=0.15, high=0.35)"]
+        Preview["#56 PreviewImage<br/>预览边缘图"]
+        SubGraph["#70 Z-Image-Turbo Fun Control to Image<br/>【子图，详见下图】"]
+        Save["#9 SaveImage<br/>保存生成结果"]
+
+        LoadImage -->|图像| ImageScale
+        ImageScale -->|图像| CannyNode
+        CannyNode -->|边缘图| Preview
+        CannyNode -->|边缘图| SubGraph
+        SubGraph -->|生成图像| Save
+    end
 ```
-外层拓扑：
 
-LoadImage (#58)
-    │
-    ▼
-ImageScaleToMaxDimension (#62)  ── 缩放至最大 2048px
-    │
-    ▼
-Canny (#57)  ── 边缘提取 (low=0.15, high=0.35)
-    ├──────────────────────────────┐
-    ▼                              ▼
-PreviewImage (#56)    Z-Image-Turbo Fun Control to Image (#70) [子图]
-（预览边缘图）          │  输入: control_image + text + seed
-                        ▼
-                    SaveImage (#9)
-                    （保存生成结果）
-```
+```mermaid
+graph TD
+    subgraph layer1["第一层：外部输入与模型加载"]
+        direction LR
+        control_image["边缘图<br/>(control_image)"]
+        text_input["文本提示词<br/>(text)"]
+        seed_input["随机种子<br/>(seed)"]
+        CLIP["#39 CLIPLoader<br/>文本编码器: qwen_3_4b<br/>格式: lumina2"]
+        UNET["#46 UNETLoader<br/>扩散模型: z_image_turbo_bf16"]
+        VAELoad["#40 VAELoader<br/>VAE: ae.safetensors"]
+        PatchLoad["#64 ModelPatchLoader<br/>ControlNet 补丁:<br/>Z-Image-Turbo-Fun-Controlnet-Union"]
+    end
 
-```
-子图内部拓扑：
+    subgraph layer2["第二层：条件编码与 ControlNet"]
+        direction LR
+        subgraph path_text["文本条件路径"]
+            CLIPEnc["#45 CLIPTextEncode<br/>文本→条件向量"]
+            ZeroOut["#42 ConditioningZeroOut<br/>空负面条件（零向量）"]
+        end
+        subgraph path_size["尺寸路径"]
+            GetSize["#69 GetImageSize<br/>获取输入图尺寸"]
+            EmptyLatent["#41 EmptySD3LatentImage<br/>创建空白 latent"]
+        end
+        subgraph path_ctrl["ControlNet 路径"]
+            CtrlNet["#60 QwenImageDiffsynth-<br/>Controlnet<br/>注入边缘控制<br/>strength=1.0"]
+            AuraFlow["#47 ModelSampling-<br/>AuraFlow<br/>采样分布调整<br/>shift=3"]
+        end
+    end
 
-子图输入: control_image (边缘图), text (prompt), seed (随机种子)
+    subgraph layer3["第三层：采样与解码"]
+        KSamp["#44 KSampler<br/>9步采样, cfg=1, res_multistep, denoise=1.0"]
+        VAEDec["#43 VAEDecode<br/>latent→像素图像"]
+    end
 
-┌─────────────── 模型加载 ───────────────────────────────────────────────┐
-│                                                                        │
-│  CLIPLoader (#39)     UNETLoader (#46)     VAELoader (#40)     ModelPatchLoader (#64)
-│  qwen_3_4b            z_image_turbo_bf16   ae.safetensors      Z-Image-Turbo-Fun-
-│  type: lumina2         weight: default                          Controlnet-Union
-│       │                     │                 │    │                  │
-└───────┼─────────────────────┼─────────────────┼────┼──────────────────┼─┘
-        │                     │                 │    │                  │
-        ▼                     │                 │    │                  │
-   CLIPTextEncode (#45)       │                 │    │                  │
-   ◄── text (prompt)          │                 │    │                  │
-        │                     │                 │    │                  │
-        ├── positive ──┐      │                 │    │                  │
-        │               │     │                 │    │                  │
-        ▼               │     ▼                 ▼    │                  │
-   ConditioningZeroOut  │  QwenImageDiffsynthControlnet (#60)           │
-   (#42)                │  (应用 ControlNet, strength=1.0)  ◄──────────┘
-   (空负面条件)          │      ▲                       ▲
-        │               │      │                       │
-        │               │  control_image ──────────────┤
-        │               │      │                       │
-        │  negative     │      ▼                       │
-        │               │  ModelSamplingAuraFlow (#47)  │
-        │               │  (shift=3)                    │
-        │               │      │                        │
-        ▼               ▼      ▼                        │
-        └───────► KSampler (#44) ◄── EmptySD3LatentImage (#41)
-                  ◄── seed       ▲         ▲
-                  steps=9        │    width │ height
-                  cfg=1          │         │
-                  res_multistep  │   GetImageSize (#69)
-                  denoise=1.0    │         ▲
-                       │         │         │
-                       ▼         │    control_image
-                  VAEDecode (#43)│
-                  ◄── VAE ───────┘ (ae.safetensors)
-                       │
-                       ▼
-                   输出 IMAGE
+    OutputImage["输出图像"]
+
+    %% 第一层 → 第二层
+    text_input -->|文本| CLIPEnc
+    CLIP -->|文本编码器| CLIPEnc
+    control_image -->|边缘图| GetSize
+    control_image -->|边缘图| CtrlNet
+    UNET -->|扩散模型| CtrlNet
+    VAELoad -->|VAE| CtrlNet
+    PatchLoad -->|ControlNet 补丁| CtrlNet
+
+    %% 第二层内部
+    CLIPEnc -->|条件| ZeroOut
+    GetSize -->|"宽, 高"| EmptyLatent
+    CtrlNet -->|模型+控制| AuraFlow
+
+    %% 第二层 → 第三层（汇聚到 KSampler）
+    CLIPEnc -->|正面条件| KSamp
+    ZeroOut -->|负面条件| KSamp
+    EmptyLatent -->|空白 latent| KSamp
+    AuraFlow -->|模型| KSamp
+    seed_input -->|种子值| KSamp
+
+    %% 第三层 → 输出
+    KSamp -->|latent| VAEDec
+    VAELoad -->|VAE| VAEDec
+    VAEDec -->|图像| OutputImage
 ```
 
 ## 3. 节点功能与参数详解
@@ -128,34 +144,47 @@ PreviewImage (#56)    Z-Image-Turbo Fun Control to Image (#70) [子图]
 
 ## 5. 端到端数据流
 
-```
-输入                    预处理                 编码                    推理                    输出
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```mermaid
+graph LR
+    subgraph input["输入"]
+        RawImage["原始图像<br/>JPEG/PNG"]
+    end
 
-原始图像 (JPEG/PNG)
-    │
-    ▼
-缩放 (lanczos, max 2048px)
-    │
-    ▼
-Canny 边缘提取 ──────────────────────► 边缘图 (IMAGE)
-(low=0.15, high=0.35)                      │
-                                           ├──► ControlNet 条件注入 ──► 扩散模型 (带 ControlNet)
-                                           │                               │
-文本描述 (prompt) ──► CLIP 编码 ──────────────────► positive conditioning ──┤
-                        │                                                   │
-                        └──► ZeroOut ──────────────► negative conditioning ──┤
-                                                                            │
-                                           边缘图尺寸 ──► 空白 latent ──────┤
-                                                                            │
-                                                                      KSampler
-                                                                      (9 步去噪)
-                                                                            │
-                                                                            ▼
-                                                                      VAE Decode
-                                                                            │
-                                                                            ▼
-                                                                    生成图像 (IMAGE)
+    subgraph preprocess["预处理"]
+        Scale["缩放<br/>lanczos, 最大 2048px"]
+        CannyExtract["Canny 边缘提取<br/>low=0.15, high=0.35"]
+    end
+
+    subgraph encode["编码"]
+        Prompt["文本描述"]
+        CLIPEncode["CLIP 文本编码"]
+        Positive["正面条件"]
+        Negative["负面条件（零向量）"]
+        EdgeImg["边缘图"]
+        CtrlInject["ControlNet 条件注入"]
+        LatentCreate["空白 latent<br/>（与输入同尺寸）"]
+    end
+
+    subgraph inference["推理"]
+        Sampler["KSampler<br/>9 步去噪"]
+        Decode["VAE 解码"]
+    end
+
+    subgraph output["输出"]
+        GenImage["生成图像"]
+    end
+
+    RawImage --> Scale --> CannyExtract --> EdgeImg
+    EdgeImg --> CtrlInject
+    EdgeImg -->|"获取尺寸"| LatentCreate
+    Prompt --> CLIPEncode
+    CLIPEncode --> Positive
+    CLIPEncode --> Negative
+    CtrlInject --> Sampler
+    Positive --> Sampler
+    Negative --> Sampler
+    LatentCreate --> Sampler
+    Sampler --> Decode --> GenImage
 ```
 
 ### 数据格式变换链
