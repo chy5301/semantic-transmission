@@ -26,7 +26,10 @@
 | [comfyui-workflow-analysis.md](comfyui-workflow-analysis.md) | 现有 ComfyUI 工作流分析 | ✅ 已完成 |
 | [papers/semantic-communication-survey.md](papers/semantic-communication-survey.md) | 论文综述（6 篇） | ✅ 已完成 |
 | [projects/opensource-evaluation.md](projects/opensource-evaluation.md) | 开源项目评估（6 个） | ✅ 已完成 |
-| [models/](models/) | 模型能力对比 | 待完成 |
+| [models/visual-understanding-models.md](models/visual-understanding-models.md) | 视觉理解模型对比（5 模型系列） | ✅ 已完成 |
+| [models/generation-models.md](models/generation-models.md) | 图像与视频生成模型对比（8 模型） | ✅ 已完成 |
+| [models/controlnet-conditions.md](models/controlnet-conditions.md) | 条件控制与 ControlNet 方案对比（8 种条件） | ✅ 已完成 |
+| [selection-report.md](selection-report.md) | **调研汇总与技术选型建议** | ✅ 已完成 |
 
 ## 技术基线
 

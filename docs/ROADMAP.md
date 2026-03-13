@@ -10,30 +10,35 @@
 
 ---
 
-## 阶段一：调研与方案选型
+## 阶段一：调研与方案选型 ✅ 已完成
 
 **目标**：了解领域现状，确定技术路线
 
 ### 任务
 
-- [ ] 收集语义传输/语义通信领域核心论文
-  - GVSC（Generative Video Semantic Communication）
-  - GVC（Generative Video Compression，TeleAI）
-  - GSC（Generative Semantic Coding）
-  - 基于扩散模型的极低码率视频压缩相关工作
-- [ ] 调研开源项目和可复用的实现
-  - OpenSemanticComm 等开源框架
-  - ComfyUI 生态中可用的工作流和节点
-- [ ] 调研关键模型能力
-  - 视频/图像理解：Qwen-VL、InternVL、LLaVA 等
-  - 图像生成：Stable Diffusion、Z-Image-Turbo、FLUX 等
-  - 视频生成：Wan2.x、CogVideoX、HunyuanVideo 等
-  - ControlNet 条件控制方式：Canny、深度图、语义分割等
-- [ ] 形成调研报告，明确选型建议
+- [x] 收集语义传输/语义通信领域核心论文（6 篇：GVSC、GVC、GSC、M3E-VSC、CPSGD、HFCVD）
+- [x] 调研开源项目和可复用的实现（6 个：OpenSemanticComm、DiffEIC、CDM-JSCC、ComfyUI API、WanVideoWrapper、CogVideoXWrapper）
+- [x] 分析现有 ComfyUI 工作流（Z-Image-Turbo + ControlNet Union 节点拓扑、数据流、模型依赖）
+- [x] 调研关键模型能力
+  - 视觉理解：Qwen2.5-VL（3B/7B/72B）、InternVL2.5、LLaVA-OV、GPT-4o、Gemini 2.0 Flash
+  - 图像生成：Z-Image-Turbo、FLUX.1、SD 3.5、SDXL Lightning
+  - 视频生成：Wan2.1/2.2、CogVideoX、HunyuanVideo 1.5、SVD-XT
+  - ControlNet 条件：Canny、Depth、Normal、语义分割、Lineart、HED、OpenPose、Tile（8 种）
+- [x] 形成调研报告和选型建议
+
+### 关键选型结论
+
+| 维度 | 主选 | 备选 |
+|------|------|------|
+| 发送端 VLM | Qwen2.5-VL-7B | InternVL2.5-8B |
+| 图像生成 | Z-Image-Turbo（8 步，6GB） | FLUX.1 schnell（高质量模式） |
+| 视频生成 | Wan2.1（VBench 第一） | HunyuanVideo 1.5 |
+| 条件控制 | Canny → Canny+Depth（渐进） | 长期：GSC 编码潜在通道 |
+| 集成框架 | ComfyUI REST API + WebSocket | — |
 
 ### 交付物
 
-- `docs/research/` 下的调研报告
+- `docs/research/` 下的调研报告（详见 [selection-report.md](research/selection-report.md)）
 
 ---
 
@@ -41,29 +46,38 @@
 
 **目标**：打通端到端流程，验证可行性
 
+### 前置条件
+
+- ComfyUI 工作流已分析完成（阶段一 G-02），节点拓扑和数据流已明确
+- ComfyUI API 端点已记录（阶段一 G-04），7 个核心端点 + WebSocket 调用流程
+
 ### 任务
 
-- [ ] 分析现有 ComfyUI 工作流结构（已有 Z-Image-Turbo + ControlNet Union 工作流）
+- [ ] 确认 ComfyUI 部署环境（远程服务器或本地安装）
 - [ ] 搭建 ComfyUI API 调用环境
   - ComfyUI 以 `--listen` 模式启动
-  - 通过 HTTP API 提交工作流、轮询结果
+  - Python 封装 REST API 客户端（POST /prompt、GET /history、WebSocket 监听）
+- [ ] 部署发送端 VLM：Qwen2.5-VL-7B（vLLM/Transformers，单卡 RTX 4090）
 - [ ] 封装发送端模块
-  - 输入：视频文件
-  - 处理：抽帧 → 图像预处理（Canny/深度图等） → 多模态模型生成文本描述
-  - 输出：文本描述 + 条件图像
+  - 输入：图像/视频文件
+  - 处理：Qwen2.5-VL-7B 生成结构化描述 + OpenCV Canny 边缘提取
+  - 输出：文本描述 + Canny 条件图
 - [ ] 封装接收端模块
   - 输入：文本描述 + 条件图像
-  - 处理：调用 ComfyUI API 执行图像生成工作流
-  - 输出：还原图像
-- [ ] 搭建简单的端到端 pipeline
-  - 发送端 → 序列化传输数据 → 接收端 → 输出还原结果
-- [ ] 初步评估还原质量（PSNR、SSIM、LPIPS、CLIP Score 等）
+  - 处理：动态构建工作流 JSON → ComfyUI API 提交 → 获取结果
+  - 输出：Z-Image-Turbo + ControlNet Union 还原的图像
+- [ ] 搭建端到端 pipeline
+  - 图像 → 发送端 → 序列化传输数据 → 接收端 → 还原图像
+- [ ] 初步评估还原质量
+  - 主要指标：CLIP Score、LPIPS（感知质量）
+  - 辅助指标：PSNR、SSIM（像素精确度，生成式方案非强项）
+  - 记录传输码率（文本 + 条件图的数据量）
 
 ### 交付物
 
-- 可运行的发送端/接收端 API 服务
+- 可运行的发送端/接收端 Python 模块
 - 端到端 demo 脚本
-- 初步质量评估数据
+- 初步质量评估数据（含码率-质量权衡分析）
 
 ---
 
@@ -74,22 +88,27 @@
 ### 任务
 
 - [ ] 优化语义描述策略
-  - 探索结构化 prompt 模板（场景、透视、前景/背景分层描述）
+  - 设计结构化 prompt 模板：[场景风格]/[视角]/[主体元素]/[空间关系]/[背景]/[光照]
   - 关键帧选取策略优化（场景切换检测、运动估计等）
-  - 多帧间语义一致性维护
-- [ ] 优化条件信息传输
-  - 对比不同条件类型的效果（Canny、深度图、语义分割、姿态等）
-  - 条件信息的压缩方式探索
+  - 多帧间语义一致性维护（差分描述，参考 M3E-VSC）
+- [ ] 升级条件控制
+  - 增加 Depth 条件（Depth Anything V2），实现 Canny+Depth 双条件融合
+  - 对比单条件 vs 双条件的还原质量提升
+  - 探索低分辨率图像条件（保留颜色信息，参考 HFCVD）
+- [ ] 集成视频生成
+  - 通过 WanVideoWrapper 集成 Wan2.1 I2V 模式
+  - 实现"首帧+文本描述 → 视频序列"流程（参考 GVSC）
+  - 评估 1.3B 版本（快速原型）vs 14B 版本（质量上限）
 - [ ] 替换/升级核心模型
-  - 逐步将 ComfyUI 节点替换为直接调用模型推理
-  - 尝试更强的生成模型（如 Wan2.x 视频生成）
-- [ ] 视频级别扩展
-  - 从单帧还原扩展到视频序列还原
-  - 帧间一致性和时序连贯性处理
+  - 测试 FLUX.1 schnell 作为高质量图像生成备选
+  - 评估 InternVL2.5-8B 作为发送端 VLM 备选
+- [ ] 质量评估体系完善
+  - 多组对比实验：不同条件 × 不同模型 × 不同码率
+  - 码率-质量曲线绘制
 
 ### 交付物
 
-- 优化后的 pipeline
+- 优化后的 pipeline（支持图像+视频、多条件）
 - 多组对比实验数据和分析
 
 ---
