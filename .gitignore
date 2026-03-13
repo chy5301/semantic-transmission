@@ -1,3 +1,10 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
 # IDE / Agent configs (local)
 .claude/settings.local.json
 .continue/
