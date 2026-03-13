@@ -1,0 +1,41 @@
+{
+  "version": "1.1",
+  "initCommit": "07e7ab6a53087a1cc1acfc8e28ce39e5ee03e9f7",
+  "taskName": "comfyui-api-prototype",
+  "primaryType": "integration",
+  "secondaryTags": ["infrastructure"],
+  "taskPrefix": "P2",
+  "constraints": {
+    "maxFilesPerTask": 8,
+    "maxHoursPerTask": 3
+  },
+  "stateFiles": {
+    "analysis": "docs/workflow/TASK_ANALYSIS.md",
+    "plan": "docs/workflow/TASK_PLAN.md",
+    "status": "docs/workflow/TASK_STATUS.md",
+    "dependencyMap": "docs/workflow/DEPENDENCY_MAP.md"
+  },
+  "phases": [
+    {
+      "name": "Phase 0: 契约确认与项目骨架",
+      "exitCriteria": "Python 项目结构就绪，ComfyUI API 连通性验证通过，抽象接口定义完成"
+    },
+    {
+      "name": "Phase 1: 适配层实现",
+      "exitCriteria": "发送端适配器（VLM + Canny）和接收端适配器（ComfyUI API）各自独立可用"
+    },
+    {
+      "name": "Phase 2: 端到端联调",
+      "exitCriteria": "图像输入 → 发送端 → 接收端 → 还原图像的完整 pipeline 可运行"
+    },
+    {
+      "name": "Phase 3: 评估与稳定化",
+      "exitCriteria": "质量评估指标（CLIP Score、LPIPS）可计算，异常处理覆盖关键路径"
+    }
+  ],
+  "projectContext": {
+    "description": "基于 ComfyUI API 搭建语义传输端到端原型，包含发送端 VLM 封装、接收端生成封装和 pipeline 集成",
+    "buildCommand": "",
+    "testCommand": "uv run pytest"
+  }
+}
