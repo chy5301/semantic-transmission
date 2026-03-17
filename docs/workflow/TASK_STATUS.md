@@ -9,11 +9,11 @@
 
 | 阶段 | 总数 | 完成 | 进行中 | 待开始 |
 |------|------|------|--------|--------|
-| Phase 0: 契约确认与项目骨架 | 4 | 3 | 0 | 1 |
+| Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 |
 | Phase 1: 适配层实现 | 3 | 0 | 0 | 3 |
 | Phase 2: 端到端联调 | 2 | 0 | 0 | 2 |
 | Phase 3: 评估与稳定化 | 3 | 0 | 0 | 3 |
-| **合计** | **12** | **3** | **0** | **9** |
+| **合计** | **12** | **4** | **0** | **8** |
 
 ## 任务状态
 
@@ -22,7 +22,7 @@
 | P2-01 | 搭建-Python 项目骨架 | Phase 0 | ✅ 已完成 | 无 |
 | P2-02 | 定义-抽象接口 | Phase 0 | ✅ 已完成 | P2-01 |
 | P2-03 | 验证-ComfyUI API 连通性 | Phase 0 | ✅ 已完成 | P2-01 |
-| P2-04 | 分析-工作流 JSON 到 API 格式转换 | Phase 0 | ⬜ 待开始 | P2-03 |
+| P2-04 | 分析-工作流 JSON 到 API 格式转换 | Phase 0 | ✅ 已完成 | P2-03 |
 | P2-05 | 实现-Canny 条件提取器 | Phase 1 | ⬜ 待开始 | P2-02 |
 | P2-06 | 实现-VLM 发送端适配器 | Phase 1 | ⬜ 待开始 | P2-02 |
 | P2-07 | 实现-ComfyUI 接收端适配器 | Phase 1 | ⬜ 待开始 | P2-02, P2-04 |
@@ -44,6 +44,9 @@
 |------|------|------|
 | 2026-03-13 | 采用适配器模式 | ROADMAP 阶段三/四要求渐进替换模型和脱离 ComfyUI，适配器天然支持组件切换 |
 | 2026-03-13 | 任务类型为 integration + infrastructure | 核心工作是接入 ComfyUI API 和部署 VLM，非自研功能 |
+| 2026-03-17 | 子图展开策略：两遍遍历 | 先展开子图修改 link lookup，再转换普通节点，避免节点处理顺序导致连接错误 |
+| 2026-03-17 | Widget 隐藏值检测：基于数量对比 | 当 widgets_values 数量 > widget inputs 数量且当前为 seed 类型时，跳过下一个值（control_after_generate） |
+| 2026-03-17 | Phase 0 阶段回顾通过 | 4/4 任务完成，退出标准全部满足，20 个测试通过，无遗留问题 |
 
 ## 交接记录
 
@@ -130,5 +133,41 @@
 **下一任务及关注点**：
 - P2-04（分析-工作流 JSON 到 API 格式转换）已解锁，需解析 `resources/comfyui/` 下的 UI 导出格式 JSON
 - P2-04 完成后，P2-07（ComfyUI 接收端适配器）的全部依赖解锁
+
+**遗留问题**：无
+
+### P2-04 分析-工作流 JSON 到 API 格式转换（2026-03-17）
+
+**完成内容**：
+- 实现 `WorkflowConverter` 类，支持 UI 格式到 API 格式的完整转换
+- 支持子图展开：将嵌套的子图节点（虚拟输入 -10、虚拟输出 -20）展开为扁平节点结构
+- 支持 widget 值映射：自动处理 control_after_generate 等隐藏 widget
+- 支持参数注入：`set_prompt()` 和 `set_condition_image()` 动态替换工作流参数
+- 编写 20 个单元测试覆盖结构、连接、内容和注入
+
+**修改的文件**（2 个新建，1 个修改）：
+- `src/semantic_transmission/receiver/workflow_converter.py`（新建）
+- `tests/test_workflow_converter.py`（新建）
+- `pyproject.toml`（修改：添加 pytest 开发依赖）
+
+**验证结果**：
+- 20 个单元测试全部通过 ✅
+- API 格式包含 16 个节点（4 个外层 + 12 个子图内部） ✅
+- 子图边界连接正确（Canny→QwenImageDiffsynthControlnet, VAEDecode→SaveImage） ✅
+- KSampler 的 control_after_generate 隐藏 widget 被正确跳过 ✅
+- set_prompt / set_condition_image 参数注入正常 ✅
+
+**关键决策**：
+- 采用两遍遍历策略：先展开子图（修改 outer_link_lookup），再转换普通节点，避免节点处理顺序问题
+- 子图虚拟输入的值来源判断：有外部 link 则用外部源连接，否则用子图引用节点的 widget 值
+- 隐藏 widget 检测基于 widgets_values 数量与 widget inputs 数量的对比，结合 seed 名称匹配
+- 跳过 PreviewImage 和 MarkdownNote 类型节点（仅用于 UI 展示）
+
+**下一任务及关注点**：
+- Phase 0 全部完成，进入 Phase 1（适配层实现）
+- P2-05（Canny 条件提取器）：已解锁，纯 CPU 计算，依赖 opencv-python，参数参考工作流中的 low=0.15/high=0.35
+- P2-06（VLM 发送端适配器）：已解锁，需 GPU 环境加载 Qwen2.5-VL 模型
+- P2-07（ComfyUI 接收端适配器）：已解锁，依赖本任务的 WorkflowConverter + P2-03 的 ComfyUIConfig，需 ComfyUI 在线环境
+- P2-05 和 P2-06 可并行推进，P2-07 需要 ComfyUI 部署后再实施
 
 **遗留问题**：无
