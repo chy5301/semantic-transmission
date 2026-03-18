@@ -10,10 +10,10 @@
 | 阶段 | 总数 | 完成 | 冻结 | 进行中 | 待开始 |
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 3 | 1 | 0 | 0 |
-| Phase 1: 工作流拆分与双端 ComfyUI 调用 | 6 | 0 | 0 | 0 | 6 |
+| Phase 1: 工作流拆分与双端 ComfyUI 调用 | 6 | 1 | 0 | 0 | 5 |
 | Phase 2: 中继传输与双机演示 | 2 | 0 | 0 | 0 | 2 |
 | Phase 3: VLM 集成与质量优化 | 3 | 0 | 0 | 0 | 3 |
-| **合计** | **15** | **3** | **1** | **0** | **11** |
+| **合计** | **15** | **4** | **1** | **0** | **10** |
 
 ## 任务状态
 
@@ -24,7 +24,7 @@
 | P2-03 | 验证-ComfyUI API 连通性 | Phase 0 | ✅ 已完成 | P2-01 |
 | P2-04 | 分析-工作流 JSON 到 API 格式转换 | Phase 0 | ✅ 已完成 | P2-03 |
 | P2-05 | 拆分-工作流 JSON | Phase 1 | ⬜ 待开始 | P2-04 |
-| P2-06 | 扩展-配置支持双 ComfyUI 实例 | Phase 1 | ⬜ 待开始 | P2-03 |
+| P2-06 | 扩展-配置支持双 ComfyUI 实例 | Phase 1 | ✅ 已完成 | P2-03 |
 | P2-07 | 实现-ComfyUI API 客户端 | Phase 1 | ⬜ 待开始 | P2-06 |
 | P2-08 | 实现-发送端调用 | Phase 1 | ⬜ 待开始 | P2-05, P2-07 |
 | P2-09 | 实现-接收端调用 | Phase 1 | ⬜ 待开始 | P2-05, P2-07 |
@@ -212,5 +212,34 @@
 - P2-05（拆分-工作流 JSON）和 P2-06（扩展-配置）已解锁，可并行推进
 - P2-05 是关键路径：需要理解完整工作流的节点拓扑，正确拆分为发送端（4节点）和接收端（~14节点）
 - P2-06 相对简单，扩展 ComfyUIConfig 支持双实例
+
+**遗留问题**：无
+
+### P2-06 扩展-配置支持双 ComfyUI 实例（2026-03-18）
+
+**完成内容**：
+- 扩展 `ComfyUIConfig.from_env()` 支持可选的 `prefix` 参数，带前缀时优先读取 `COMFYUI_{PREFIX}_HOST` 等环境变量，未设置则回退到 `COMFYUI_HOST`
+- 新增 `SemanticTransmissionConfig` dataclass，组合 `sender: ComfyUIConfig` 和 `receiver: ComfyUIConfig`
+- 编写 12 个单元测试覆盖默认值、环境变量读取、前缀回退、单机/双机模式
+
+**修改的文件**：
+- `src/semantic_transmission/common/config.py`（修改：扩展 from_env + 新增 SemanticTransmissionConfig）
+- `tests/test_config.py`（新建：12 个测试用例）
+
+**验证结果**：
+- 12 个新测试全部通过 ✅
+- 20 个已有测试全部通过，无回归 ✅
+- 单机模式：未设置 SENDER/RECEIVER 环境变量时，两端使用相同地址 ✅
+- 双机模式：设置不同的 SENDER/RECEIVER 地址后，两端配置独立 ✅
+- 向后兼容：无前缀的 `from_env()` 行为不变 ✅
+
+**关键决策**：
+- `from_env(prefix)` 采用三级回退策略：`COMFYUI_{PREFIX}_{KEY}` → `COMFYUI_{KEY}` → 默认值
+- `SemanticTransmissionConfig` 为单机编排场景（demo_e2e.py）的便利封装；双机场景各端直接用 `ComfyUIConfig` 即可
+
+**下一任务及关注点**：
+- P2-07（实现-ComfyUI API 客户端）已解锁，依赖 P2-06
+- P2-05（拆分-工作流 JSON）与 P2-07 无依赖关系，可并行推进
+- P2-07 需参考 `scripts/test_comfyui_connection.py` 的 API 调用模式
 
 **遗留问题**：无
