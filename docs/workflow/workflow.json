@@ -18,23 +18,23 @@
   "phases": [
     {
       "name": "Phase 0: 契约确认与项目骨架",
-      "exitCriteria": "Python 项目结构就绪，ComfyUI API 连通性验证通过，抽象接口定义完成"
+      "exitCriteria": "Python 项目结构就绪，ComfyUI API 连通性验证通过，工作流转换器完成"
     },
     {
-      "name": "Phase 1: 适配层实现",
-      "exitCriteria": "发送端适配器（VLM + Canny）和接收端适配器（ComfyUI API）各自独立可用"
+      "name": "Phase 1: 工作流拆分与双端 ComfyUI 调用",
+      "exitCriteria": "单机上能跑通 发送端ComfyUI→接收端ComfyUI 完整流程，demo 脚本可运行"
     },
     {
-      "name": "Phase 2: 端到端联调",
-      "exitCriteria": "图像输入 → 发送端 → 接收端 → 还原图像的完整 pipeline 可运行"
+      "name": "Phase 2: 中继传输与双机演示",
+      "exitCriteria": "两台机器分别运行发送端和接收端，通过网络传输完成还原"
     },
     {
-      "name": "Phase 3: 评估与稳定化",
-      "exitCriteria": "质量评估指标（CLIP Score、LPIPS）可计算，异常处理覆盖关键路径"
+      "name": "Phase 3: VLM 集成与质量优化",
+      "exitCriteria": "VLM 自动生成 prompt 替代手动输入，质量评估指标可计算"
     }
   ],
   "projectContext": {
-    "description": "基于 ComfyUI API 搭建语义传输端到端原型，包含发送端 VLM 封装、接收端生成封装和 pipeline 集成",
+    "description": "基于 ComfyUI API 搭建语义传输端到端原型，将同事的 ComfyUI 工作流拆分为发送端和接收端，通过中继传输打通完整流程",
     "buildCommand": "",
     "testCommand": "uv run pytest"
   }

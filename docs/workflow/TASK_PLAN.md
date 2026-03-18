@@ -2,23 +2,32 @@
 
 ## 总体策略
 
-**适配器模式（Adapter Pattern）**
+**ComfyUI 工作流拆分 + 中继传输**
 
-为发送端（VLM）和接收端（ComfyUI）分别定义抽象接口，具体实现作为可替换的适配器。Pipeline 层只依赖抽象接口，后续替换模型或脱离 ComfyUI 时只需新增适配器实现。
+将同事已实现的 ComfyUI 工作流（发送端+接收端一体）拆分为两个独立工作流，两端都通过 ComfyUI API 调用，中间用 Python 中继传输，最快速度打通端到端 demo。
 
-选择理由：
-1. ROADMAP 阶段三明确要替换模型（Qwen → InternVL、Z-Image-Turbo → FLUX），适配器天然支持
-2. ROADMAP 阶段四要完全脱离 ComfyUI，接收端适配器可无缝切换到直接推理
-3. 发送端 VLM 有两种部署方式（Transformers/vLLM），适配器统一抽象
+核心思路：
+1. 发送端 ComfyUI 工作流：输入图像 → Canny 边缘提取 → 输出边缘图
+2. 接收端 ComfyUI 工作流：输入边缘图 + prompt 文本 → Z-Image-Turbo + ControlNet → 输出还原图像
+3. 中继层：从发送端获取边缘图 + prompt → 传给接收端
+
+部署模式：
+- 单机双端：发送端和接收端连同一个 ComfyUI 实例，快速调试
+- 双机双端：发送端和接收端各部署一台机器，实际演示
+
+后续演进（Phase 3+）：
+- 用 VLM 自动生成 prompt 替代手动输入（启用 P2-02 的 BaseSender 抽象接口）
+- 用 Python OpenCV 替代 ComfyUI 发送端（启用 P2-02 的 BaseConditionExtractor 抽象接口）
+- 完全脱离 ComfyUI（ROADMAP 阶段四）
 
 ## 阶段里程碑
 
 | 阶段 | 名称 | 退出标准 |
 |------|------|----------|
-| Phase 0 | 契约确认与项目骨架 | Python 项目结构就绪，ComfyUI API 连通性验证通过，抽象接口定义完成 |
-| Phase 1 | 适配层实现 | 发送端适配器（VLM + Canny）和接收端适配器（ComfyUI API）各自独立可用 |
-| Phase 2 | 端到端联调 | 图像输入 → 发送端 → 接收端 → 还原图像的完整 pipeline 可运行 |
-| Phase 3 | 评估与稳定化 | 质量评估指标（CLIP Score、LPIPS）可计算，异常处理覆盖关键路径 |
+| Phase 0 | 契约确认与项目骨架 | Python 项目结构就绪，ComfyUI API 连通性验证通过，工作流转换器完成 |
+| Phase 1 | 工作流拆分与双端 ComfyUI 调用 | 单机上能跑通 发送端ComfyUI→接收端ComfyUI 完整流程，demo 脚本可运行 |
+| Phase 2 | 中继传输与双机演示 | 两台机器分别运行发送端和接收端，通过网络传输完成还原 |
+| Phase 3 | VLM 集成与质量优化 | VLM 自动生成 prompt 替代手动输入，质量评估指标可计算 |
 
 ## 任务列表
 
@@ -44,37 +53,28 @@
   3. 创建 `tests/` 目录
   4. 运行 `uv sync` 验证依赖安装
 - **验收标准**:
-  - [ ] `uv sync` 成功完成，无报错
-  - [ ] `uv run python -c "import semantic_transmission"` 正常执行
-  - [ ] 目录结构包含 sender、receiver、pipeline、common 四个子包
+  - [x] `uv sync` 成功完成，无报错
+  - [x] `uv run python -c "import semantic_transmission"` 正常执行
+  - [x] 目录结构包含 sender、receiver、pipeline、common 四个子包
 - **自测方法**: `uv sync && uv run python -c "import semantic_transmission; print('OK')"`
 - **回滚方案**: 删除 pyproject.toml、src/、tests/ 目录
 - **预估工作量**: S
 
 ---
 
-#### [P2-02] 定义-抽象接口
+#### [P2-02] 定义-抽象接口（⏸️ 冻结）
 
 - **阶段**: Phase 0 - 契约确认与项目骨架
 - **依赖**: P2-01
 - **目标**: 定义发送端（Sender）和接收端（Receiver）的抽象基类，确立适配器模式的接口契约
-- **背景信息**: 项目采用适配器模式进行系统集成。发送端负责将图像转换为文本描述+条件图，接收端负责从文本+条件图还原图像。抽象接口需要覆盖：(1) Sender：输入图像，输出结构化描述文本；(2) ConditionExtractor：输入图像，输出条件图（Canny 边缘等）；(3) Receiver：输入文本+条件图，输出还原图像。接口设计需考虑后续扩展（更换 VLM、更换生成模型、脱离 ComfyUI）。
+- **背景信息**: 项目采用适配器模式进行系统集成。抽象接口定义了 BaseSender、BaseConditionExtractor、BaseReceiver 三个 ABC。**注意：当前阶段（Phase 1~2）不使用这些接口，两端都直接通过 ComfyUI API 调用。这些接口留待 Phase 3 "渐进替换"时启用（VLM 替代手动 prompt、Python OpenCV 替代 ComfyUI 发送端）。**
 - **涉及文件**:
   - `src/semantic_transmission/sender/base.py`（新建）
   - `src/semantic_transmission/receiver/base.py`（新建）
   - `src/semantic_transmission/common/types.py`（新建）
-- **具体步骤**:
-  1. 在 `common/types.py` 中定义公共数据类型：`SenderOutput`（text + metadata）、`TransmissionData`（text + condition_image + metadata）、`ReceiverOutput`（image + metadata）
-  2. 在 `sender/base.py` 中定义 `BaseSender`（ABC）：`describe(image) → SenderOutput` 和 `BaseConditionExtractor`（ABC）：`extract(image) → ndarray`
-  3. 在 `receiver/base.py` 中定义 `BaseReceiver`（ABC）：`reconstruct(text, condition_image) → ReceiverOutput`
-  4. 为每个抽象方法添加类型注解和 docstring
 - **验收标准**:
-  - [ ] 三个抽象基类均已定义，包含类型注解
-  - [ ] 公共数据类型使用 dataclass 定义
-  - [ ] `uv run python -c "from semantic_transmission.sender.base import BaseSender"` 正常
-  - [ ] `uv run python -c "from semantic_transmission.receiver.base import BaseReceiver"` 正常
-- **自测方法**: 导入所有基类并验证为 ABC（不可直接实例化）
-- **回滚方案**: 删除 base.py 和 types.py 文件
+  - [x] 三个抽象基类均已定义，包含类型注解
+  - [x] 公共数据类型使用 dataclass 定义
 - **预估工作量**: S
 
 ---
@@ -84,24 +84,15 @@
 - **阶段**: Phase 0 - 契约确认与项目骨架
 - **依赖**: P2-01
 - **目标**: 编写 ComfyUI API 连通性测试脚本，验证能够远程调用 ComfyUI 服务并提交工作流
-- **背景信息**: ComfyUI 提供 REST API + WebSocket 接口，需以 `--listen` 模式启动。核心端点：POST `/prompt`（提交工作流）、GET `/history/{id}`（查询结果）、GET `/view`（下载图像）、POST `/upload/image`（上传图像）、WebSocket `ws://{host}/ws`（实时监听）。本任务不实现完整客户端，仅验证网络连通性和基本 API 调用。ComfyUI 部署地址需从配置读取。
+- **背景信息**: ComfyUI 提供 REST API + WebSocket 接口，需以 `--listen` 模式启动。核心端点：POST `/prompt`（提交工作流）、GET `/history/{id}`（查询结果）、GET `/view`（下载图像）、POST `/upload/image`（上传图像）、WebSocket `ws://{host}/ws`（实时监听）。
 - **涉及文件**:
   - `src/semantic_transmission/common/config.py`（新建）
   - `scripts/test_comfyui_connection.py`（新建）
-- **具体步骤**:
-  1. 创建 `common/config.py`，定义配置类（ComfyUI host/port、超时时间等），支持环境变量和默认值
-  2. 编写 `scripts/test_comfyui_connection.py` 脚本：
-     - GET `/queue` 检查服务是否在线
-     - POST `/upload/image` 上传一张测试图像
-     - POST `/prompt` 提交现有工作流 JSON（`resources/comfyui/image_z_image_turbo_fun_union_controlnet.json`）
-     - WebSocket 连接测试
-     - GET `/history/{id}` 和 GET `/view` 获取结果
-  3. 输出每个步骤的成功/失败状态
 - **验收标准**:
-  - [ ] 配置类支持通过环境变量 `COMFYUI_HOST` 和 `COMFYUI_PORT` 设置地址
-  - [ ] 脚本能在 ComfyUI 不可用时给出明确的错误信息（而非崩溃）
-  - [ ] 脚本能在 ComfyUI 可用时完成完整的提交-监听-获取流程
-- **自测方法**: `uv run python scripts/test_comfyui_connection.py`（ComfyUI 不可用时应输出连接失败信息）
+  - [x] 配置类支持通过环境变量 `COMFYUI_HOST` 和 `COMFYUI_PORT` 设置地址
+  - [x] 脚本能在 ComfyUI 不可用时给出明确的错误信息（而非崩溃）
+  - [x] 脚本能在 ComfyUI 可用时完成完整的提交-监听-获取流程
+- **自测方法**: `uv run python scripts/test_comfyui_connection.py`
 - **回滚方案**: 删除 config.py 和 test 脚本
 - **预估工作量**: M
 
@@ -112,257 +103,250 @@
 - **阶段**: Phase 0 - 契约确认与项目骨架
 - **依赖**: P2-03
 - **目标**: 实现 ComfyUI 工作流 JSON（UI 导出格式）到 API 提交格式的转换工具
-- **背景信息**: ComfyUI 有两种 JSON 格式：(1) UI 导出格式（`resources/comfyui/` 中的文件，包含 nodes、links、groups 等 UI 元数据）；(2) API 提交格式（扁平的 node_id → {class_type, inputs} 映射）。POST `/prompt` 端点接受的是 API 格式。需要实现转换逻辑：解析 UI 格式的节点和连接关系，生成 API 格式，并支持动态注入参数（prompt 文本、条件图像路径）。
+- **背景信息**: ComfyUI 有两种 JSON 格式：(1) UI 导出格式（包含 nodes、links、groups 等 UI 元数据）；(2) API 提交格式（扁平的 node_id → {class_type, inputs} 映射）。转换工具可用于辅助生成拆分后的工作流 JSON。
 - **涉及文件**:
   - `src/semantic_transmission/receiver/workflow_converter.py`（新建）
   - `tests/test_workflow_converter.py`（新建）
-- **具体步骤**:
-  1. 分析 `resources/comfyui/image_z_image_turbo_fun_union_controlnet.json` 的 UI 格式结构
-  2. 实现 `WorkflowConverter` 类：
-     - `load(json_path)` 加载 UI 格式工作流
-     - `to_api_format()` 转换为 API 格式
-     - `set_prompt(text)` 注入文本描述
-     - `set_condition_image(image_name)` 注入条件图像引用
-  3. 编写单元测试，验证转换结果的结构正确性
 - **验收标准**:
-  - [ ] 能正确解析现有工作流 JSON（18 个节点、20+ 条连接）
-  - [ ] 转换后的 API 格式包含所有节点及其输入参数
-  - [ ] 支持动态注入 prompt 文本和条件图像路径
-  - [ ] 单元测试通过
+  - [x] 能正确解析现有工作流 JSON
+  - [x] 转换后的 API 格式包含所有节点及其输入参数
+  - [x] 支持动态注入 prompt 文本和条件图像路径
+  - [x] 单元测试通过（20 个）
 - **自测方法**: `uv run pytest tests/test_workflow_converter.py -v`
 - **回滚方案**: 删除 workflow_converter.py 和对应测试
 - **预估工作量**: M
 
 ---
 
-### Phase 1: 适配层实现
+### Phase 1: 工作流拆分与双端 ComfyUI 调用
 
-#### [P2-05] 实现-Canny 条件提取器
+#### [P2-05] 拆分-工作流 JSON
 
-- **阶段**: Phase 1 - 适配层实现
-- **依赖**: P2-02
-- **目标**: 实现基于 OpenCV 的 Canny 边缘条件提取器，作为 BaseConditionExtractor 的第一个具体实现
-- **背景信息**: 语义传输发送端需要从原始图像提取结构化条件信息。Canny 边缘图是最基础的条件类型，ComfyUI 工作流中使用的参数为 low_threshold=0.15、high_threshold=0.35。提取结果为二值边缘图（uint8 numpy array），后续需上传到 ComfyUI 作为 ControlNet 条件输入。提取过程纯 CPU 计算，依赖 opencv-python。
+- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **依赖**: P2-04
+- **目标**: 将完整工作流拆分为发送端和接收端两个独立的 API 格式 JSON
+- **背景信息**: 同事的 ComfyUI 工作流（`resources/comfyui/image_z_image_turbo_fun_union_controlnet.json`）将发送端（图像→Canny边缘提取）和接收端（边缘图+prompt→Z-Image-Turbo生成）集成在一个工作流中。需要拆分为两个独立的 API 格式 JSON，分别用于发送端和接收端的 ComfyUI API 调用。
+  - 发送端工作流：LoadImage + ImageScaleToMaxDimension + Canny + SaveImage（4 个节点）
+  - 接收端工作流：LoadImage（加载边缘图）+ 子图展开后的全部生成节点 + SaveImage（~14 个节点）
 - **涉及文件**:
-  - `src/semantic_transmission/sender/canny_extractor.py`（新建）
-  - `tests/test_canny_extractor.py`（新建）
+  - `resources/comfyui/sender_workflow_api.json`（新建）
+  - `resources/comfyui/receiver_workflow_api.json`（新建）
 - **具体步骤**:
-  1. 实现 `CannyExtractor(BaseConditionExtractor)`：
-     - 构造参数：low_threshold（默认 0.15）、high_threshold（默认 0.35）
-     - `extract(image: ndarray) → ndarray`：灰度转换 → Canny 边缘检测 → 返回边缘图
-  2. 处理输入图像的格式兼容（RGB/BGR、PIL Image/ndarray）
-  3. 编写单元测试（使用合成测试图像）
+  1. 分析完整工作流的节点拓扑，确定发送端/接收端的拆分边界（Canny 输出为边界）
+  2. 构造发送端 API JSON：LoadImage → ImageScaleToMaxDimension → Canny → SaveImage
+  3. 构造接收端 API JSON：LoadImage（边缘图）→ 展开后的子图节点（CLIPLoader、UNETLoader、VAELoader、ModelPatchLoader、CLIPTextEncode、ConditioningZeroOut、QwenImageDiffsynthControlnet、ModelSamplingAuraFlow、GetImageSize、EmptySD3LatentImage、KSampler、VAEDecode）→ SaveImage
+  4. 可借助 P2-04 的 WorkflowConverter 辅助生成，或手工编写 API 格式 JSON
+  5. 验证两个 JSON 分别提交 ComfyUI `/prompt` 端点能正常执行
 - **验收标准**:
-  - [ ] 继承 BaseConditionExtractor 并实现 extract 方法
-  - [ ] 输出为 uint8 二值图像（0/255）
-  - [ ] 支持 numpy array 和 PIL Image 输入
-  - [ ] 单元测试通过
-- **自测方法**: `uv run pytest tests/test_canny_extractor.py -v`
-- **回滚方案**: 删除 canny_extractor.py 和测试
+  - [ ] 发送端 JSON 提交后能输出 Canny 边缘图
+  - [ ] 接收端 JSON 提交后能从边缘图 + prompt 生成还原图像
+  - [ ] 两个 JSON 均为有效的 ComfyUI API 格式
+- **自测方法**: 用 `scripts/test_comfyui_connection.py` 的逻辑分别提交两个工作流
+- **回滚方案**: 删除两个新建的 JSON 文件
+- **预估工作量**: M
+
+---
+
+#### [P2-06] 扩展-配置支持双 ComfyUI 实例
+
+- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **依赖**: P2-03
+- **目标**: 扩展 config.py 支持发送端和接收端指向不同的 ComfyUI 实例
+- **背景信息**: 当前 `ComfyUIConfig` 只支持单个 ComfyUI 实例。在双机双端演示场景下，发送端和接收端可能运行在不同的机器上，需要分别配置地址。单机调试时两端可以指向同一实例。
+- **涉及文件**:
+  - `src/semantic_transmission/common/config.py`（修改）
+  - `tests/test_config.py`（新建）
+- **具体步骤**:
+  1. 保留 `ComfyUIConfig` 单实例配置不变
+  2. 新增 `SemanticTransmissionConfig`，包含 `sender: ComfyUIConfig` 和 `receiver: ComfyUIConfig`
+  3. 支持环境变量：`COMFYUI_SENDER_HOST`/`COMFYUI_SENDER_PORT` 和 `COMFYUI_RECEIVER_HOST`/`COMFYUI_RECEIVER_PORT`，未设置时回退到 `COMFYUI_HOST`/`COMFYUI_PORT`
+  4. 编写单元测试
+- **验收标准**:
+  - [ ] 单机模式：未设置 SENDER/RECEIVER 环境变量时，两端使用相同地址
+  - [ ] 双机模式：设置不同的 SENDER/RECEIVER 地址后，两端配置独立
+  - [ ] 测试通过
+- **自测方法**: `uv run pytest tests/test_config.py -v`
+- **回滚方案**: 还原 config.py，删除测试
 - **预估工作量**: S
 
 ---
 
-#### [P2-06] 实现-VLM 发送端适配器
+#### [P2-07] 实现-ComfyUI API 客户端
 
-- **阶段**: Phase 1 - 适配层实现
-- **依赖**: P2-02
-- **目标**: 实现基于 Qwen2.5-VL 的发送端适配器，能够输入图像并输出结构化场景描述文本
-- **背景信息**: 发送端的核心功能是将图像转换为文本描述。主选模型为 Qwen2.5-VL-7B，部署方式优先使用 Transformers 本地加载（单卡 RTX 4090，FP16 约 18GB，INT4 约 8GB）。需要设计结构化 prompt 模板引导模型输出格式化描述，参考 ComfyUI 工作流中的 prompt 结构：[Scene Style]/[Perspective]/[Key Elements] 等。输出文本将作为接收端生成图像的 prompt。
+- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **依赖**: P2-06
+- **目标**: 封装通用 ComfyUI REST API + WebSocket 客户端，供发送端和接收端复用
+- **背景信息**: `scripts/test_comfyui_connection.py` 中已有各 API 端点的调用示例，本任务将其封装为可复用的客户端类。核心 API：POST `/upload/image`（上传图像）、POST `/prompt`（提交工作流）、WebSocket 监听或轮询 `/history`（等待完成）、GET `/history/{id}` + GET `/view`（获取结果图像）。
 - **涉及文件**:
-  - `src/semantic_transmission/sender/qwen_vl_sender.py`（新建）
-  - `src/semantic_transmission/sender/prompt_templates.py`（新建）
-  - `tests/test_qwen_vl_sender.py`（新建）
+  - `src/semantic_transmission/common/comfyui_client.py`（新建）
+  - `tests/test_comfyui_client.py`（新建）
 - **具体步骤**:
-  1. 在 `prompt_templates.py` 中定义结构化 prompt 模板（引导模型输出 [Scene Style]/[Perspective]/[Key Elements] 格式）
-  2. 实现 `QwenVLSender(BaseSender)`：
-     - 构造参数：model_path、device、quantization（none/int4/int8）
-     - `load_model()` 加载 Qwen2.5-VL 模型和 processor
-     - `describe(image) → SenderOutput`：构建多模态消息 → 模型推理 → 解析输出
-  3. 编写测试（使用 mock 模拟模型推理，不需要真实模型文件）
+  1. 实现 `ComfyUIClient(config: ComfyUIConfig)`：
+     - `upload_image(image_bytes, filename) → str` — POST `/upload/image`，返回服务端文件名
+     - `submit_workflow(api_json, client_id=None) → str` — POST `/prompt`，返回 prompt_id
+     - `wait_for_completion(prompt_id, timeout=None) → dict` — WebSocket 监听或轮询 `/history` 直到完成
+     - `get_result_images(prompt_id) → list[bytes]` — GET `/history/{id}` 解析输出节点 + GET `/view` 下载图像
+  2. 参考 `scripts/test_comfyui_connection.py` 中的实现模式（上传、提交、等待、下载流程）
+  3. 编写 mock 测试
 - **验收标准**:
-  - [ ] 继承 BaseSender 并实现 describe 方法
-  - [ ] prompt 模板能引导生成结构化描述
-  - [ ] 支持 FP16 和 INT4 量化加载
+  - [ ] 四个核心方法功能正确
+  - [ ] 超时处理：`wait_for_completion` 支持 timeout 参数
+  - [ ] 错误处理：ComfyUI 不可用时抛出明确异常
   - [ ] mock 测试通过
-- **自测方法**: `uv run pytest tests/test_qwen_vl_sender.py -v`
-- **回滚方案**: 删除 qwen_vl_sender.py、prompt_templates.py 和测试
-- **预估工作量**: L
+- **自测方法**: `uv run pytest tests/test_comfyui_client.py -v`
+- **回滚方案**: 删除 comfyui_client.py 和测试
+- **预估工作量**: M
 
 ---
 
-#### [P2-07] 实现-ComfyUI 接收端适配器
+#### [P2-08] 实现-发送端调用
 
-- **阶段**: Phase 1 - 适配层实现
-- **依赖**: P2-02, P2-04
-- **目标**: 实现基于 ComfyUI API 的接收端适配器，能够提交文本+条件图并获取生成的还原图像
-- **背景信息**: 接收端通过 ComfyUI REST API 提交工作流并获取生成结果。完整流程：(1) 上传条件图像到 ComfyUI（POST `/upload/image`）；(2) 使用 WorkflowConverter 构建 API 格式的工作流 JSON，注入 prompt 文本和条件图引用；(3) 提交工作流（POST `/prompt`）获取 prompt_id；(4) 通过 WebSocket 监听执行进度；(5) 查询结果（GET `/history/{prompt_id}`）；(6) 下载生成图像（GET `/view`）。工作流使用 Z-Image-Turbo + ControlNet Union，9 步采样，CFG=1。
+- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **依赖**: P2-05, P2-07
+- **目标**: 封装发送端逻辑，通过 ComfyUI API 执行发送端工作流，输入原始图像，输出 Canny 边缘图
+- **背景信息**: 发送端工作流（`sender_workflow_api.json`）接收原始图像，经过缩放和 Canny 边缘提取后输出边缘图。参数注入只需替换 LoadImage 节点的 `image` 字段为上传后的文件名。
+- **涉及文件**:
+  - `src/semantic_transmission/sender/comfyui_sender.py`（新建）
+  - `tests/test_comfyui_sender.py`（新建）
+- **具体步骤**:
+  1. 实现 `ComfyUISender`：
+     - 构造参数：`client: ComfyUIClient`、`workflow_path: str`（默认指向 `sender_workflow_api.json`）
+     - `process(image_path: str) → PIL.Image`：加载图像 → 上传到 ComfyUI → 注入 LoadImage.image → 提交工作流 → 等待完成 → 获取输出边缘图
+  2. 编写 mock 测试
+- **验收标准**:
+  - [ ] 能通过 ComfyUI API 获取 Canny 边缘图
+  - [ ] 参数注入正确（LoadImage 节点的 image 字段）
+  - [ ] mock 测试通过
+- **自测方法**: `uv run pytest tests/test_comfyui_sender.py -v`
+- **回滚方案**: 删除 comfyui_sender.py 和测试
+- **预估工作量**: S
+
+---
+
+#### [P2-09] 实现-接收端调用
+
+- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **依赖**: P2-05, P2-07
+- **目标**: 封装接收端逻辑，通过 ComfyUI API 执行接收端工作流，输入边缘图+prompt，输出还原图像
+- **背景信息**: 接收端工作流（`receiver_workflow_api.json`）接收边缘图和文本 prompt，通过 Z-Image-Turbo + ControlNet Union 生成还原图像。参数注入需替换：LoadImage 节点的 `image`（边缘图文件名）、CLIPTextEncode 节点的 `text`（prompt 文本）、KSampler 节点的 `seed`（可选）。
 - **涉及文件**:
   - `src/semantic_transmission/receiver/comfyui_receiver.py`（新建）
-  - `src/semantic_transmission/receiver/comfyui_client.py`（新建）
   - `tests/test_comfyui_receiver.py`（新建）
 - **具体步骤**:
-  1. 实现 `ComfyUIClient` 类，封装底层 HTTP/WebSocket 调用：
-     - `upload_image(image, name)` — 上传图像
-     - `submit_workflow(workflow_json)` — 提交工作流，返回 prompt_id
-     - `wait_for_completion(prompt_id)` — WebSocket 监听直到完成
-     - `get_result_image(prompt_id)` — 获取生成图像
-  2. 实现 `ComfyUIReceiver(BaseReceiver)`：
-     - 构造参数：comfyui_host、comfyui_port、workflow_path
-     - `reconstruct(text, condition_image) → ReceiverOutput`：编排完整的提交-等待-获取流程
-  3. 编写测试（mock HTTP 响应）
+  1. 实现 `ComfyUIReceiver`：
+     - 构造参数：`client: ComfyUIClient`、`workflow_path: str`（默认指向 `receiver_workflow_api.json`）
+     - `process(edge_image: bytes | str, prompt_text: str, seed: int | None = None) → PIL.Image`：上传边缘图 → 注入 LoadImage.image + CLIPTextEncode.text + KSampler.seed → 提交工作流 → 等待完成 → 获取还原图像
+  2. 编写 mock 测试
 - **验收标准**:
-  - [ ] 继承 BaseReceiver 并实现 reconstruct 方法
-  - [ ] ComfyUIClient 封装全部 6 个关键 API 调用
-  - [ ] WebSocket 监听支持超时处理
+  - [ ] 能通过 ComfyUI API 获取还原图像
+  - [ ] 参数注入正确（LoadImage、CLIPTextEncode、KSampler 三个节点）
   - [ ] mock 测试通过
 - **自测方法**: `uv run pytest tests/test_comfyui_receiver.py -v`
-- **回滚方案**: 删除 comfyui_receiver.py、comfyui_client.py 和测试
+- **回滚方案**: 删除 comfyui_receiver.py 和测试
+- **预估工作量**: S
+
+---
+
+#### [P2-10] 搭建-端到端 Demo 脚本
+
+- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **依赖**: P2-08, P2-09
+- **目标**: 编写可运行的 demo 脚本，演示 发送端→接收端 完整流程
+- **背景信息**: Demo 脚本是 Phase 1 的核心交付物。单机模式下发送端和接收端连同一个 ComfyUI 实例。prompt 文本在本阶段手动指定（命令行参数），后续 Phase 3 才用 VLM 自动生成。
+- **涉及文件**:
+  - `scripts/demo_e2e.py`（新建）
+- **具体步骤**:
+  1. CLI 接口：`--image <输入图像> --prompt <描述文本> [--sender-host ...] [--receiver-host ...] [--output-dir ...]`
+  2. 流程：
+     - 初始化 ComfyUIClient（发送端）和 ComfyUIClient（接收端）
+     - ComfyUISender 提取 Canny 边缘图
+     - 保存边缘图到本地（模拟传输中间数据）
+     - ComfyUIReceiver 从边缘图 + prompt 还原图像
+     - 保存对比图（原图 | 边缘图 | 还原图）
+  3. 打印传输统计：边缘图大小（bytes）+ prompt 文本大小（bytes）= 总传输数据量
+- **验收标准**:
+  - [ ] `uv run python scripts/demo_e2e.py --help` 正常显示帮助
+  - [ ] 在 ComfyUI 可用时能完成完整流程并输出对比图
+  - [ ] 支持 `--sender-host` 和 `--receiver-host` 分别指定地址
+- **自测方法**: `uv run python scripts/demo_e2e.py --help`
+- **回滚方案**: 删除 demo_e2e.py
+- **预估工作量**: M
+
+---
+
+### Phase 2: 中继传输与双机演示
+
+#### [P2-11] 实现-中继传输协议
+
+- **阶段**: Phase 2 - 中继传输与双机演示
+- **依赖**: P2-10
+- **目标**: 实现发送端到接收端的数据中继，支持本地传输和网络传输两种模式
+- **背景信息**: Phase 1 的 demo 脚本在单进程内直接串联发送端和接收端。本任务将传输层独立出来，支持：(1) LocalRelay——内存传递，单机调试用；(2) SocketRelay——基于 TCP socket 的简单二进制传输，双机演示用。传输数据包含：边缘图（PNG 压缩）+ prompt 文本 + 元数据（时间戳、图像尺寸等）。
+- **涉及文件**:
+  - `src/semantic_transmission/pipeline/relay.py`（新建）
+  - `tests/test_relay.py`（新建）
+- **具体步骤**:
+  1. 定义传输数据结构：`TransmissionPacket`（edge_image_bytes + prompt_text + metadata）
+  2. 实现 `LocalRelay`：直接内存传递
+  3. 实现 `SocketRelay`：TCP socket 二进制传输（length-prefixed framing）
+  4. 编写单元测试
+- **验收标准**:
+  - [ ] LocalRelay 能正确传递数据
+  - [ ] SocketRelay 能在 localhost 上完成传输
+  - [ ] 测试通过
+- **自测方法**: `uv run pytest tests/test_relay.py -v`
+- **回滚方案**: 删除 relay.py 和测试
+- **预估工作量**: M
+
+---
+
+#### [P2-12] 编写-双机演示脚本
+
+- **阶段**: Phase 2 - 中继传输与双机演示
+- **依赖**: P2-11
+- **目标**: 编写分别运行在发送端机器和接收端机器上的独立脚本
+- **背景信息**: 双机演示需要发送端和接收端作为独立进程运行，通过网络传输数据。发送端脚本负责：读取图像 → ComfyUI 提取边缘图 → 通过 SocketRelay 发送。接收端脚本负责：监听端口 → 接收数据 → ComfyUI 还原图像 → 保存结果。
+- **涉及文件**:
+  - `scripts/run_sender.py`（新建）
+  - `scripts/run_receiver.py`（新建）
+- **具体步骤**:
+  1. `run_sender.py`：CLI 接收图像路径和 prompt → ComfyUI 提取边缘图 → SocketRelay 发送
+  2. `run_receiver.py`：监听指定端口 → 接收 TransmissionPacket → ComfyUI 还原 → 保存结果
+  3. 支持连续模式（持续监听）和单次模式
+- **验收标准**:
+  - [ ] 两个脚本分别运行在不同终端/机器上能完成完整流程
+  - [ ] 支持 `--host` / `--port` 参数配置网络地址
+- **自测方法**: 两个终端分别运行 sender 和 receiver
+- **回滚方案**: 删除两个脚本
+- **预估工作量**: M
+
+---
+
+### Phase 3: VLM 集成与质量优化（暂不展开详细定义）
+
+#### [P2-13] 集成-VLM 自动生成 prompt
+
+- **阶段**: Phase 3 - VLM 集成与质量优化
+- **依赖**: P2-10
+- **目标**: 用 Qwen2.5-VL 自动生成图像描述，替代 demo 中的手动 prompt 输入
+- **背景信息**: 此时启用 P2-02 定义的 BaseSender 抽象接口，实现 QwenVLSender 适配器
 - **预估工作量**: L
 
 ---
 
-### Phase 2: 端到端联调
+#### [P2-14] 实现-质量评估模块
 
-#### [P2-08] 搭建-端到端 Pipeline
-
-- **阶段**: Phase 2 - 端到端联调
-- **依赖**: P2-05, P2-06, P2-07
-- **目标**: 实现 Pipeline 编排层，将发送端和接收端串联为完整的端到端语义传输流程
-- **背景信息**: Pipeline 是系统的编排层，负责协调发送端（VLM 描述 + Canny 提取）和接收端（ComfyUI 生成）。流程：输入图像 → 并行执行 VLM 描述和 Canny 提取 → 打包传输数据（文本 + 边缘图）→ 记录传输数据量（码率统计）→ 提交接收端还原 → 输出还原图像。Pipeline 依赖抽象接口，不直接引用具体实现。
-- **涉及文件**:
-  - `src/semantic_transmission/pipeline/semantic_pipeline.py`（新建）
-  - `src/semantic_transmission/pipeline/transmission.py`（新建）
-  - `tests/test_pipeline.py`（新建）
-- **具体步骤**:
-  1. 在 `transmission.py` 中实现传输数据的序列化/反序列化和码率统计
-  2. 实现 `SemanticPipeline` 类：
-     - 构造参数：sender、condition_extractor、receiver
-     - `process(image_path) → PipelineResult`：编排完整流程
-     - `process_batch(image_dir) → list[PipelineResult]`：批量处理
-  3. 记录每次处理的传输数据量（文本字节数 + 条件图压缩大小）
-  4. 编写集成测试（mock sender 和 receiver）
-- **验收标准**:
-  - [ ] Pipeline 只依赖抽象接口（BaseSender、BaseConditionExtractor、BaseReceiver）
-  - [ ] 单帧处理流程完整：输入图像 → 输出还原图像 + 传输统计
-  - [ ] 传输数据量统计正确（文本字节 + 条件图 PNG 大小）
-  - [ ] 批量处理支持目录扫描
-  - [ ] 测试通过
-- **自测方法**: `uv run pytest tests/test_pipeline.py -v`
-- **回滚方案**: 删除 pipeline 模块文件和测试
+- **阶段**: Phase 3 - VLM 集成与质量优化
+- **依赖**: P2-10
+- **目标**: 实现 CLIP Score、LPIPS、PSNR、SSIM 等质量评估指标
 - **预估工作量**: M
 
 ---
 
-#### [P2-09] 编写-端到端 Demo 脚本
+#### [P2-15] 脱离-ComfyUI 发送端
 
-- **阶段**: Phase 2 - 端到端联调
-- **依赖**: P2-08
-- **目标**: 编写可直接运行的 demo 脚本，演示完整的语义传输流程并输出对比结果
-- **背景信息**: Demo 脚本是 Phase 2 的核心交付物，用于向团队演示端到端流程。脚本应：(1) 加载配置（ComfyUI 地址、模型路径等）；(2) 初始化 Pipeline（实例化具体的 Sender、Extractor、Receiver）；(3) 处理指定图像；(4) 保存结果（原图、边缘图、还原图并排对比）；(5) 输出传输统计（数据量、压缩比、bpp）。需要提供示例配置和使用说明。
-- **涉及文件**:
-  - `scripts/demo.py`（新建）
-  - `configs/default.yaml`（新建）
-  - `scripts/README.md`（新建）
-- **具体步骤**:
-  1. 创建 `configs/default.yaml` 配置文件（ComfyUI 地址、模型路径、Canny 参数等）
-  2. 实现 `scripts/demo.py`：
-     - 解析命令行参数（输入图像、配置文件、输出目录）
-     - 初始化各组件并组装 Pipeline
-     - 执行处理并保存结果
-     - 生成对比图（原图 | Canny | 还原图）
-     - 打印传输统计信息
-  3. 编写 `scripts/README.md` 使用说明
-- **验收标准**:
-  - [ ] `uv run python scripts/demo.py --image <path> --config configs/default.yaml` 可运行
-  - [ ] 输出目录包含：对比图、独立的还原图、传输统计 JSON
-  - [ ] README 包含使用步骤和配置说明
-- **自测方法**: `uv run python scripts/demo.py --help` 正常显示帮助信息
-- **回滚方案**: 删除 scripts/demo.py、configs/ 和 scripts/README.md
-- **预估工作量**: M
-
----
-
-### Phase 3: 评估与稳定化
-
-#### [P2-10] 实现-质量评估模块
-
-- **阶段**: Phase 3 - 评估与稳定化
-- **依赖**: P2-08
-- **目标**: 实现图像还原质量的自动化评估模块，支持 CLIP Score、LPIPS、PSNR、SSIM 指标计算
-- **背景信息**: 语义传输的核心评估维度是还原质量 vs 传输码率的权衡。主要指标：(1) CLIP Score——衡量生成图像与文本描述的语义一致性，语义传输最关键的指标；(2) LPIPS——感知相似度，衡量生成图像与原图的视觉感知差异；(3) PSNR/SSIM——传统像素级指标，作为参考（生成式方案在此指标上非强项）。评估模块需要额外依赖：torch、clip、lpips。
-- **涉及文件**:
-  - `src/semantic_transmission/evaluation/__init__.py`（新建）
-  - `src/semantic_transmission/evaluation/metrics.py`（新建）
-  - `tests/test_metrics.py`（新建）
-- **具体步骤**:
-  1. 在 pyproject.toml 中添加评估依赖组（torch、transformers、lpips），作为可选依赖 `[evaluation]`
-  2. 实现 `ImageMetrics` 类：
-     - `clip_score(image, text) → float`
-     - `lpips(image1, image2) → float`
-     - `psnr(image1, image2) → float`
-     - `ssim(image1, image2) → float`
-  3. 实现 `evaluate_result(original, reconstructed, text) → dict` 汇总函数
-  4. 编写测试（使用小尺寸合成图像）
-- **验收标准**:
-  - [ ] 四个指标函数均可独立调用
-  - [ ] 输入支持 PIL Image 和 numpy array
-  - [ ] 评估依赖作为可选组，不影响核心功能安装
-  - [ ] 测试通过
-- **自测方法**: `uv run --extra evaluation pytest tests/test_metrics.py -v`
-- **回滚方案**: 删除 evaluation 模块和测试
-- **预估工作量**: M
-
----
-
-#### [P2-11] 添加-异常处理与日志
-
-- **阶段**: Phase 3 - 评估与稳定化
-- **依赖**: P2-08
-- **目标**: 为关键路径添加异常处理、重试机制和结构化日志，提升系统稳定性
-- **背景信息**: 当前 Pipeline 的关键故障点：(1) ComfyUI 服务不可用或执行超时；(2) VLM 推理超时或 OOM；(3) WebSocket 连接中断；(4) 工作流 JSON 格式错误。需要添加：自定义异常类型、关键操作的超时控制、ComfyUI 提交的重试（最多 3 次）、结构化日志（使用 Python logging）。
-- **涉及文件**:
-  - `src/semantic_transmission/common/exceptions.py`（新建）
-  - `src/semantic_transmission/common/logging.py`（新建）
-  - `src/semantic_transmission/receiver/comfyui_client.py`（修改）
-  - `src/semantic_transmission/pipeline/semantic_pipeline.py`（修改）
-- **具体步骤**:
-  1. 定义自定义异常：`ComfyUIConnectionError`、`ComfyUITimeoutError`、`VLMInferenceError`、`WorkflowConversionError`
-  2. 配置结构化日志（控制台 + 文件输出，带时间戳和模块名）
-  3. 为 ComfyUIClient 添加连接重试（3 次，指数退避）和超时处理
-  4. 为 Pipeline 添加各阶段的异常捕获和日志记录
-- **验收标准**:
-  - [ ] ComfyUI 不可用时抛出 `ComfyUIConnectionError`（而非原始异常）
-  - [ ] WebSocket 超时时抛出 `ComfyUITimeoutError`
-  - [ ] 日志输出包含时间戳、模块名和日志级别
-  - [ ] 重试机制在连接失败时自动重试 3 次
-- **自测方法**: `uv run pytest tests/ -v`（全部测试通过）
-- **回滚方案**: 还原修改的文件，删除 exceptions.py 和 logging.py
-- **预估工作量**: M
-
----
-
-#### [P2-12] 执行-初步质量评估
-
-- **阶段**: Phase 3 - 评估与稳定化
-- **依赖**: P2-09, P2-10
-- **目标**: 使用 demo pipeline 处理一组测试图像，记录质量指标和传输码率，形成基线评估报告
-- **背景信息**: Phase 2 的最终交付物之一是初步质量评估数据。需要：(1) 选取 5-10 张不同场景的测试图像（室内、室外、人像、风景等）；(2) 运行 pipeline 生成还原图像；(3) 计算 CLIP Score、LPIPS、PSNR、SSIM；(4) 记录每张图的传输数据量和 bpp；(5) 汇总为评估报告，作为后续优化的基线。
-- **涉及文件**:
-  - `scripts/evaluate.py`（新建）
-  - `docs/evaluation/baseline-report.md`（新建）
-- **具体步骤**:
-  1. 编写 `scripts/evaluate.py` 批量评估脚本：
-     - 扫描测试图像目录
-     - 对每张图运行 pipeline + 质量评估
-     - 输出 CSV 格式的指标数据
-     - 生成汇总统计（均值、标准差）
-  2. 准备测试图像集（可使用公开数据集的样本）
-  3. 执行评估，记录结果到 `docs/evaluation/baseline-report.md`
-- **验收标准**:
-  - [ ] 评估脚本可批量处理图像目录
-  - [ ] 输出包含每张图的完整指标（CLIP Score、LPIPS、PSNR、SSIM、bpp）
-  - [ ] 基线报告包含汇总表格和初步分析
-- **自测方法**: `uv run python scripts/evaluate.py --help`
-- **回滚方案**: 删除评估脚本和报告
-- **预估工作量**: L
+- **阶段**: Phase 3 - VLM 集成与质量优化
+- **依赖**: P2-13
+- **目标**: 用 Python + OpenCV 直接实现 Canny 提取，不再依赖 ComfyUI 发送端
+- **背景信息**: 此时启用 P2-02 定义的 BaseConditionExtractor 抽象接口
+- **预估工作量**: S
