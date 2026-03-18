@@ -1,0 +1,32 @@
+{
+  "58": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "input_image.jpg",
+      "upload": "image"
+    }
+  },
+  "62": {
+    "class_type": "ImageScaleToMaxDimension",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "largest_size": 2048,
+      "image": ["58", 0]
+    }
+  },
+  "57": {
+    "class_type": "Canny",
+    "inputs": {
+      "low_threshold": 0.15,
+      "high_threshold": 0.35,
+      "image": ["62", 0]
+    }
+  },
+  "100": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "canny_edge",
+      "images": ["57", 0]
+    }
+  }
+}

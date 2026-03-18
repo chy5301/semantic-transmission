@@ -1,0 +1,109 @@
+{
+  "101": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "canny_edge_00001_.png",
+      "upload": "image"
+    }
+  },
+  "39": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    }
+  },
+  "46": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "z_image_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "40": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    }
+  },
+  "64": {
+    "class_type": "ModelPatchLoader",
+    "inputs": {
+      "name": "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
+    }
+  },
+  "45": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "[Scene Style]: Midday, Clear sky with thin clouds, Bright natural sunlight, Arid desert landscape with scattered snow patches.\n\n[Perspective]: Low-angle ground vehicle camera view, Wide-angle lens, Vanishing point located generally central on the horizon line where the road disappears.\n\n[Ground & Path]: Wide, unpaved dirt road marked with deep parallel tire ruts and textured soil. The road geometry exhibits a complex winding trend as it recedes into the distance: it starts centrally in the foreground, curves slightly toward the right in the midground, and then bends back toward the left before disappearing over a distant rise at the horizon. Patches of white snow and ice line the road edges throughout.\n\n[Key Elements]:\n\nForeground: Heavily rutted dirt track surface with snow patches on the immediate left and right shoulders.\n\nMidground: The distinct S-shaped curving path of the dirt road winding through dry desert scrub land.\n\nBackground: A distant, hazy mountain range spanning the horizon under a pale blue sky with light clouds.",
+      "clip": ["39", 0]
+    }
+  },
+  "42": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": ["45", 0]
+    }
+  },
+  "60": {
+    "class_type": "QwenImageDiffsynthControlnet",
+    "inputs": {
+      "strength": 1,
+      "model": ["46", 0],
+      "model_patch": ["64", 0],
+      "vae": ["40", 0],
+      "image": ["101", 0]
+    }
+  },
+  "69": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": ["101", 0]
+    }
+  },
+  "41": {
+    "class_type": "EmptySD3LatentImage",
+    "inputs": {
+      "width": ["69", 0],
+      "height": ["69", 1],
+      "batch_size": 1
+    }
+  },
+  "47": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {
+      "shift": 3,
+      "model": ["60", 0]
+    }
+  },
+  "44": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 582911328872996,
+      "steps": 9,
+      "cfg": 1,
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": ["47", 0],
+      "positive": ["45", 0],
+      "negative": ["42", 0],
+      "latent_image": ["41", 0]
+    }
+  },
+  "43": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["44", 0],
+      "vae": ["40", 0]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "z-image-turbo",
+      "images": ["43", 0]
+    }
+  }
+}

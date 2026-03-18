@@ -10,10 +10,10 @@
 | 阶段 | 总数 | 完成 | 冻结 | 进行中 | 待开始 |
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 3 | 1 | 0 | 0 |
-| Phase 1: 工作流拆分与双端 ComfyUI 调用 | 6 | 1 | 0 | 0 | 5 |
+| Phase 1: 工作流拆分与双端 ComfyUI 调用 | 6 | 2 | 0 | 0 | 4 |
 | Phase 2: 中继传输与双机演示 | 2 | 0 | 0 | 0 | 2 |
 | Phase 3: VLM 集成与质量优化 | 3 | 0 | 0 | 0 | 3 |
-| **合计** | **15** | **4** | **1** | **0** | **10** |
+| **合计** | **15** | **5** | **1** | **0** | **9** |
 
 ## 任务状态
 
@@ -23,7 +23,7 @@
 | P2-02 | 定义-抽象接口 | Phase 0 | ⏸️ 冻结 | P2-01 |
 | P2-03 | 验证-ComfyUI API 连通性 | Phase 0 | ✅ 已完成 | P2-01 |
 | P2-04 | 分析-工作流 JSON 到 API 格式转换 | Phase 0 | ✅ 已完成 | P2-03 |
-| P2-05 | 拆分-工作流 JSON | Phase 1 | ⬜ 待开始 | P2-04 |
+| P2-05 | 拆分-工作流 JSON | Phase 1 | ✅ 已完成 | P2-04 |
 | P2-06 | 扩展-配置支持双 ComfyUI 实例 | Phase 1 | ✅ 已完成 | P2-03 |
 | P2-07 | 实现-ComfyUI API 客户端 | Phase 1 | ⬜ 待开始 | P2-06 |
 | P2-08 | 实现-发送端调用 | Phase 1 | ⬜ 待开始 | P2-05, P2-07 |
@@ -243,3 +243,38 @@
 - P2-07 需参考 `scripts/test_comfyui_connection.py` 的 API 调用模式
 
 **遗留问题**：无
+
+### P2-05 拆分-工作流 JSON（2026-03-18）
+
+**完成内容**：
+- 将完整 ComfyUI 工作流拆分为发送端和接收端两个独立的 API 格式 JSON
+- 发送端 4 节点：LoadImage(58) → ImageScaleToMaxDimension(62) → Canny(57) → SaveImage(100，新增)
+- 接收端 14 节点：LoadImage(101，新增) + 12 个子图展开节点(39/46/40/64/45/42/60/69/41/47/44/43) + SaveImage(9)
+- 关键改动：节点 60/69 的 image 输入从 ["57",0]（Canny）改为 ["101",0]（新 LoadImage）
+
+**修改的文件**（2 个新建）：
+- `resources/comfyui/sender_workflow_api.json`
+- `resources/comfyui/receiver_workflow_api.json`
+
+**验证结果**：
+- 发送端 4 个节点，接收端 14 个节点 ✅
+- 引用完整性：所有节点引用均指向同一 JSON 内的有效节点，无悬空引用 ✅
+- 参数一致性：原有节点的参数与 WorkflowConverter 完整输出完全一致 ✅
+- 关键改动：节点 60/69 的 image 正确指向新 LoadImage(101) ✅
+- 端到端验证（需 ComfyUI 环境）：未执行，记录为后续验证项
+
+**关键决策**：
+- 采用手工编写方式（非 WorkflowConverter 自动生成），因为 converter 只能生成完整 API，无法直接拆分
+- 新增节点 ID 选择 100/101，远离现有 ID 范围（9-69），避免冲突
+- 发送端 LoadImage.image 使用占位符 "input_image.jpg"，运行时由 P2-08 动态注入
+- 接收端 LoadImage.image 使用占位符 "canny_edge_00001_.png"，运行时由 P2-09 动态注入
+
+**下一任务及关注点**：
+- P2-07（实现-ComfyUI API 客户端）已解锁，与 P2-05 无依赖关系
+- P2-08（实现-发送端调用）和 P2-09（实现-接收端调用）待 P2-07 完成后解锁
+- P2-08 需注入发送端 JSON 的节点 "58".inputs.image（上传后的文件名）
+- P2-09 需注入接收端 JSON 的节点 "101".inputs.image（边缘图文件名）、"45".inputs.text（prompt）、"44".inputs.seed（可选）
+- 端到端验证需等 ComfyUI 环境可用后补充（P2-08/P2-09 实现时自然覆盖）
+
+**遗留问题**：
+- 端到端执行验证尚未完成（需 ComfyUI 实例运行），将在 P2-08/P2-09 实现时验证
