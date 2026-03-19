@@ -10,10 +10,10 @@
 | 阶段 | 总数 | 完成 | 冻结 | 进行中 | 待开始 |
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 3 | 1 | 0 | 0 |
-| Phase 1: 工作流拆分与双端 ComfyUI 调用 | 6 | 2 | 0 | 0 | 4 |
+| Phase 1: 工作流拆分与双端 ComfyUI 调用 | 6 | 3 | 0 | 0 | 3 |
 | Phase 2: 中继传输与双机演示 | 2 | 0 | 0 | 0 | 2 |
 | Phase 3: VLM 集成与质量优化 | 3 | 0 | 0 | 0 | 3 |
-| **合计** | **15** | **5** | **1** | **0** | **9** |
+| **合计** | **15** | **6** | **1** | **0** | **8** |
 
 ## 任务状态
 
@@ -25,7 +25,7 @@
 | P2-04 | 分析-工作流 JSON 到 API 格式转换 | Phase 0 | ✅ 已完成 | P2-03 |
 | P2-05 | 拆分-工作流 JSON | Phase 1 | ✅ 已完成 | P2-04 |
 | P2-06 | 扩展-配置支持双 ComfyUI 实例 | Phase 1 | ✅ 已完成 | P2-03 |
-| P2-07 | 实现-ComfyUI API 客户端 | Phase 1 | ⬜ 待开始 | P2-06 |
+| P2-07 | 实现-ComfyUI API 客户端 | Phase 1 | ✅ 已完成 | P2-06 |
 | P2-08 | 实现-发送端调用 | Phase 1 | ⬜ 待开始 | P2-05, P2-07 |
 | P2-09 | 实现-接收端调用 | Phase 1 | ⬜ 待开始 | P2-05, P2-07 |
 | P2-10 | 搭建-端到端 Demo 脚本 | Phase 1 | ⬜ 待开始 | P2-08, P2-09 |
@@ -69,6 +69,9 @@
 | 2026-03-18 | 不做 git revert | P2-01+P2-02 同一 commit 无法单独 revert；P2-02 代码量极少不构成负担，留待 Phase 3 启用；P2-03/P2-04 直接可复用 |
 | 2026-03-18 | P2-02 抽象接口标记为"冻结" | 当前阶段两端都用 ComfyUI API，不需要 Python 层的 VLM/Canny 抽象。接口留待 Phase 3"渐进替换"时启用 |
 | 2026-03-18 | 记录同事技术建议：接收端模型选型与条件特征扩展 | 同事指出：(1) 接收端模型需具备图片编辑或 ControlNet 参考能力，推荐 Z-Image-Turbo 和 FLUX.2-klein-9B；(2) 条件特征不限于 Canny 边缘，深度图也是可选方案。这些影响 Phase 3 的模型替换和条件提取器扩展，当前阶段不影响实现 |
+| 2026-03-19 | wait_for_completion 采用轮询 /history 而非 WebSocket | WebSocket 需在 submit 前建连否则有竞态，轮询更简单且 test_comfyui_connection.py 已验证可行 |
+| 2026-03-19 | get_result_images 接受 history_entry 而非 prompt_id | 避免重复请求 /history，wait_for_completion 已返回完整条目 |
+| 2026-03-19 | 自定义异常层级：ComfyUIError → ConnectionError / TimeoutError | P2-08/P2-09 需按异常类型做差异化处理（连接问题 vs 超时 vs 工作流错误） |
 
 ## 交接记录
 
@@ -278,3 +281,36 @@
 
 **遗留问题**：
 - 端到端执行验证尚未完成（需 ComfyUI 实例运行），将在 P2-08/P2-09 实现时验证
+
+### P2-07 实现-ComfyUI API 客户端（2026-03-19）
+
+**完成内容**：
+- 实现 `ComfyUIClient` 类，封装 ComfyUI REST API 的完整调用流程
+- 四个核心方法：`upload_image`（上传图像）、`submit_workflow`（提交工作流）、`wait_for_completion`（轮询等待完成）、`get_result_images`（下载输出图像）
+- 辅助方法：`check_health`（健康检查）、`_request`（统一 HTTP 封装）
+- 三个自定义异常：`ComfyUIError`（基类）、`ComfyUIConnectionError`（连接失败）、`ComfyUITimeoutError`（等待超时）
+- 编写 16 个 mock 测试覆盖成功路径、错误处理、超时、集成流程
+
+**修改的文件**（2 个新建，1 个修改）：
+- `src/semantic_transmission/common/comfyui_client.py`（新建）
+- `tests/test_comfyui_client.py`（新建）
+- `src/semantic_transmission/common/__init__.py`（修改：导出 ComfyUIClient 和异常类）
+
+**验证结果**：
+- 16 个新测试全部通过 ✅
+- 48 个测试全部通过（含 20 个 workflow_converter + 12 个 config），无回归 ✅
+
+**关键决策**：
+- `wait_for_completion` 采用轮询 `/history` 而非 WebSocket（避免竞态，简化实现）
+- `get_result_images` 接受 `history_entry` 参数而非 `prompt_id`（避免重复请求）
+- `upload_image` 接受 `bytes` 而非文件路径或 PIL Image（保持客户端层职责纯粹）
+- `submit_workflow` 接受 `dict` 而非 WorkflowConverter（保持通用性）
+- 使用 `requests.Session()` 复用 TCP 连接
+
+**下一任务及关注点**：
+- P2-08（实现-发送端调用）和 P2-09（实现-接收端调用）已解锁，可并行推进
+- P2-08 使用 `ComfyUIClient` 调用发送端工作流，注入节点 "58".inputs.image
+- P2-09 使用 `ComfyUIClient` 调用接收端工作流，注入节点 "101".inputs.image、"45".inputs.text、"44".inputs.seed
+- 两者都需要：读取工作流 JSON → 修改参数 → client.upload_image → client.submit_workflow → client.wait_for_completion → client.get_result_images
+
+**遗留问题**：无
