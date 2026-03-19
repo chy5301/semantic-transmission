@@ -2,12 +2,12 @@
 
 ## 总体策略
 
-**ComfyUI 工作流拆分 + 中继传输**
+**语义传输端到端原型：ComfyUI 工作流拆分 + VLM 自动语义压缩 + 中继传输**
 
-将同事已实现的 ComfyUI 工作流（发送端+接收端一体）拆分为两个独立工作流，两端都通过 ComfyUI API 调用，中间用 Python 中继传输，最快速度打通端到端 demo。
+将同事已实现的 ComfyUI 工作流拆分为发送端和接收端，两端通过 ComfyUI API 调用。发送端集成 VLM（Qwen2.5-VL）自动生成图像语义描述，实现"自动语义压缩→条件还原"的核心能力闭环。
 
 核心思路：
-1. 发送端 ComfyUI 工作流：输入图像 → Canny 边缘提取 → 输出边缘图
+1. 发送端：输入图像 → VLM 自动生成语义描述（文本 prompt） + ComfyUI Canny 边缘提取（条件特征）
 2. 接收端 ComfyUI 工作流：输入边缘图 + prompt 文本 → Z-Image-Turbo + ControlNet → 输出还原图像
 3. 中继层：从发送端获取边缘图 + prompt → 传给接收端
 
@@ -15,8 +15,10 @@
 - 单机双端：发送端和接收端连同一个 ComfyUI 实例，快速调试
 - 双机双端：发送端和接收端各部署一台机器，实际演示
 
+硬件需求：
+- GPU 显存 ≥24GB（ComfyUI ~6GB + VLM INT4 ~8GB 可同机运行）
+
 后续演进（Phase 3+）：
-- 用 VLM 自动生成 prompt 替代手动输入（启用 P2-02 的 BaseSender 抽象接口）
 - 用 Python OpenCV 替代 ComfyUI 发送端（启用 P2-02 的 BaseConditionExtractor 抽象接口）
 - 完全脱离 ComfyUI（ROADMAP 阶段四）
 
@@ -25,9 +27,9 @@
 | 阶段 | 名称 | 退出标准 |
 |------|------|----------|
 | Phase 0 | 契约确认与项目骨架 | Python 项目结构就绪，ComfyUI API 连通性验证通过，工作流转换器完成 |
-| Phase 1 | 工作流拆分与双端 ComfyUI 调用 | 单机上能跑通 发送端ComfyUI→接收端ComfyUI 完整流程，demo 脚本可运行 |
+| Phase 1 | 工作流拆分与语义压缩 | 单机上能跑通"VLM 自动语义压缩→条件还原"完整流程，demo 脚本支持手动/自动 prompt 双模式 |
 | Phase 2 | 中继传输与双机演示 | 两台机器分别运行发送端和接收端，通过网络传输完成还原 |
-| Phase 3 | VLM 集成与质量优化 | VLM 自动生成 prompt 替代手动输入，质量评估指标可计算 |
+| Phase 3 | 质量优化与工程精简 | 质量评估指标可计算，发送端可脱离 ComfyUI |
 
 ## 任务列表
 
@@ -62,12 +64,12 @@
 
 ---
 
-#### [P2-02] 定义-抽象接口（⏸️ 冻结）
+#### [P2-02] 定义-抽象接口
 
 - **阶段**: Phase 0 - 契约确认与项目骨架
 - **依赖**: P2-01
 - **目标**: 定义发送端（Sender）和接收端（Receiver）的抽象基类，确立适配器模式的接口契约
-- **背景信息**: 项目采用适配器模式进行系统集成。抽象接口定义了 BaseSender、BaseConditionExtractor、BaseReceiver 三个 ABC。**注意：当前阶段（Phase 1~2）不使用这些接口，两端都直接通过 ComfyUI API 调用。这些接口留待 Phase 3 "渐进替换"时启用（VLM 替代手动 prompt、Python OpenCV 替代 ComfyUI 发送端）。**
+- **背景信息**: 项目采用适配器模式进行系统集成。抽象接口定义了 BaseSender、BaseConditionExtractor、BaseReceiver 三个 ABC。P2-13（VLM 集成）将启用 BaseSender 接口实现 QwenVLSender 适配器。
 - **涉及文件**:
   - `src/semantic_transmission/sender/base.py`（新建）
   - `src/semantic_transmission/receiver/base.py`（新建）
@@ -118,11 +120,11 @@
 
 ---
 
-### Phase 1: 工作流拆分与双端 ComfyUI 调用
+### Phase 1: 工作流拆分与语义压缩
 
 #### [P2-05] 拆分-工作流 JSON
 
-- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **阶段**: Phase 1 - 工作流拆分与语义压缩
 - **依赖**: P2-04
 - **目标**: 将完整工作流拆分为发送端和接收端两个独立的 API 格式 JSON
 - **背景信息**: 同事的 ComfyUI 工作流（`resources/comfyui/image_z_image_turbo_fun_union_controlnet.json`）将发送端（图像→Canny边缘提取）和接收端（边缘图+prompt→Z-Image-Turbo生成）集成在一个工作流中。需要拆分为两个独立的 API 格式 JSON，分别用于发送端和接收端的 ComfyUI API 调用。
@@ -149,7 +151,7 @@
 
 #### [P2-06] 扩展-配置支持双 ComfyUI 实例
 
-- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **阶段**: Phase 1 - 工作流拆分与语义压缩
 - **依赖**: P2-03
 - **目标**: 扩展 config.py 支持发送端和接收端指向不同的 ComfyUI 实例
 - **背景信息**: 当前 `ComfyUIConfig` 只支持单个 ComfyUI 实例。在双机双端演示场景下，发送端和接收端可能运行在不同的机器上，需要分别配置地址。单机调试时两端可以指向同一实例。
@@ -173,7 +175,7 @@
 
 #### [P2-07] 实现-ComfyUI API 客户端
 
-- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **阶段**: Phase 1 - 工作流拆分与语义压缩
 - **依赖**: P2-06
 - **目标**: 封装通用 ComfyUI REST API + WebSocket 客户端，供发送端和接收端复用
 - **背景信息**: `scripts/test_comfyui_connection.py` 中已有各 API 端点的调用示例，本任务将其封装为可复用的客户端类。核心 API：POST `/upload/image`（上传图像）、POST `/prompt`（提交工作流）、WebSocket 监听或轮询 `/history`（等待完成）、GET `/history/{id}` + GET `/view`（获取结果图像）。
@@ -201,7 +203,7 @@
 
 #### [P2-08] 实现-发送端调用
 
-- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **阶段**: Phase 1 - 工作流拆分与语义压缩
 - **依赖**: P2-05, P2-07
 - **目标**: 封装发送端逻辑，通过 ComfyUI API 执行发送端工作流，输入原始图像，输出 Canny 边缘图
 - **背景信息**: 发送端工作流（`sender_workflow_api.json`）接收原始图像，经过缩放和 Canny 边缘提取后输出边缘图。参数注入只需替换 LoadImage 节点的 `image` 字段为上传后的文件名。
@@ -225,7 +227,7 @@
 
 #### [P2-09] 实现-接收端调用
 
-- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **阶段**: Phase 1 - 工作流拆分与语义压缩
 - **依赖**: P2-05, P2-07
 - **目标**: 封装接收端逻辑，通过 ComfyUI API 执行接收端工作流，输入边缘图+prompt，输出还原图像
 - **背景信息**: 接收端工作流（`receiver_workflow_api.json`）接收边缘图和文本 prompt，通过 Z-Image-Turbo + ControlNet Union 生成还原图像。参数注入需替换：LoadImage 节点的 `image`（边缘图文件名）、CLIPTextEncode 节点的 `text`（prompt 文本）、KSampler 节点的 `seed`（可选）。
@@ -249,28 +251,60 @@
 
 #### [P2-10] 搭建-端到端 Demo 脚本
 
-- **阶段**: Phase 1 - 工作流拆分与双端 ComfyUI 调用
+- **阶段**: Phase 1 - 工作流拆分与语义压缩
 - **依赖**: P2-08, P2-09
-- **目标**: 编写可运行的 demo 脚本，演示 发送端→接收端 完整流程
-- **背景信息**: Demo 脚本是 Phase 1 的核心交付物。单机模式下发送端和接收端连同一个 ComfyUI 实例。prompt 文本在本阶段手动指定（命令行参数），后续 Phase 3 才用 VLM 自动生成。
+- **目标**: 编写可运行的 demo 脚本，演示 发送端→接收端 完整流程，支持手动 prompt 和 VLM 自动 prompt 双模式
+- **背景信息**: Demo 脚本是 Phase 1 的核心交付物。单机模式下发送端和接收端连同一个 ComfyUI 实例。prompt 文本支持两种来源：(1) `--prompt` 手动指定（无 VLM 依赖，快速调试）；(2) `--auto-prompt` 调用 VLM 自动生成（需 P2-13 完成后可用）。
 - **涉及文件**:
   - `scripts/demo_e2e.py`（新建）
 - **具体步骤**:
-  1. CLI 接口：`--image <输入图像> --prompt <描述文本> [--sender-host ...] [--receiver-host ...] [--output-dir ...]`
+  1. CLI 接口：`--image <输入图像> [--prompt <描述文本>] [--auto-prompt] [--sender-host ...] [--receiver-host ...] [--output-dir ...]`
   2. 流程：
      - 初始化 ComfyUIClient（发送端）和 ComfyUIClient（接收端）
      - ComfyUISender 提取 Canny 边缘图
+     - 获取 prompt：手动指定（`--prompt`）或 VLM 生成（`--auto-prompt`，P2-13 完成后可用）
      - 保存边缘图到本地（模拟传输中间数据）
      - ComfyUIReceiver 从边缘图 + prompt 还原图像
      - 保存对比图（原图 | 边缘图 | 还原图）
   3. 打印传输统计：边缘图大小（bytes）+ prompt 文本大小（bytes）= 总传输数据量
 - **验收标准**:
   - [ ] `uv run python scripts/demo_e2e.py --help` 正常显示帮助
-  - [ ] 在 ComfyUI 可用时能完成完整流程并输出对比图
+  - [ ] 在 ComfyUI 可用时，`--prompt` 模式能完成完整流程并输出对比图
   - [ ] 支持 `--sender-host` 和 `--receiver-host` 分别指定地址
+  - [ ] `--auto-prompt` 参数定义就绪（实际 VLM 调用在 P2-13 中实现）
 - **自测方法**: `uv run python scripts/demo_e2e.py --help`
 - **回滚方案**: 删除 demo_e2e.py
 - **预估工作量**: M
+
+---
+
+#### [P2-13] 集成-VLM 自动生成 prompt
+
+- **阶段**: Phase 1 - 工作流拆分与语义压缩
+- **依赖**: P2-10
+- **目标**: 用 Qwen2.5-VL 自动生成图像语义描述，实现"自动语义压缩"核心能力，替代手动 prompt 输入
+- **背景信息**: 语义传输的核心是"AI 自动理解图像内容并压缩为语义信息"。本任务实现 `QwenVLSender` 适配器（继承 P2-02 定义的 `BaseSender`），调用 Qwen2.5-VL-7B 模型对输入图像生成结构化文本描述。同事的 ComfyUI 工作流中已有分段式 prompt 模板（`[Scene Style]`、`[Perspective]`、`[Key Elements]` 等），VLM 需按此格式输出。硬件需求：GPU 显存 ≥24GB（VLM INT4 ~8GB + ComfyUI ~6GB 可同机运行）。
+- **涉及文件**:
+  - `src/semantic_transmission/sender/vlm_sender.py`（新建）
+  - `tests/test_vlm_sender.py`（新建）
+  - `pyproject.toml`（修改：添加 VLM 可选依赖组）
+- **具体步骤**:
+  1. 在 `pyproject.toml` 中添加 `[dependency-groups]` vlm 组：`transformers`、`torch`、`accelerate`
+  2. 实现 `QwenVLSender(BaseSender)`：
+     - 构造参数：模型名称（默认 `Qwen/Qwen2.5-VL-7B-Instruct`）、量化方式（默认 INT4）
+     - `describe(image) → SenderOutput`：加载图像 → VLM 推理 → 返回结构化文本描述
+     - system prompt 约束输出格式为分段式描述模板
+  3. 集成到 `demo_e2e.py` 的 `--auto-prompt` 模式
+  4. 编写 mock 测试（不需要真实 GPU）
+- **验收标准**:
+  - [ ] `QwenVLSender` 实现 `BaseSender.describe()` 接口
+  - [ ] system prompt 约束 VLM 输出为分段式结构化描述
+  - [ ] `demo_e2e.py --auto-prompt` 能调用 VLM 自动生成 prompt 并完成端到端流程
+  - [ ] mock 测试通过
+  - [ ] VLM 依赖隔离在可选组中，`uv sync` 默认不安装
+- **自测方法**: `uv run pytest tests/test_vlm_sender.py -v`
+- **回滚方案**: 删除 vlm_sender.py 和测试，移除 pyproject.toml 中的 vlm 依赖组
+- **预估工作量**: L
 
 ---
 
@@ -322,25 +356,15 @@
 
 ---
 
-### Phase 3: VLM 集成与质量优化（暂不展开详细定义）
+### Phase 3: 质量优化与工程精简
 
 > **同事技术建议（2026-03-18）**：
 > - **接收端模型选型约束**：接收端不是普通文生图，需要具备图片编辑功能或 ControlNet 参考能力，才能实现"基于上一帧 + 下一帧特征"的条件生成。当前推荐：Z-Image-Turbo（已在用）、FLUX.2-klein-9B（备选）
 > - **条件特征扩展**：当前使用 Canny 边缘图作为条件输入，深度图（Depth Map）也是可选方案。边缘图保留轮廓、数据量小；深度图保留空间层次、对场景还原更有利。切换条件类型只需替换发送端提取节点和接收端 ControlNet preprocessor 类型
 
-#### [P2-13] 集成-VLM 自动生成 prompt
-
-- **阶段**: Phase 3 - VLM 集成与质量优化
-- **依赖**: P2-10
-- **目标**: 用 Qwen2.5-VL 自动生成图像描述，替代 demo 中的手动 prompt 输入
-- **背景信息**: 此时启用 P2-02 定义的 BaseSender 抽象接口，实现 QwenVLSender 适配器
-- **预估工作量**: L
-
----
-
 #### [P2-14] 实现-质量评估模块
 
-- **阶段**: Phase 3 - VLM 集成与质量优化
+- **阶段**: Phase 3 - 质量优化与工程精简
 - **依赖**: P2-10
 - **目标**: 实现 CLIP Score、LPIPS、PSNR、SSIM 等质量评估指标
 - **预估工作量**: M
@@ -349,7 +373,7 @@
 
 #### [P2-15] 脱离-ComfyUI 发送端
 
-- **阶段**: Phase 3 - VLM 集成与质量优化
+- **阶段**: Phase 3 - 质量优化与工程精简
 - **依赖**: P2-13
 - **目标**: 用 Python + OpenCV 直接实现 Canny 提取，不再依赖 ComfyUI 发送端
 - **背景信息**: 此时启用 P2-02 定义的 BaseConditionExtractor 抽象接口

@@ -21,16 +21,16 @@
       "exitCriteria": "Python 项目结构就绪，ComfyUI API 连通性验证通过，工作流转换器完成"
     },
     {
-      "name": "Phase 1: 工作流拆分与双端 ComfyUI 调用",
-      "exitCriteria": "单机上能跑通 发送端ComfyUI→接收端ComfyUI 完整流程，demo 脚本可运行"
+      "name": "Phase 1: 工作流拆分与语义压缩",
+      "exitCriteria": "单机上能跑通「VLM 自动语义压缩→条件还原」完整流程，demo 脚本支持手动/自动 prompt 双模式"
     },
     {
       "name": "Phase 2: 中继传输与双机演示",
       "exitCriteria": "两台机器分别运行发送端和接收端，通过网络传输完成还原"
     },
     {
-      "name": "Phase 3: VLM 集成与质量优化",
-      "exitCriteria": "VLM 自动生成 prompt 替代手动输入，质量评估指标可计算"
+      "name": "Phase 3: 质量优化与工程精简",
+      "exitCriteria": "质量评估指标可计算，发送端可脱离 ComfyUI"
     }
   ],
   "projectContext": {
