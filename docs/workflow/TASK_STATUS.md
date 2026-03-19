@@ -10,10 +10,10 @@
 | 阶段 | 总数 | 完成 | 冻结 | 进行中 | 待开始 |
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 | 0 |
-| Phase 1: 工作流拆分与语义压缩 | 7 | 3 | 0 | 0 | 4 |
+| Phase 1: 工作流拆分与语义压缩 | 7 | 4 | 0 | 0 | 3 |
 | Phase 2: 中继传输与双机演示 | 2 | 0 | 0 | 0 | 2 |
 | Phase 3: 质量优化与工程精简 | 2 | 0 | 0 | 0 | 2 |
-| **合计** | **15** | **7** | **0** | **0** | **8** |
+| **合计** | **15** | **8** | **0** | **0** | **7** |
 
 ## 任务状态
 
@@ -26,7 +26,7 @@
 | P2-05 | 拆分-工作流 JSON | Phase 1 | ✅ 已完成 | P2-04 |
 | P2-06 | 扩展-配置支持双 ComfyUI 实例 | Phase 1 | ✅ 已完成 | P2-03 |
 | P2-07 | 实现-ComfyUI API 客户端 | Phase 1 | ✅ 已完成 | P2-06 |
-| P2-08 | 实现-发送端调用 | Phase 1 | ⬜ 待开始 | P2-05, P2-07 |
+| P2-08 | 实现-发送端调用 | Phase 1 | ✅ 已完成 | P2-05, P2-07 |
 | P2-09 | 实现-接收端调用 | Phase 1 | ⬜ 待开始 | P2-05, P2-07 |
 | P2-10 | 搭建-端到端 Demo 脚本 | Phase 1 | ⬜ 待开始 | P2-08, P2-09 |
 | P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | ⬜ 待开始 | P2-10 |
@@ -316,5 +316,33 @@
 - P2-08 使用 `ComfyUIClient` 调用发送端工作流，注入节点 "58".inputs.image
 - P2-09 使用 `ComfyUIClient` 调用接收端工作流，注入节点 "101".inputs.image、"45".inputs.text、"44".inputs.seed
 - 两者都需要：读取工作流 JSON → 修改参数 → client.upload_image → client.submit_workflow → client.wait_for_completion → client.get_result_images
+
+**遗留问题**：无
+
+### P2-08 实现-发送端调用（2026-03-19）
+
+**完成内容**：
+- 实现 `ComfyUISender` 类，封装发送端完整流程：读取图像 → 上传 → 注入工作流参数 → 提交 → 等待 → 获取边缘图
+- `process(image_path) → PIL.Image`：输入图像路径，输出 Canny 边缘图
+- 构造时加载并缓存工作流 JSON，`process` 时深拷贝避免污染
+- 编写 10 个 mock 测试覆盖成功流程、参数注入、默认/自定义路径、错误传播
+
+**修改的文件**（2 个新建）：
+- `src/semantic_transmission/sender/comfyui_sender.py`（新建）
+- `tests/test_comfyui_sender.py`（新建）
+
+**验证结果**：
+- 10 个新测试全部通过 ✅
+- 58 个测试全部通过（含已有 48 个），无回归 ✅
+
+**关键决策**：
+- `ComfyUISender` 不继承 `BaseConditionExtractor`——当前阶段它封装的是完整的 ComfyUI 工作流调用（含缩放+Canny+保存），不是纯条件提取。Phase 3 脱离 ComfyUI 时再实现 `BaseConditionExtractor`
+- 默认工作流路径通过 `Path(__file__).parents[3]` 相对定位到 `resources/comfyui/sender_workflow_api.json`，避免硬编码绝对路径
+- `process` 返回 `PIL.Image` 而非 `bytes`，方便下游（demo 脚本）直接保存和显示
+
+**下一任务及关注点**：
+- P2-09（实现-接收端调用）已解锁，结构与 P2-08 类似
+- P2-09 需注入 3 个节点参数：节点 "101".inputs.image（边缘图）、"45".inputs.text（prompt）、"44".inputs.seed（可选）
+- P2-09 的 `process` 签名需接受 `edge_image`（bytes 或 Path）+ `prompt_text` + `seed`
 
 **遗留问题**：无
