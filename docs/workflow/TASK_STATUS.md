@@ -10,10 +10,10 @@
 | 阶段 | 总数 | 完成 | 冻结 | 进行中 | 待开始 |
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 | 0 |
-| Phase 1: 工作流拆分与语义压缩 | 7 | 4 | 0 | 0 | 3 |
+| Phase 1: 工作流拆分与语义压缩 | 7 | 5 | 0 | 0 | 2 |
 | Phase 2: 中继传输与双机演示 | 2 | 0 | 0 | 0 | 2 |
 | Phase 3: 质量优化与工程精简 | 2 | 0 | 0 | 0 | 2 |
-| **合计** | **15** | **8** | **0** | **0** | **7** |
+| **合计** | **15** | **9** | **0** | **0** | **6** |
 
 ## 任务状态
 
@@ -27,7 +27,7 @@
 | P2-06 | 扩展-配置支持双 ComfyUI 实例 | Phase 1 | ✅ 已完成 | P2-03 |
 | P2-07 | 实现-ComfyUI API 客户端 | Phase 1 | ✅ 已完成 | P2-06 |
 | P2-08 | 实现-发送端调用 | Phase 1 | ✅ 已完成 | P2-05, P2-07 |
-| P2-09 | 实现-接收端调用 | Phase 1 | ⬜ 待开始 | P2-05, P2-07 |
+| P2-09 | 实现-接收端调用 | Phase 1 | ✅ 已完成 | P2-05, P2-07 |
 | P2-10 | 搭建-端到端 Demo 脚本 | Phase 1 | ⬜ 待开始 | P2-08, P2-09 |
 | P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | ⬜ 待开始 | P2-10 |
 | P2-11 | 实现-中继传输协议 | Phase 2 | ⬜ 待开始 | P2-10 |
@@ -344,5 +344,34 @@
 - P2-09（实现-接收端调用）已解锁，结构与 P2-08 类似
 - P2-09 需注入 3 个节点参数：节点 "101".inputs.image（边缘图）、"45".inputs.text（prompt）、"44".inputs.seed（可选）
 - P2-09 的 `process` 签名需接受 `edge_image`（bytes 或 Path）+ `prompt_text` + `seed`
+
+**遗留问题**：无
+
+### P2-09 实现-接收端调用（2026-03-19）
+
+**完成内容**：
+- 实现 `ComfyUIReceiver` 类，封装接收端完整流程：上传边缘图 → 注入 3 个工作流参数 → 提交 → 等待 → 获取还原图像
+- `process(edge_image, prompt_text, seed=None) → PIL.Image`：支持 bytes/str/Path 输入边缘图
+- 注入节点：LoadImage("101").image、CLIPTextEncode("45").text、KSampler("44").seed（可选）
+- 编写 11 个 mock 测试覆盖成功流程、参数注入、seed 可选、深拷贝、bytes/Path 输入、错误传播
+
+**修改的文件**（2 个新建）：
+- `src/semantic_transmission/receiver/comfyui_receiver.py`（新建）
+- `tests/test_comfyui_receiver.py`（新建）
+
+**验证结果**：
+- 11 个新测试全部通过 ✅
+- 69 个测试全部通过（含已有 58 个），无回归 ✅
+
+**关键决策**：
+- `edge_image` 参数支持 `bytes | str | Path` 三种类型：bytes 直接使用（默认文件名 "edge_input.png"），str/Path 读取文件并使用原始文件名
+- seed 参数可选：None 时保留工作流 JSON 中的默认种子值，非 None 时覆盖
+- 结构与 `ComfyUISender` 高度对称，便于 P2-10 demo 脚本统一调用模式
+
+**下一任务及关注点**：
+- P2-10（搭建-端到端 Demo 脚本）已解锁，依赖 P2-08 ✅ + P2-09 ✅
+- P2-10 需串联 ComfyUISender.process() → ComfyUIReceiver.process()，中间传递边缘图和 prompt
+- P2-10 的 `--prompt` 模式可直接实现；`--auto-prompt` 模式需 P2-13 完成后可用
+- ComfyUISender.process() 返回 PIL.Image，需转为 bytes 传给 ComfyUIReceiver.process()
 
 **遗留问题**：无
