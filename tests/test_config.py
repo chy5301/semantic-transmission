@@ -1,8 +1,9 @@
 """ComfyUIConfig 和 SemanticTransmissionConfig 单元测试。"""
 
-
-
-from semantic_transmission.common.config import ComfyUIConfig, SemanticTransmissionConfig
+from semantic_transmission.common.config import (
+    ComfyUIConfig,
+    SemanticTransmissionConfig,
+)
 
 
 class TestComfyUIConfigDefaults:

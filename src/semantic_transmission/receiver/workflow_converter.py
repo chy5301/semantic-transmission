@@ -122,9 +122,7 @@ class WorkflowConverter:
         if not widgets_values:
             return result
 
-        widget_inputs = [
-            inp for inp in node.get("inputs", []) if "widget" in inp
-        ]
+        widget_inputs = [inp for inp in node.get("inputs", []) if "widget" in inp]
 
         vi = 0  # widgets_values 游标
         for wi_inp in widget_inputs:
@@ -190,7 +188,10 @@ class WorkflowConverter:
                 if override_key in virtual_input_overrides:
                     inputs[inp["name"]] = virtual_input_overrides[override_key]
                 elif from_node_id != self.VIRTUAL_INPUT_ID:
-                    inputs[inp["name"]] = [str(from_node_id), internal_link_lookup[link_id][1]]
+                    inputs[inp["name"]] = [
+                        str(from_node_id),
+                        internal_link_lookup[link_id][1],
+                    ]
 
             result[str(node_id)] = {
                 "class_type": node["type"],
@@ -239,9 +240,9 @@ class WorkflowConverter:
                         from_slot,
                     ]
                 elif sg_input["name"] in sg_ref_widget_values:
-                    overrides[(target_node_id, target_slot)] = (
-                        sg_ref_widget_values[sg_input["name"]]
-                    )
+                    overrides[(target_node_id, target_slot)] = sg_ref_widget_values[
+                        sg_input["name"]
+                    ]
 
         return overrides
 

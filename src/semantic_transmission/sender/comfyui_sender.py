@@ -28,8 +28,12 @@ class ComfyUISender:
         workflow_path: str | Path | None = None,
     ) -> None:
         self.client = client
-        self._workflow_path = Path(workflow_path) if workflow_path else _DEFAULT_WORKFLOW
-        self._workflow: dict = json.loads(self._workflow_path.read_text(encoding="utf-8"))
+        self._workflow_path = (
+            Path(workflow_path) if workflow_path else _DEFAULT_WORKFLOW
+        )
+        self._workflow: dict = json.loads(
+            self._workflow_path.read_text(encoding="utf-8")
+        )
 
     def process(self, image_path: str | Path) -> Image.Image:
         """执行发送端工作流：输入原始图像，输出 Canny 边缘图。

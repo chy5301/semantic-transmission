@@ -90,9 +90,17 @@ def download_modelscope(
 ) -> Path:
     """使用 modelscope CLI 下载单个文件（国内直连，不需要代理）。"""
     target_dir.mkdir(parents=True, exist_ok=True)
-    cmd = ["modelscope", "download", "--model", repo_id, file_path,
-           "--local_dir", str(target_dir),
-           "--cache_dir", str(cache_dir / "modelscope")]
+    cmd = [
+        "modelscope",
+        "download",
+        "--model",
+        repo_id,
+        file_path,
+        "--local_dir",
+        str(target_dir),
+        "--cache_dir",
+        str(cache_dir / "modelscope"),
+    ]
 
     # modelscope 走国内直连，清除代理环境变量避免干扰
     env = os.environ.copy()
@@ -114,9 +122,16 @@ def download_huggingface(
 ) -> Path:
     """使用 hf CLI 下载单个文件（需要代理或镜像）。"""
     target_dir.mkdir(parents=True, exist_ok=True)
-    cmd = ["hf", "download", repo_id, file_path,
-           "--local-dir", str(target_dir),
-           "--cache-dir", str(cache_dir / "huggingface")]
+    cmd = [
+        "hf",
+        "download",
+        repo_id,
+        file_path,
+        "--local-dir",
+        str(target_dir),
+        "--cache-dir",
+        str(cache_dir / "huggingface"),
+    ]
 
     env = os.environ.copy()
 
@@ -144,24 +159,31 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--comfyui-dir", type=Path, default=DEFAULT_COMFYUI_DIR,
+        "--comfyui-dir",
+        type=Path,
+        default=DEFAULT_COMFYUI_DIR,
         help=f"ComfyUI 安装目录 (默认: {DEFAULT_COMFYUI_DIR})",
     )
     parser.add_argument(
-        "--proxy", type=str, default=None,
-        help=f"HuggingFace 下载代理地址 (默认: {DEFAULT_PROXY}，"
-             f"设为 'none' 禁用代理)",
+        "--proxy",
+        type=str,
+        default=None,
+        help=f"HuggingFace 下载代理地址 (默认: {DEFAULT_PROXY}，设为 'none' 禁用代理)",
     )
     parser.add_argument(
-        "--hf-mirror", action="store_true",
+        "--hf-mirror",
+        action="store_true",
         help=f"使用 HuggingFace 国内镜像 ({HF_MIRROR_ENDPOINT}) 替代代理",
     )
     parser.add_argument(
-        "--cache-dir", type=Path, default=DEFAULT_CACHE_DIR,
+        "--cache-dir",
+        type=Path,
+        default=DEFAULT_CACHE_DIR,
         help=f"下载缓存目录 (默认: {DEFAULT_CACHE_DIR})",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="仅显示将要执行的操作，不实际下载",
     )
     args = parser.parse_args()
@@ -237,8 +259,11 @@ def main():
                 )
             else:
                 downloaded = download_huggingface(
-                    repo_id, file_path, dl_dir,
-                    proxy=proxy, hf_mirror=args.hf_mirror,
+                    repo_id,
+                    file_path,
+                    dl_dir,
+                    proxy=proxy,
+                    hf_mirror=args.hf_mirror,
                     cache_dir=args.cache_dir,
                 )
 

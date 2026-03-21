@@ -32,6 +32,7 @@ class ComfyUIConfig:
             prefix: 环境变量前缀（如 "SENDER"、"RECEIVER"）。
                     设置后优先读取 COMFYUI_{PREFIX}_HOST 等，未设置则回退到 COMFYUI_HOST。
         """
+
         def _get(key: str, default: str) -> str:
             if prefix:
                 prefixed = f"COMFYUI_{prefix}_{key}"

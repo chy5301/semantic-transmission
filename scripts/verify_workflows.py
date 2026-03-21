@@ -111,7 +111,9 @@ def main():
     parser.add_argument("--sender-only", action="store_true", help="仅验证发送端")
     parser.add_argument("--receiver-only", action="store_true", help="仅验证接收端")
     parser.add_argument(
-        "--edge-image", type=Path, default=None,
+        "--edge-image",
+        type=Path,
+        default=None,
         help="接收端验证用的边缘图路径（--receiver-only 时使用）",
     )
     args = parser.parse_args()

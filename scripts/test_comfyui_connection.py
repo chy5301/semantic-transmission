@@ -41,11 +41,12 @@ MINIMAL_WORKFLOW = {
 
 def step(name: str):
     """打印步骤标题的装饰器。"""
+
     def decorator(func):
         def wrapper(*args, **kwargs):
-            print(f"\n{'='*50}")
+            print(f"\n{'=' * 50}")
             print(f"  {name}")
-            print(f"{'='*50}")
+            print(f"{'=' * 50}")
             try:
                 result = func(*args, **kwargs)
                 print("  => PASS")
@@ -53,7 +54,9 @@ def step(name: str):
             except Exception as e:
                 print(f"  => FAIL: {e}")
                 return None
+
         return wrapper
+
     return decorator
 
 
@@ -67,9 +70,7 @@ def run_tests(config: ComfyUIConfig) -> None:
     # ── 1. 健康检查 ──
     @step("1/6 健康检查 — GET /queue")
     def test_health():
-        resp = requests.get(
-            f"{config.base_url}/queue", timeout=config.timeout
-        )
+        resp = requests.get(f"{config.base_url}/queue", timeout=config.timeout)
         resp.raise_for_status()
         data = resp.json()
         running = len(data.get("queue_running", []))
@@ -118,9 +119,7 @@ def run_tests(config: ComfyUIConfig) -> None:
     def test_ws():
         import websocket
 
-        ws = websocket.create_connection(
-            config.ws_url, timeout=config.timeout
-        )
+        ws = websocket.create_connection(config.ws_url, timeout=config.timeout)
         # 读取初始状态消息
         msg = ws.recv()
         ws.close()
@@ -193,9 +192,9 @@ def run_tests(config: ComfyUIConfig) -> None:
 
     test_view()
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print("  测试完成")
-    print(f"{'='*50}\n")
+    print(f"{'=' * 50}\n")
 
 
 def main():

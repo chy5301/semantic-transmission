@@ -30,8 +30,12 @@ class ComfyUIReceiver:
         workflow_path: str | Path | None = None,
     ) -> None:
         self.client = client
-        self._workflow_path = Path(workflow_path) if workflow_path else _DEFAULT_WORKFLOW
-        self._workflow: dict = json.loads(self._workflow_path.read_text(encoding="utf-8"))
+        self._workflow_path = (
+            Path(workflow_path) if workflow_path else _DEFAULT_WORKFLOW
+        )
+        self._workflow: dict = json.loads(
+            self._workflow_path.read_text(encoding="utf-8")
+        )
 
     def process(
         self,

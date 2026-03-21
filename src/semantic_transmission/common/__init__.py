@@ -4,7 +4,10 @@ from semantic_transmission.common.comfyui_client import (
     ComfyUIError,
     ComfyUITimeoutError,
 )
-from semantic_transmission.common.config import ComfyUIConfig, SemanticTransmissionConfig
+from semantic_transmission.common.config import (
+    ComfyUIConfig,
+    SemanticTransmissionConfig,
+)
 
 __all__ = [
     "ComfyUIClient",

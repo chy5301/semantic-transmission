@@ -49,7 +49,9 @@ def client(config):
 class TestUploadImage:
     def test_upload_success(self, client, monkeypatch):
         def mock_request(*args, **kwargs):
-            return MockResponse(_json={"name": "uploaded.png", "subfolder": "", "type": "input"})
+            return MockResponse(
+                _json={"name": "uploaded.png", "subfolder": "", "type": "input"}
+            )
 
         monkeypatch.setattr(client._session, "request", mock_request)
         result = client.upload_image(b"\x89PNG", "test.png")
@@ -81,7 +83,9 @@ class TestSubmitWorkflow:
             return MockResponse(_json={"prompt_id": "abc123"})
 
         monkeypatch.setattr(client._session, "request", mock_request)
-        result = client.submit_workflow({"1": {"class_type": "LoadImage", "inputs": {}}})
+        result = client.submit_workflow(
+            {"1": {"class_type": "LoadImage", "inputs": {}}}
+        )
         assert result == "abc123"
 
     def test_submit_workflow_error(self, client, monkeypatch):
@@ -167,7 +171,11 @@ class TestGetResultImages:
             "outputs": {
                 "9": {
                     "images": [
-                        {"filename": "output_00001_.png", "subfolder": "", "type": "output"}
+                        {
+                            "filename": "output_00001_.png",
+                            "subfolder": "",
+                            "type": "output",
+                        }
                     ]
                 }
             }
@@ -240,20 +248,30 @@ class TestIntegration:
             call_log.append((method, url))
 
             if "/upload/image" in url:
-                return MockResponse(_json={"name": "uploaded.png", "subfolder": "", "type": "input"})
+                return MockResponse(
+                    _json={"name": "uploaded.png", "subfolder": "", "type": "input"}
+                )
             elif "/prompt" in url and method == "POST":
                 return MockResponse(_json={"prompt_id": "flow_001"})
             elif "/history/flow_001" in url:
-                return MockResponse(_json={
-                    "flow_001": {
-                        "outputs": {
-                            "9": {
-                                "images": [{"filename": "result.png", "subfolder": "", "type": "output"}]
-                            }
-                        },
-                        "status": {"status_str": "success"},
+                return MockResponse(
+                    _json={
+                        "flow_001": {
+                            "outputs": {
+                                "9": {
+                                    "images": [
+                                        {
+                                            "filename": "result.png",
+                                            "subfolder": "",
+                                            "type": "output",
+                                        }
+                                    ]
+                                }
+                            },
+                            "status": {"status_str": "success"},
+                        }
                     }
-                })
+                )
             elif "/view" in url:
                 return MockResponse(content=b"RESULT_IMAGE_BYTES")
             return MockResponse()

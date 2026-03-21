@@ -31,7 +31,13 @@ def mock_client():
     client.wait_for_completion.return_value = {
         "outputs": {
             "100": {
-                "images": [{"filename": "canny_edge_00001_.png", "subfolder": "", "type": "output"}]
+                "images": [
+                    {
+                        "filename": "canny_edge_00001_.png",
+                        "subfolder": "",
+                        "type": "output",
+                    }
+                ]
             }
         },
         "status": {"status_str": "success"},
@@ -42,7 +48,12 @@ def mock_client():
 
 @pytest.fixture
 def sender_workflow_path():
-    return Path(__file__).resolve().parents[1] / "resources" / "comfyui" / "sender_workflow_api.json"
+    return (
+        Path(__file__).resolve().parents[1]
+        / "resources"
+        / "comfyui"
+        / "sender_workflow_api.json"
+    )
 
 
 @pytest.fixture
@@ -78,7 +89,10 @@ class TestWorkflowInjection:
         sender.process(input_image)
 
         submitted_workflow = mock_client.submit_workflow.call_args[0][0]
-        assert submitted_workflow[_LOAD_IMAGE_NODE]["inputs"]["image"] == "uploaded_test.png"
+        assert (
+            submitted_workflow[_LOAD_IMAGE_NODE]["inputs"]["image"]
+            == "uploaded_test.png"
+        )
 
     def test_does_not_mutate_original_workflow(self, sender, input_image, mock_client):
         original_image = sender._workflow[_LOAD_IMAGE_NODE]["inputs"]["image"]
@@ -89,6 +103,7 @@ class TestWorkflowInjection:
 class TestDefaultWorkflowPath:
     def test_default_path_exists(self):
         from semantic_transmission.sender.comfyui_sender import _DEFAULT_WORKFLOW
+
         assert _DEFAULT_WORKFLOW.exists(), f"默认工作流文件不存在: {_DEFAULT_WORKFLOW}"
 
     def test_default_path_loads(self, mock_client):
@@ -98,7 +113,9 @@ class TestDefaultWorkflowPath:
 
 class TestCustomWorkflowPath:
     def test_custom_path(self, mock_client, tmp_path):
-        workflow = {"58": {"class_type": "LoadImage", "inputs": {"image": "placeholder.jpg"}}}
+        workflow = {
+            "58": {"class_type": "LoadImage", "inputs": {"image": "placeholder.jpg"}}
+        }
         custom_path = tmp_path / "custom_workflow.json"
         custom_path.write_text(json.dumps(workflow), encoding="utf-8")
 

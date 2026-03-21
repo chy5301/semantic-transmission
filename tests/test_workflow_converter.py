@@ -63,8 +63,7 @@ class TestConnections:
                 if isinstance(value, list) and len(value) == 2:
                     ref_id, slot = value
                     assert ref_id in api, (
-                        f"节点 {node_id} 的 {input_name} 引用了"
-                        f"不存在的节点 {ref_id}"
+                        f"节点 {node_id} 的 {input_name} 引用了不存在的节点 {ref_id}"
                     )
 
     def test_subgraph_boundary_connections(self, api: dict):

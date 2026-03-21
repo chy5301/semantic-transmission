@@ -34,7 +34,13 @@ def mock_client():
     client.wait_for_completion.return_value = {
         "outputs": {
             "9": {
-                "images": [{"filename": "z-image-turbo_00001_.png", "subfolder": "", "type": "output"}]
+                "images": [
+                    {
+                        "filename": "z-image-turbo_00001_.png",
+                        "subfolder": "",
+                        "type": "output",
+                    }
+                ]
             }
         },
         "status": {"status_str": "success"},
@@ -45,7 +51,12 @@ def mock_client():
 
 @pytest.fixture
 def receiver_workflow_path():
-    return Path(__file__).resolve().parents[1] / "resources" / "comfyui" / "receiver_workflow_api.json"
+    return (
+        Path(__file__).resolve().parents[1]
+        / "resources"
+        / "comfyui"
+        / "receiver_workflow_api.json"
+    )
 
 
 @pytest.fixture
@@ -69,7 +80,9 @@ class TestProcessSuccess:
         result = receiver.process(edge_image_path, PROMPT_TEXT)
         assert isinstance(result, Image.Image)
 
-    def test_calls_client_methods_in_order(self, receiver, edge_image_path, mock_client):
+    def test_calls_client_methods_in_order(
+        self, receiver, edge_image_path, mock_client
+    ):
         receiver.process(edge_image_path, PROMPT_TEXT)
         mock_client.upload_image.assert_called_once()
         mock_client.submit_workflow.assert_called_once()
@@ -91,7 +104,9 @@ class TestWorkflowInjection:
         submitted = mock_client.submit_workflow.call_args[0][0]
         assert submitted[_KSAMPLER_NODE]["inputs"]["seed"] == default_seed
 
-    def test_does_not_mutate_original_workflow(self, receiver, edge_image_path, mock_client):
+    def test_does_not_mutate_original_workflow(
+        self, receiver, edge_image_path, mock_client
+    ):
         original_text = receiver._workflow[_CLIP_TEXT_NODE]["inputs"]["text"]
         receiver.process(edge_image_path, "new prompt", seed=999)
         assert receiver._workflow[_CLIP_TEXT_NODE]["inputs"]["text"] == original_text
@@ -101,6 +116,7 @@ class TestWorkflowInjection:
 class TestDefaultWorkflowPath:
     def test_default_path_exists(self):
         from semantic_transmission.receiver.comfyui_receiver import _DEFAULT_WORKFLOW
+
         assert _DEFAULT_WORKFLOW.exists(), f"默认工作流文件不存在: {_DEFAULT_WORKFLOW}"
 
     def test_default_path_loads(self, mock_client):
