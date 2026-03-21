@@ -55,11 +55,75 @@ graph LR
 │   │   └── comfyui-workflow-analysis.md  # ComfyUI 工作流分析
 │   ├── collaboration/              # 协作规范（Git/GitHub/PR/Issue）
 │   └── workflow/                   # 结构化工作流管理
+├── scripts/                        # 工具脚本（模型下载、连通性测试、工作流验证）
 ├── resources/
 │   └── comfyui/                    # ComfyUI 工作流文件及截图
 ├── .github/                        # GitHub 模板与 CI 工作流
 └── CLAUDE.md                       # AI 辅助开发配置
 ```
+
+## 快速开始
+
+### 1. 安装项目依赖
+
+需要 Python >= 3.10 和 [uv](https://docs.astral.sh/uv/)：
+
+```bash
+uv sync
+```
+
+### 2. 部署 ComfyUI
+
+推荐使用 [秋叶 ComfyUI 整合包](https://space.bilibili.com/12566101)（ComfyUI-aki v3），下载后启动启动器即可使用，无需额外配置。
+
+参考资源：
+- [B 站视频教程](https://www.bilibili.com/video/BV1Ew411776J)
+- [B 站图文教程](https://www.bilibili.com/opus/1159516886456598528)
+- [飞书安装文档](https://my.feishu.cn/wiki/P7Qzwfnx4inVFLkVIPbclmY0nvb)
+
+详细部署说明见 [docs/comfyui-setup.md](docs/comfyui-setup.md)。
+
+### 3. 下载模型
+
+项目需要 4 个模型文件（总计约 24GB）：
+
+| 模型 | 大小 | 用途 |
+|------|------|------|
+| `qwen_3_4b.safetensors` | ~8 GB | 文本编码器 |
+| `z_image_turbo_bf16.safetensors` | ~12.3 GB | 扩散模型 |
+| `ae.safetensors` | ~335 MB | VAE 解码器 |
+| `Z-Image-Turbo-Fun-Controlnet-Union.safetensors` | ~3.1 GB | ControlNet Union |
+
+先安装下载工具，再运行下载脚本：
+
+```bash
+# 安装下载工具
+uv tool install modelscope
+uv tool install "huggingface_hub[cli]"
+
+# 下载模型（使用国内镜像）
+uv run python scripts/download_models.py --hf-mirror
+
+# 或使用代理下载
+uv run python scripts/download_models.py --proxy http://127.0.0.1:7890
+
+# 预览下载内容（不实际下载）
+uv run python scripts/download_models.py --dry-run
+```
+
+### 4. 验证环境
+
+启动 ComfyUI 后，运行连通性测试和工作流验证：
+
+```bash
+# 连通性测试（6 项检查）
+uv run python scripts/test_comfyui_connection.py
+
+# 端到端工作流验证（发送端 + 接收端）
+uv run python scripts/verify_workflows.py
+```
+
+验证通过后，输出结果保存在 `output/verify/` 目录。
 
 ## 技术栈
 
