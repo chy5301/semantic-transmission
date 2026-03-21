@@ -249,10 +249,42 @@
 
 ---
 
+#### [P2-16] 部署-本机 ComfyUI 实例
+
+- **阶段**: Phase 1 - 工作流拆分与语义压缩
+- **依赖**: P2-05
+- **目标**: 在本机部署 ComfyUI 并加载项目所需的模型和自定义节点，使发送端/接收端工作流可通过 API 执行
+- **背景信息**: 项目的发送端和接收端工作流（`resources/comfyui/sender_workflow_api.json` 和 `receiver_workflow_api.json`）需要 ComfyUI 实例运行。工作流使用了 4 个模型文件和若干自定义节点（如 `ModelPatchLoader`、`QwenImageDiffsynthControlnet`），需要从同事处获取或从源下载。ComfyUI 需以 `--listen` 模式启动以开放 API 端口。本机 GPU 显存需 ≥6GB（仅 ComfyUI 推理），后续 P2-13 VLM 集成时总需求 ≥24GB。
+- **涉及文件**:
+  - `docs/comfyui-setup.md`（新建：部署指南，记录模型来源、自定义节点安装步骤）
+- **具体步骤**:
+  1. 安装 ComfyUI（克隆仓库或使用便携版），确认 Python 环境和 PyTorch GPU 支持
+  2. 下载/拷贝模型文件到 ComfyUI 对应目录：
+     - `models/text_encoders/qwen_3_4b.safetensors`（CLIP text encoder，lumina2 格式）
+     - `models/diffusion_models/z_image_turbo_bf16.safetensors`（Z-Image-Turbo 扩散模型）
+     - `models/vae/ae.safetensors`（VAE）
+     - `models/model_patches/Z-Image-Turbo-Fun-Controlnet-Union.safetensors`（ControlNet Union patch）
+  3. 安装自定义节点（包含 `ModelPatchLoader`、`QwenImageDiffsynthControlnet`、`ImageScaleToMaxDimension` 等节点类型），来源需向同事确认
+  4. 以 `--listen` 模式启动 ComfyUI：`python main.py --listen`
+  5. 用已有脚本验证连通性：`uv run python scripts/test_comfyui_connection.py`
+  6. 分别提交发送端和接收端工作流 JSON 验证执行成功
+  7. 将部署步骤记录到 `docs/comfyui-setup.md`
+- **验收标准**:
+  - [ ] ComfyUI 以 `--listen` 模式启动，API 端口可访问
+  - [ ] `scripts/test_comfyui_connection.py` 连通性测试通过
+  - [ ] 发送端工作流提交后能输出 Canny 边缘图
+  - [ ] 接收端工作流提交后能从边缘图 + prompt 生成还原图像
+  - [ ] 部署步骤记录在 `docs/comfyui-setup.md` 中
+- **自测方法**: `uv run python scripts/test_comfyui_connection.py --host 127.0.0.1 --port 8188`
+- **回滚方案**: 卸载 ComfyUI，删除 `docs/comfyui-setup.md`
+- **预估工作量**: L
+
+---
+
 #### [P2-10] 搭建-端到端 Demo 脚本
 
 - **阶段**: Phase 1 - 工作流拆分与语义压缩
-- **依赖**: P2-08, P2-09
+- **依赖**: P2-08, P2-09, P2-16
 - **目标**: 编写可运行的 demo 脚本，演示 发送端→接收端 完整流程，支持手动 prompt 和 VLM 自动 prompt 双模式
 - **背景信息**: Demo 脚本是 Phase 1 的核心交付物。单机模式下发送端和接收端连同一个 ComfyUI 实例。prompt 文本支持两种来源：(1) `--prompt` 手动指定（无 VLM 依赖，快速调试）；(2) `--auto-prompt` 调用 VLM 自动生成（需 P2-13 完成后可用）。
 - **涉及文件**:
