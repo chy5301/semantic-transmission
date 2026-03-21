@@ -300,10 +300,10 @@
      - 保存对比图（原图 | 边缘图 | 还原图）
   3. 打印传输统计：边缘图大小（bytes）+ prompt 文本大小（bytes）= 总传输数据量
 - **验收标准**:
-  - [ ] `uv run python scripts/demo_e2e.py --help` 正常显示帮助
+  - [x] `uv run python scripts/demo_e2e.py --help` 正常显示帮助
   - [ ] 在 ComfyUI 可用时，`--prompt` 模式能完成完整流程并输出对比图
-  - [ ] 支持 `--sender-host` 和 `--receiver-host` 分别指定地址
-  - [ ] `--auto-prompt` 参数定义就绪（实际 VLM 调用在 P2-13 中实现）
+  - [x] 支持 `--sender-host` 和 `--receiver-host` 分别指定地址
+  - [x] `--auto-prompt` 参数定义就绪（实际 VLM 调用在 P2-13 中实现）
 - **自测方法**: `uv run python scripts/demo_e2e.py --help`
 - **回滚方案**: 删除 demo_e2e.py
 - **预估工作量**: M

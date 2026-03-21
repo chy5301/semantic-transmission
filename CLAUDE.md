@@ -46,8 +46,13 @@ src/semantic_transmission/
   - `projects/` — 开源项目评估（ComfyUI API 集成路径已确定）
   - `models/` — 模型对比
   - `comfyui-workflow-analysis.md` — ComfyUI 工作流技术基线分析
-- `docs/QUICK_START.md` — 快速开始指南（ComfyUI 部署、模型下载、环境验证）
+- `docs/comfyui-setup.md` — ComfyUI 部署指南（模型下载、自定义节点安装、验证步骤）
 - `docs/workflow/` — 结构化工作流管理（workflow.json、TASK_STATUS.md 等）
+- `scripts/` — 工具脚本
+  - `demo_e2e.py` — 端到端 demo 脚本（发送端→接收端完整流程）
+  - `verify_workflows.py` — 工作流验证脚本
+  - `test_comfyui_connection.py` — ComfyUI API 连通性测试
+  - `download_models.py` — 模型下载辅助脚本
 
 ## CI 注意事项
 

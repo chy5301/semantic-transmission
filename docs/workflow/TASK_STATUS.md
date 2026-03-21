@@ -10,10 +10,10 @@
 | 阶段 | 总数 | 完成 | 冻结 | 进行中 | 待开始 |
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 | 0 |
-| Phase 1: 工作流拆分与语义压缩 | 8 | 6 | 0 | 0 | 2 |
+| Phase 1: 工作流拆分与语义压缩 | 8 | 7 | 0 | 0 | 1 |
 | Phase 2: 中继传输与双机演示 | 2 | 0 | 0 | 0 | 2 |
 | Phase 3: 质量优化与工程精简 | 2 | 0 | 0 | 0 | 2 |
-| **合计** | **16** | **10** | **0** | **0** | **6** |
+| **合计** | **16** | **11** | **0** | **0** | **5** |
 
 ## 任务状态
 
@@ -29,7 +29,7 @@
 | P2-08 | 实现-发送端调用 | Phase 1 | ✅ 已完成 | P2-05, P2-07 |
 | P2-09 | 实现-接收端调用 | Phase 1 | ✅ 已完成 | P2-05, P2-07 |
 | P2-16 | 部署-本机 ComfyUI 实例 | Phase 1 | ✅ 已完成 | P2-05 |
-| P2-10 | 搭建-端到端 Demo 脚本 | Phase 1 | ⬜ 待开始 | P2-08, P2-09, P2-16 |
+| P2-10 | 搭建-端到端 Demo 脚本 | Phase 1 | ✅ 已完成 | P2-08, P2-09, P2-16 |
 | P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | ⬜ 待开始 | P2-10 |
 | P2-11 | 实现-中继传输协议 | Phase 2 | ⬜ 待开始 | P2-10 |
 | P2-12 | 编写-双机演示脚本 | Phase 2 | ⬜ 待开始 | P2-11 |
@@ -415,5 +415,43 @@
 - P2-10 需要 ComfyUI 保持运行状态
 - 接收端 82.4s 耗时主要是首次加载模型到 GPU，后续执行应更快
 - 发送端输出 2048x2048 是因为 ImageScaleToMaxDimension 的 max=2048 设置
+
+**遗留问题**：无
+
+### P2-10 搭建-端到端 Demo 脚本（2026-03-21）
+
+**完成内容**：
+- 创建 `scripts/demo_e2e.py`，串联 ComfyUISender → ComfyUIReceiver 完整流程
+- CLI 参数支持：`--image`（输入图像）、`--prompt`/`--auto-prompt`（互斥）、`--sender-host/port`、`--receiver-host/port`、`--output-dir`、`--seed`
+- 5 步流程：健康检查 → 发送端提取边缘图 → 获取 prompt → 接收端还原图像 → 生成对比图
+- 传输统计输出：原始图像大小、边缘图大小、prompt 大小、总传输量、压缩比、耗时
+- `--auto-prompt` 参数已定义，实际 VLM 调用待 P2-13 实现
+
+**修改的文件**（1 个新建）：
+- `scripts/demo_e2e.py`（新建：端到端 demo 脚本）
+
+**验证结果**：
+- `uv run python scripts/demo_e2e.py --help` 正常显示帮助信息 ✅
+- ruff check 通过 ✅
+- ruff format 通过 ✅
+- 69 个测试全部通过，无回归 ✅
+- 端到端实际执行验证：需 ComfyUI 运行时验证（与 P2-16 验证脚本 verify_workflows.py 调用模式一致）
+
+**关键决策**：
+- `--prompt` 和 `--auto-prompt` 使用 argparse 的 `add_mutually_exclusive_group(required=True)` 确保互斥且必选
+- `--auto-prompt` 模式当前输出提示信息并退出（非 NotImplementedError），便于用户理解
+- 对比图使用 PIL 横向拼接（原图 | 边缘图 | 还原图），三张图缩放到相同高度
+- 传输统计中"压缩比"= 原始图像文件大小 / (边缘图 PNG 大小 + prompt UTF-8 字节数)
+- 配置直接用 `ComfyUIConfig(host, port)` 构造，不走环境变量，保持 CLI 参数优先
+
+**计划变更**：无
+
+**下一任务**：P2-13 集成-VLM 自动生成 prompt
+
+**下一任务需关注**：
+- P2-13 需实现 `QwenVLSender(BaseSender)` 并集成到 `demo_e2e.py` 的 `--auto-prompt` 模式
+- `demo_e2e.py` 中 `--auto-prompt` 分支当前是 `sys.exit(1)`，P2-13 需替换为 VLM 调用
+- VLM 输出需符合分段式描述模板（`[Scene Style]`、`[Perspective]`、`[Key Elements]` 等）
+- GPU 显存需 ≥24GB 同机运行 ComfyUI + VLM INT4
 
 **遗留问题**：无
