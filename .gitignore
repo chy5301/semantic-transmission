@@ -12,3 +12,6 @@ build/
 
 # Temporary files
 .tmp-*/
+
+# 脚本输出（验证脚本生成的临时文件）
+output/
