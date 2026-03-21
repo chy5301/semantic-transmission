@@ -2,7 +2,6 @@
 
 import io
 import json
-import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -13,7 +12,6 @@ from semantic_transmission.common.comfyui_client import (
     ComfyUIClient,
     ComfyUIConnectionError,
 )
-from semantic_transmission.common.config import ComfyUIConfig
 from semantic_transmission.sender.comfyui_sender import ComfyUISender, _LOAD_IMAGE_NODE
 
 

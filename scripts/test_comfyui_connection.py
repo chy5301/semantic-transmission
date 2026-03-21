@@ -10,7 +10,6 @@
 import argparse
 import io
 import json
-import sys
 import time
 import uuid
 
@@ -49,7 +48,7 @@ def step(name: str):
             print(f"{'='*50}")
             try:
                 result = func(*args, **kwargs)
-                print(f"  => PASS")
+                print("  => PASS")
                 return result
             except Exception as e:
                 print(f"  => FAIL: {e}")
@@ -59,7 +58,7 @@ def step(name: str):
 
 
 def run_tests(config: ComfyUIConfig) -> None:
-    print(f"ComfyUI 连通性测试")
+    print("ComfyUI 连通性测试")
     print(f"目标: {config.base_url}")
     print(f"超时: {config.timeout}s")
 

@@ -1,7 +1,7 @@
 """ComfyUIClient 单元测试。"""
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import pytest
 import requests

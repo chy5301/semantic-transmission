@@ -1,8 +1,6 @@
 """ComfyUIConfig 和 SemanticTransmissionConfig 单元测试。"""
 
-import os
 
-import pytest
 
 from semantic_transmission.common.config import ComfyUIConfig, SemanticTransmissionConfig
 

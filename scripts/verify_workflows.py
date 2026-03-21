@@ -11,7 +11,6 @@
 """
 
 import argparse
-import io
 import sys
 import time
 from pathlib import Path
@@ -123,7 +122,7 @@ def main():
     if args.port:
         config.port = args.port
 
-    print(f"ComfyUI 工作流验证")
+    print("ComfyUI 工作流验证")
     print(f"目标: {config.base_url}")
 
     client = ComfyUIClient(config)
@@ -131,7 +130,7 @@ def main():
     # 健康检查
     try:
         client.check_health()
-        print(f"连接状态: OK")
+        print("连接状态: OK")
     except Exception as e:
         print(f"连接失败: {e}")
         print("请确认 ComfyUI 已启动。")
