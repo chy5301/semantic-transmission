@@ -47,6 +47,8 @@ src/semantic_transmission/
   - `models/` — 模型对比
   - `comfyui-workflow-analysis.md` — ComfyUI 工作流技术基线分析
 - `docs/comfyui-setup.md` — ComfyUI 部署指南（模型下载、自定义节点安装、验证步骤）
+- `docs/test-reports/` — 测试报告
+  - `01-e2e-manual-prompt-test.md` — 首次端到端手动 prompt 测试（6 张越野车场景）
 - `docs/workflow/` — 结构化工作流管理（workflow.json、TASK_STATUS.md 等）
 - `scripts/` — 工具脚本
   - `demo_e2e.py` — 端到端 demo 脚本（发送端→接收端完整流程）
