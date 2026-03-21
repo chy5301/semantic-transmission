@@ -6,8 +6,8 @@
 uv sync                  # 安装依赖
 uv run pytest            # 运行全部测试
 uv run pytest tests/test_comfyui_client.py  # 运行单个测试文件
-uv run ruff check src/   # 代码检查
-uv run ruff format src/  # 代码格式化
+uv run ruff check .      # 代码检查（与 CI 一致，覆盖 src/ scripts/ tests/）
+uv run ruff format .     # 代码格式化（与 CI 一致）
 ```
 
 ## 项目概述
@@ -46,7 +46,13 @@ src/semantic_transmission/
   - `projects/` — 开源项目评估（ComfyUI API 集成路径已确定）
   - `models/` — 模型对比
   - `comfyui-workflow-analysis.md` — ComfyUI 工作流技术基线分析
+- `docs/QUICK_START.md` — 快速开始指南（ComfyUI 部署、模型下载、环境验证）
 - `docs/workflow/` — 结构化工作流管理（workflow.json、TASK_STATUS.md 等）
+
+## CI 注意事项
+
+- 推送前务必在本地运行 `uv run ruff check .` 和 `uv run ruff format --check .` 确认通过
+- CI 检查范围是整个项目（`.`），不仅限于 `src/`
 
 ## 文档规范
 
@@ -55,7 +61,7 @@ src/semantic_transmission/
 ## 技术栈（规划中）
 
 - **工作流管理**：使用 structured-workflow 系统管理任务，状态见 `docs/workflow/TASK_STATUS.md`
-- **ComfyUI API 模式**：通过 HTTP API 调用 ComfyUI 工作流（本机未安装 ComfyUI，需远程调用或部署）
+- **ComfyUI API 模式**：通过 HTTP API 调用 ComfyUI 工作流
 - **Python**：主要开发语言，使用 uv 管理依赖
 - **生成模型**：Stable Diffusion 系列、Wan2.x 等扩散模型
 - **视觉理解模型**：Qwen-VL 等多模态大模型用于图像/视频描述生成
