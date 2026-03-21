@@ -1,5 +1,15 @@
 # CLAUDE.md
 
+## 常用命令
+
+```bash
+uv sync                  # 安装依赖
+uv run pytest            # 运行全部测试
+uv run pytest tests/test_comfyui_client.py  # 运行单个测试文件
+uv run ruff check src/   # 代码检查
+uv run ruff format src/  # 代码格式化
+```
+
 ## 项目概述
 
 本项目是一个"语义传输"（Semantic Transmission / Semantic Communication）预研项目。核心思路是用 AI 模型实现视频的语义级压缩传输：
@@ -14,6 +24,16 @@
 1. **调研阶段**（已完成）：收集语义传输相关论文和项目（GVSC、GVC、GSC 等），形成调研报告
 2. **ComfyUI API 集成**：基于同事已有的 ComfyUI 工作流，将发送端和接收端封装为 API 打通流程
 3. **逐步替换优化**：用更优实现替换 ComfyUI 工作流节点，最终可能完全脱离 ComfyUI
+
+## 源码结构
+
+```
+src/semantic_transmission/
+├── common/          # 公共模块：ComfyUI 客户端、配置、类型定义
+├── pipeline/        # 端到端管道编排
+├── sender/          # 发送端：图像/视频 → 语义描述 + 条件信息
+└── receiver/        # 接收端：语义描述 → 图像/视频还原
+```
 
 ## 当前资源
 
@@ -31,8 +51,6 @@
 ## 文档规范
 
 - 文档中的流程图、拓扑图等使用 Mermaid 格式（```mermaid），不使用 ASCII art
-- `docs/research/` — 调研产出文档（论文综述、项目评估、模型对比、工作流分析）
-- `docs/workflow/` — 结构化工作流管理文件（TASK_PLAN.md、TASK_STATUS.md 等）
 
 ## 技术栈（规划中）
 

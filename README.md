@@ -30,7 +30,7 @@ graph LR
 | 阶段 | 目标 | 状态 |
 |------|------|------|
 | 阶段一：调研与选型 | 论文综述、开源项目评估、技术路线确定 | ✅ 已完成 |
-| 阶段二：ComfyUI API 原型 | 基于 ComfyUI API 打通端到端流程 | 🔄 进行中 |
+| 阶段二：ComfyUI API 原型 | 基于 ComfyUI API 打通端到端流程 | 🔄 进行中（10/16） |
 | 阶段三：方案迭代优化 | 模型升级、条件优化、视频级扩展 | 待启动 |
 | 阶段四：工程化 | 脱离 ComfyUI，构建独立可部署系统 | 待启动 |
 
@@ -39,16 +39,25 @@ graph LR
 ## 项目结构
 
 ```
+├── src/semantic_transmission/
+│   ├── common/                     # 公共模块：ComfyUI 客户端、配置、类型定义
+│   ├── pipeline/                   # 端到端管道编排
+│   ├── sender/                     # 发送端：图像/视频 → 语义描述 + 条件信息
+│   └── receiver/                   # 接收端：语义描述 → 图像/视频还原
+├── tests/                          # 单元测试
 ├── docs/
 │   ├── ROADMAP.md                  # 项目路线图
+│   ├── comfyui-setup.md            # ComfyUI 本机部署指南
 │   ├── research/                   # 调研产出
 │   │   ├── papers/                 # 论文综述
 │   │   ├── projects/               # 开源项目评估
 │   │   ├── models/                 # 模型对比（待完成）
 │   │   └── comfyui-workflow-analysis.md  # ComfyUI 工作流分析
+│   ├── collaboration/              # 协作规范（Git/GitHub/PR/Issue）
 │   └── workflow/                   # 结构化工作流管理
 ├── resources/
 │   └── comfyui/                    # ComfyUI 工作流文件及截图
+├── .github/                        # GitHub 模板与 CI 工作流
 └── CLAUDE.md                       # AI 辅助开发配置
 ```
 
