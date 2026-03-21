@@ -10,10 +10,10 @@
 | 阶段 | 总数 | 完成 | 冻结 | 进行中 | 待开始 |
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 | 0 |
-| Phase 1: 工作流拆分与语义压缩 | 8 | 5 | 0 | 0 | 3 |
+| Phase 1: 工作流拆分与语义压缩 | 8 | 6 | 0 | 0 | 2 |
 | Phase 2: 中继传输与双机演示 | 2 | 0 | 0 | 0 | 2 |
 | Phase 3: 质量优化与工程精简 | 2 | 0 | 0 | 0 | 2 |
-| **合计** | **16** | **9** | **0** | **0** | **7** |
+| **合计** | **16** | **10** | **0** | **0** | **6** |
 
 ## 任务状态
 
@@ -28,7 +28,7 @@
 | P2-07 | 实现-ComfyUI API 客户端 | Phase 1 | ✅ 已完成 | P2-06 |
 | P2-08 | 实现-发送端调用 | Phase 1 | ✅ 已完成 | P2-05, P2-07 |
 | P2-09 | 实现-接收端调用 | Phase 1 | ✅ 已完成 | P2-05, P2-07 |
-| P2-16 | 部署-本机 ComfyUI 实例 | Phase 1 | ⬜ 待开始 | P2-05 |
+| P2-16 | 部署-本机 ComfyUI 实例 | Phase 1 | ✅ 已完成 | P2-05 |
 | P2-10 | 搭建-端到端 Demo 脚本 | Phase 1 | ⬜ 待开始 | P2-08, P2-09, P2-16 |
 | P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | ⬜ 待开始 | P2-10 |
 | P2-11 | 实现-中继传输协议 | Phase 2 | ⬜ 待开始 | P2-10 |
@@ -77,6 +77,7 @@
 | 2026-03-19 | P2-02 抽象接口解冻 | VLM 集成提前到 Phase 1，BaseSender 接口需要在 Phase 1 启用 |
 | 2026-03-19 | Phase 1 更名为"工作流拆分与语义压缩"，Phase 3 更名为"质量优化与工程精简" | 反映 VLM 提前后的阶段重心变化 |
 | 2026-03-21 | **新增 P2-16（部署-本机 ComfyUI 实例）**，P2-10 依赖增加 P2-16 | P2-10 是首个需要真实 ComfyUI 实例的任务，之前所有任务通过 mock 测试验证。本机部署 ComfyUI 是 P2-10 端到端验证的前置条件，同时补充验证 P2-05/08/09 的工作流正确性 |
+| 2026-03-21 | 模型下载策略：HuggingFace 镜像 + 魔搭混合 | 魔搭 Tongyi-MAI/Z-Image-Turbo 的文件结构（DiffSynth 分片格式）与 ComfyUI 所需的单文件格式不兼容，主模型只能从 HuggingFace Comfy-Org/z_image_turbo 下载。使用 hf-mirror 国内镜像避免代理不稳定；ControlNet Union 补丁从魔搭 PAI/ 仓库国内直连下载 |
 
 ## 交接记录
 
@@ -375,5 +376,44 @@
 - P2-10 需串联 ComfyUISender.process() → ComfyUIReceiver.process()，中间传递边缘图和 prompt
 - P2-10 的 `--prompt` 模式可直接实现；`--auto-prompt` 模式需 P2-13 完成后可用
 - ComfyUISender.process() 返回 PIL.Image，需转为 bytes 传给 ComfyUIReceiver.process()
+
+**遗留问题**：无
+
+### P2-16 部署-本机 ComfyUI 实例（2026-03-21）
+
+**完成内容**：
+- 使用秋叶整合包 v3（ComfyUI v0.9.2）部署本机 ComfyUI 实例
+- 下载 4 个模型文件（总计 ~22.7GB）：qwen_3_4b（8GB）、z_image_turbo_bf16（12.3GB）、ae（335MB）、Z-Image-Turbo-Fun-Controlnet-Union（3.1GB）
+- 编写模型下载辅助脚本 `scripts/download_models.py`，支持 HuggingFace 镜像和魔搭双源下载
+- 编写工作流验证脚本 `scripts/verify_workflows.py`，验证发送端和接收端工作流端到端执行
+- 编写部署指南 `docs/comfyui-setup.md`
+
+**修改的文件**（3 个新建）：
+- `scripts/download_models.py`（新建：模型下载辅助脚本）
+- `scripts/verify_workflows.py`（新建：工作流验证脚本）
+- `docs/comfyui-setup.md`（新建：部署指南）
+
+**验证结果**：
+- 连通性测试 6/6 PASS ✅
+- 发送端工作流：256x256 测试图 → 2048x2048 Canny 边缘图，耗时 1.4s ✅
+- 接收端工作流：边缘图 + prompt → 2048x2048 还原图像，耗时 82.4s ✅
+- P2-05 遗留的"端到端执行验证"已补充完成 ✅
+
+**关键决策**：
+- 魔搭 Tongyi-MAI/Z-Image-Turbo 为 DiffSynth 分片格式，不兼容 ComfyUI，主模型从 HuggingFace Comfy-Org/z_image_turbo 下载
+- 使用 hf-mirror.com 国内镜像替代代理（代理连接不稳定，会卡住）
+- ControlNet Union 从魔搭 PAI/ 仓库国内直连下载（37MB/s）
+- 所有 4 个工作流节点类型均为 ComfyUI v0.3.51+ 内置节点，无需安装自定义包
+
+**硬件环境**：
+- GPU: NVIDIA GeForce RTX 5090 Laptop GPU, 24GB VRAM
+- PyTorch: 2.9.1+cu130
+- ComfyUI: v0.9.2（秋叶整合包 v3）
+
+**下一任务及关注点**：
+- P2-10（搭建-端到端 Demo 脚本）已解锁，依赖 P2-08 ✅ + P2-09 ✅ + P2-16 ✅
+- P2-10 需要 ComfyUI 保持运行状态
+- 接收端 82.4s 耗时主要是首次加载模型到 GPU，后续执行应更快
+- 发送端输出 2048x2048 是因为 ImageScaleToMaxDimension 的 max=2048 设置
 
 **遗留问题**：无
