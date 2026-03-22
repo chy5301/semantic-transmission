@@ -329,13 +329,13 @@
   3. 集成到 `demo_e2e.py` 的 `--auto-prompt` 模式
   4. 编写 mock 测试（不需要真实 GPU）
 - **验收标准**:
-  - [ ] `QwenVLSender` 实现 `BaseSender.describe()` 接口
-  - [ ] system prompt 约束 VLM 输出为分段式结构化描述
-  - [ ] `demo_e2e.py --auto-prompt` 能调用 VLM 自动生成 prompt 并完成端到端流程
-  - [ ] mock 测试通过
-  - [ ] VLM 依赖隔离在可选组中，`uv sync` 默认不安装
-- **自测方法**: `uv run pytest tests/test_vlm_sender.py -v`
-- **回滚方案**: 删除 vlm_sender.py 和测试，移除 pyproject.toml 中的 vlm 依赖组
+  - [x] `QwenVLSender` 实现 `BaseSender.describe()` 接口
+  - [x] system prompt 约束 VLM 输出为分段式结构化描述
+  - [ ] `demo_e2e.py --auto-prompt` 能调用 VLM 自动生成 prompt 并完成端到端流程（待 VLM 模型下载后验证）
+  - [x] mock 测试通过（13 个）
+  - [x] VLM 依赖在主依赖中，`uv sync` 直接安装（用户偏好，变更自原计划的可选组方案）
+- **自测方法**: `uv run pytest tests/test_qwen_vl_sender.py -v`
+- **回滚方案**: 删除 qwen_vl_sender.py 和测试，移除 pyproject.toml 中的 VLM 依赖
 - **预估工作量**: L
 
 ---

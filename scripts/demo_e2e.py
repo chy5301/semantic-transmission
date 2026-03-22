@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     prompt_group.add_argument(
         "--auto-prompt",
         action="store_true",
-        help="使用 VLM 自动生成描述（需 VLM 模型，P2-13 实现）",
+        help="使用 VLM (Qwen2.5-VL) 自动生成描述",
     )
 
     parser.add_argument(
@@ -67,6 +67,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--seed", type=int, default=None, help="KSampler 随机种子（可选，便于复现）"
+    )
+    parser.add_argument(
+        "--vlm-model",
+        type=str,
+        default=None,
+        help="VLM 模型名称（默认 Qwen/Qwen2.5-VL-7B-Instruct）",
+    )
+    parser.add_argument(
+        "--vlm-model-path",
+        type=str,
+        default=r"D:\Downloads\Models\Qwen\Qwen2.5-VL-7B-Instruct",
+        help="VLM 模型本地路径（默认 D:\\Downloads\\Models\\Qwen\\Qwen2.5-VL-7B-Instruct）",
     )
 
     return parser.parse_args()
@@ -166,9 +178,29 @@ def main():
     # 获取 prompt
     print("\n[3/5] 获取语义描述...")
     if args.auto_prompt:
-        print("  错误：--auto-prompt 模式尚未实现，需要 P2-13（VLM 集成）完成。")
-        print("  请使用 --prompt 手动指定描述文本。")
-        sys.exit(1)
+        import numpy as np
+
+        from semantic_transmission.sender.qwen_vl_sender import QwenVLSender
+
+        print("  模式: VLM 自动描述 (Qwen2.5-VL)")
+        vlm_kwargs = {}
+        if args.vlm_model:
+            vlm_kwargs["model_name"] = args.vlm_model
+        if args.vlm_model_path:
+            vlm_kwargs["model_path"] = args.vlm_model_path
+        vlm_sender = QwenVLSender(**vlm_kwargs)
+        print("  正在加载 VLM 模型（首次加载可能需要几分钟）...")
+        original_img = Image.open(args.image).convert("RGB")
+        image_array = np.array(original_img)
+        start_vlm = time.time()
+        sender_output = vlm_sender.describe(image_array)
+        vlm_elapsed = time.time() - start_vlm
+        prompt_text = sender_output.text
+        print(f"  VLM 耗时: {vlm_elapsed:.1f}s")
+        print(
+            f"  描述长度: {len(prompt_text)} 字符, {len(prompt_text.encode('utf-8'))} 字节"
+        )
+        print(f"  生成描述: {prompt_text[:200]}...")
     else:
         prompt_text = args.prompt
         print("  模式: 手动 prompt")

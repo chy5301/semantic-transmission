@@ -9,6 +9,11 @@ dependencies = [
     "Pillow",
     "opencv-python",
     "numpy",
+    "transformers>=4.51.0",
+    "torch>=2.9.1",
+    "torchvision>=0.24.1",
+    "accelerate>=0.30.0",
+    "qwen-vl-utils>=0.0.8",
 ]
 
 [build-system]
@@ -23,3 +28,12 @@ dev = [
     "pytest>=9.0.2",
     "ruff>=0.15.7",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
