@@ -154,3 +154,19 @@ class QwenVLSender(BaseSender):
                 "quantization": self._actual_quantization,
             },
         )
+
+    def unload(self) -> None:
+        """释放模型和 GPU 显存。"""
+        import gc
+
+        self._model = None
+        self._processor = None
+        gc.collect()
+
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass

@@ -331,7 +331,7 @@
 - **验收标准**:
   - [x] `QwenVLSender` 实现 `BaseSender.describe()` 接口
   - [x] system prompt 约束 VLM 输出为分段式结构化描述
-  - [ ] `demo_e2e.py --auto-prompt` 能调用 VLM 自动生成 prompt 并完成端到端流程（待 VLM 模型下载后验证）
+  - [x] `demo_e2e.py --auto-prompt` 能调用 VLM 自动生成 prompt 并完成端到端流程（6/6 张测试图通过）
   - [x] mock 测试通过（13 个）
   - [x] VLM 依赖在主依赖中，`uv sync` 直接安装（用户偏好，变更自原计划的可选组方案）
 - **自测方法**: `uv run pytest tests/test_qwen_vl_sender.py -v`

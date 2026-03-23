@@ -123,6 +123,11 @@ def get_image_bytes_size(img: Image.Image) -> int:
 
 
 def main():
+    import builtins
+    import functools
+
+    print = functools.partial(builtins.print, flush=True)  # noqa: A001
+
     args = parse_args()
 
     # 校验输入图像
@@ -176,6 +181,7 @@ def main():
     print(f"  耗时: {sender_elapsed:.1f}s")
 
     # 获取 prompt
+    vlm_elapsed = 0.0
     print("\n[3/5] 获取语义描述...")
     if args.auto_prompt:
         import numpy as np
@@ -201,10 +207,17 @@ def main():
             f"  描述长度: {len(prompt_text)} 字符, {len(prompt_text.encode('utf-8'))} 字节"
         )
         print(f"  生成描述: {prompt_text[:200]}...")
+        vlm_sender.unload()
+        print("  VLM 模型已卸载，释放 GPU 显存")
     else:
         prompt_text = args.prompt
         print("  模式: 手动 prompt")
         print(f"  文本: {prompt_text}")
+
+    # 保存 prompt 文本
+    prompt_path = args.output_dir / "prompt.txt"
+    prompt_path.write_text(prompt_text, encoding="utf-8")
+    print(f"  Prompt 已保存: {prompt_path}")
 
     # 接收端：从边缘图 + prompt 还原图像
     print("\n[4/5] 接收端：还原图像...")
@@ -222,13 +235,17 @@ def main():
 
     # 生成对比图
     print("\n[5/5] 生成对比图...")
+    start = time.time()
     original_image = Image.open(args.image)
     comparison = make_comparison_image(original_image, edge_image, restored_image)
     comparison_path = args.output_dir / "comparison.png"
     comparison.save(comparison_path)
+    comparison_elapsed = time.time() - start
     print(f"  对比图: {comparison_path} ({comparison.size[0]}x{comparison.size[1]})")
+    print(f"  耗时: {comparison_elapsed:.1f}s")
 
     # 传输统计
+    total_elapsed = sender_elapsed + vlm_elapsed + receiver_elapsed + comparison_elapsed
     edge_bytes = get_image_bytes_size(edge_image)
     prompt_bytes = len(prompt_text.encode("utf-8"))
     total_bytes = edge_bytes + prompt_bytes
@@ -243,13 +260,17 @@ def main():
     print(f"  传输数据总量:    {total_bytes:>10,} bytes")
     print(f"  压缩比:          {original_bytes / total_bytes:>10.2f}x")
     print(f"  发送端耗时:      {sender_elapsed:>10.1f}s")
+    if args.auto_prompt:
+        print(f"  VLM 耗时:        {vlm_elapsed:>10.1f}s")
     print(f"  接收端耗时:      {receiver_elapsed:>10.1f}s")
-    print(f"  总耗时:          {sender_elapsed + receiver_elapsed:>10.1f}s")
+    print(f"  对比图耗时:      {comparison_elapsed:>10.1f}s")
+    print(f"  总耗时:          {total_elapsed:>10.1f}s")
 
     print(f"\n输出文件在 {args.output_dir}/ 目录下：")
     print("  edge.png       — Canny 边缘图")
     print("  restored.png   — 还原图像")
     print("  comparison.png — 对比图（原图 | 边缘图 | 还原图）")
+    print("  prompt.txt     — 语义描述文本")
 
 
 if __name__ == "__main__":

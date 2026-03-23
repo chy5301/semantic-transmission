@@ -10,10 +10,10 @@
 | 阶段 | 总数 | 完成 | 冻结 | 进行中 | 待开始 |
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 | 0 |
-| Phase 1: 工作流拆分与语义压缩 | 8 | 7 | 0 | 1 | 0 |
+| Phase 1: 工作流拆分与语义压缩 | 8 | 8 | 0 | 0 | 0 |
 | Phase 2: 中继传输与双机演示 | 2 | 0 | 0 | 0 | 2 |
 | Phase 3: 质量优化与工程精简 | 2 | 0 | 0 | 0 | 2 |
-| **合计** | **16** | **11** | **0** | **1** | **4** |
+| **合计** | **16** | **12** | **0** | **0** | **4** |
 
 ## 任务状态
 
@@ -30,7 +30,7 @@
 | P2-09 | 实现-接收端调用 | Phase 1 | ✅ 已完成 | P2-05, P2-07 |
 | P2-16 | 部署-本机 ComfyUI 实例 | Phase 1 | ✅ 已完成 | P2-05 |
 | P2-10 | 搭建-端到端 Demo 脚本 | Phase 1 | ✅ 已完成 | P2-08, P2-09, P2-16 |
-| P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | 🔄 进行中 | P2-10 |
+| P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | ✅ 已完成 | P2-10 |
 | P2-11 | 实现-中继传输协议 | Phase 2 | ⬜ 待开始 | P2-10 |
 | P2-12 | 编写-双机演示脚本 | Phase 2 | ⬜ 待开始 | P2-11 |
 | P2-14 | 实现-质量评估模块 | Phase 3 | ⬜ 待开始 | P2-10 |
@@ -464,50 +464,49 @@
 
 **遗留问题**：无
 
-### P2-13 集成-VLM 自动生成 prompt（2026-03-22，进行中）
+### P2-13 集成-VLM 自动生成 prompt（2026-03-23）
 
-**已完成内容**：
+**完成内容**：
 - 实现 `QwenVLSender(BaseSender)` 类，使用 Qwen2.5-VL-7B-Instruct 自动生成结构化图像描述
-- 采用 transformers 原生推理，延迟加载模型（首次 `describe()` 时加载，~8GB VRAM INT4 或 ~14GB float16）
+- 采用 transformers 原生推理，延迟加载模型（首次 `describe()` 时加载，float16 ~14GB VRAM）
 - system prompt 指导 VLM 输出覆盖 7 个视觉维度（Scene Style / Perspective / Main Subject / Foreground / Background / Lighting & Color / Fine Details），输出为连续英文段落
 - 集成到 `demo_e2e.py` 的 `--auto-prompt` 模式，新增 `--vlm-model` 和 `--vlm-model-path` 参数
 - 添加 VLM 依赖到主依赖（transformers、torch、torchvision、accelerate、qwen-vl-utils），配置 PyTorch cu130 索引
 - 编写 13 个 mock 测试
 - VLM 模型下载纳入 `download_models.py` 统一管理，保存到 `D:\Downloads\Models\Qwen\Qwen2.5-VL-7B-Instruct`
 - `download_models.py` 默认使用 hf-mirror 镜像，修复仓库完整性检查（基于权重分片文件而非仅 config.json）
-- VLM 模型已下载就绪 ✅
+- 新增 `unload()` 方法释放 GPU 显存，解决 VLM + ComfyUI VRAM 冲突（float16 ~14GB + ComfyUI ~6GB > 24GB）
+- demo 脚本保存 prompt 文本到 `prompt.txt`
+- 6 张测试图端到端验证全部通过（Round 3 输出在 `output/demo/round-03/`）
 
 **修改的文件**（6 个，2 新建 4 修改）：
-- `src/semantic_transmission/sender/qwen_vl_sender.py`（新建：QwenVLSender 核心实现，支持 model_path 本地加载）
+- `src/semantic_transmission/sender/qwen_vl_sender.py`（新建：QwenVLSender 核心实现，含 model_path、unload）
 - `tests/test_qwen_vl_sender.py`（新建：13 个 mock 测试）
 - `pyproject.toml`（修改：添加 VLM 主依赖 + PyTorch cu130 索引配置）
 - `src/semantic_transmission/sender/__init__.py`（修改：导出 QwenVLSender）
-- `scripts/demo_e2e.py`（修改：替换 --auto-prompt 占位符为 VLM 调用，新增 --vlm-model / --vlm-model-path 参数）
+- `scripts/demo_e2e.py`（修改：--auto-prompt VLM 集成、unload 释放显存、保存 prompt.txt、flush print）
 - `scripts/download_models.py`（修改：新增 VLM 仓库模型下载、默认 hf-mirror、权重完整性检查）
 
 **验证结果**：
 - 82 个测试全部通过（含 13 个新增 QwenVLSender 测试 + 69 个已有测试），无回归 ✅
-- ruff check 通过 ✅
-- ruff format 通过 ✅
-- `demo_e2e.py --help` 正常显示 --vlm-model / --vlm-model-path 参数 ✅
-- `uv sync` 成功安装所有依赖（torch 2.10.0+cu130、torchvision 0.25.0+cu130、transformers 5.3.0） ✅
-- VLM 模型已下载到本地 ✅
-- **端到端实际执行验证（--auto-prompt + ComfyUI）：未执行** ❌
+- ruff check / format 通过 ✅
+- `uv sync` 成功安装所有依赖（torch 2.10.0+cu130） ✅
+- 端到端 --auto-prompt 验证 6/6 张测试图全部通过 ✅
+- VLM 推理耗时 ~22-29s，prompt 大小 ~1.3-2.3KB，接收端还原耗时 ~49-64s
 
 **关键决策**：
-- transformers 原生推理（非 ComfyUI 节点）：本机 ComfyUI 无 VLM 节点，生态节点缺少 system prompt 控制，且为中期脱离 ComfyUI 铺路
+- transformers 原生推理（非 ComfyUI 节点）：本机 ComfyUI 无 VLM 节点，生态节点缺少 system prompt 控制，为中期脱离 ComfyUI 铺路
 - VLM 依赖放入主依赖：用户偏好简化安装
 - PyTorch cu130 索引不区分平台：用户可能在 Linux 带 GPU 环境使用
 - torchao 不列入依赖（无 Windows wheels）：代码中回退到 float16
-- 串行执行（先边缘图提取，再 VLM 描述）：并行仅节省 ~2.5s
+- VLM 推理后调用 unload() 释放 VRAM：float16 占 ~14GB，不释放则 ComfyUI 无法加载模型
 - VLM 模型下载统一到 download_models.py，保存路径遵循 `供应方/模型名` 格式
 - download_models.py 默认使用 hf-mirror（不开代理）
 
-**待完成**：
-1. 启动 ComfyUI，执行 `uv run python scripts/demo_e2e.py --image <测试图> --auto-prompt --seed 42`
-2. 验证 VLM 成功生成描述 + 接收端成功还原图像 + 对比图正确输出
-3. 如遇问题（VRAM 不足、推理错误等）修复代码
-4. 验证通过后更新任务状态为 ✅ 已完成，更新进度总览表，追加最终交接记录
+**下一任务**：P2-11 实现-中继传输协议（Phase 2）或进行 Phase 1 阶段回顾
 
-**遗留问题**：
-- 端到端 --auto-prompt 模式的实际执行验证待 ComfyUI 启动后完成
+**下一任务需关注**：
+- Phase 1 全部 8 个任务已完成，建议先进行 Phase 1 阶段回顾（/task-review）确认退出标准
+- Phase 1 退出标准：单机上能跑通"VLM 自动语义压缩→条件还原"完整流程，demo 脚本支持手动/自动 prompt 双模式——已满足
+
+**遗留问题**：无
