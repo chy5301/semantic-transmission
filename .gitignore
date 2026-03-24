@@ -13,5 +13,6 @@ build/
 # Temporary files
 .tmp-*/
 
-# 脚本输出
-output/
+# 脚本输出（output/demo/ 下的测试结果纳入版本管理，其余忽略）
+output/*
+!output/demo/

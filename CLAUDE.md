@@ -1,11 +1,5 @@
 # CLAUDE.md
 
-## 仓库信息
-
-- **主仓库**：Gitee（`chy5301/semantic-transmission`，私有）
-- **镜像**：GitHub（`chy5301/semantic-transmission`，私有）
-- 日常开发推送到 Gitee（origin），GitHub 镜像按需同步
-
 ## 常用命令
 
 ```bash

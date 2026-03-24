@@ -143,8 +143,6 @@ uv run python scripts/verify_workflows.py
 
 ## 参与开发
 
-**主仓库**：[Gitee](https://gitee.com/chy5301/semantic-transmission)（私有）| GitHub 仓库为镜像
-
 本项目采用 GitHub Flow 协作模式，禁止直接 push main。基本流程：
 
 1. 从 main 创建功能分支（`feature/xxx`、`fix/xxx`、`docs/xxx`）
