@@ -57,17 +57,19 @@
 - [x] 搭建 ComfyUI API 调用环境
   - ComfyUI 以 `--listen` 模式启动
   - Python 封装 REST API 客户端（POST /prompt、GET /history、WebSocket 监听）
-- [ ] 部署发送端 VLM：Qwen2.5-VL-7B（vLLM/Transformers，单卡 RTX 4090）
+- [x] 集成发送端 VLM：Qwen2.5-VL-7B（Transformers 原生推理，INT4 量化）
 - [x] 封装发送端模块
   - 输入：图像/视频文件
-  - 处理：ComfyUI 工作流 Canny 边缘提取（VLM 生成结构化描述待 P2-13）
-  - 输出：Canny 条件图（文本描述待 P2-13）
+  - 处理：ComfyUI 工作流 Canny 边缘提取 + VLM 自动生成语义描述
+  - 输出：Canny 条件图 + 文本描述
 - [x] 封装接收端模块
   - 输入：文本描述 + 条件图像
   - 处理：动态构建工作流 JSON → ComfyUI API 提交 → 获取结果
   - 输出：Z-Image-Turbo + ControlNet Union 还原的图像
 - [x] 搭建端到端 pipeline
   - 图像 → 发送端 → 序列化传输数据 → 接收端 → 还原图像
+- [x] 实现中继传输协议（LocalRelay + SocketRelay）
+- [x] 编写双机演示脚本（run_sender.py + run_receiver.py）
 - [ ] 初步评估还原质量
   - 主要指标：CLIP Score、LPIPS（感知质量）
   - 辅助指标：PSNR、SSIM（像素精确度，生成式方案非强项）
@@ -76,7 +78,10 @@
 ### 交付物
 
 - 可运行的发送端/接收端 Python 模块
-- 端到端 demo 脚本
+- VLM 自动语义描述生成（QwenVLSender）
+- 中继传输模块（LocalRelay + SocketRelay）
+- 端到端 demo 脚本 + 双机演示脚本
+- 端到端测试报告（`docs/test-reports/`）
 - 初步质量评估数据（含码率-质量权衡分析）
 
 ---

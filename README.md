@@ -30,7 +30,7 @@ graph LR
 | 阶段 | 目标 | 状态 |
 |------|------|------|
 | 阶段一：调研与选型 | 论文综述、开源项目评估、技术路线确定 | ✅ 已完成 |
-| 阶段二：ComfyUI API 原型 | 基于 ComfyUI API 打通端到端流程 | 🔄 进行中（10/16） |
+| 阶段二：ComfyUI API 原型 | 基于 ComfyUI API 打通端到端流程 | 🔄 进行中 |
 | 阶段三：方案迭代优化 | 模型升级、条件优化、视频级扩展 | 待启动 |
 | 阶段四：工程化 | 脱离 ComfyUI，构建独立可部署系统 | 待启动 |
 
@@ -51,13 +51,15 @@ graph LR
 │   ├── research/                   # 调研产出
 │   │   ├── papers/                 # 论文综述
 │   │   ├── projects/               # 开源项目评估
-│   │   ├── models/                 # 模型对比（待完成）
+│   │   ├── models/                 # 模型对比
 │   │   └── comfyui-workflow-analysis.md  # ComfyUI 工作流分析
+│   ├── test-reports/               # 端到端测试报告
 │   ├── collaboration/              # 协作规范（Git/GitHub/PR/Issue）
 │   └── workflow/                   # 结构化工作流（Claude Code agent coding 工具）
-├── scripts/                        # 工具脚本（模型下载、连通性测试、工作流验证）
+├── scripts/                        # 工具脚本（模型下载、连通性测试、工作流验证、双机演示）
 ├── resources/
-│   └── comfyui/                    # ComfyUI 工作流文件及截图
+│   ├── comfyui/                    # ComfyUI 工作流文件及截图
+│   └── test_images/                # 测试用图片集
 ├── output/                          # 脚本输出（运行 demo 后本地生成，不纳入版本管理）
 ├── .github/                        # GitHub 模板与 CI 工作流
 └── CLAUDE.md                       # AI 辅助开发配置

@@ -55,7 +55,9 @@ src/semantic_transmission/
 - `docs/research/selection-report.md` — 模型/方案选型报告
 - `docs/comfyui-setup.md` — ComfyUI 部署指南
 - `docs/workflow/` — structured-workflow 插件产物（agent coding 任务管理，详见"分支与协作约定"）
+- `docs/test-reports/` — 端到端测试报告
 - `docs/collaboration/` — 团队协作指南
+- `resources/test_images/` — 测试用图片集
 
 ## CI 注意事项
 
@@ -77,7 +79,7 @@ src/semantic_transmission/
 - **工作流管理**：使用 structured-workflow 系统辅助 agent coding，详见下方"分支与协作约定"
 - **ComfyUI API 模式**：通过 HTTP API 调用 ComfyUI 工作流
 - **Python**：主要开发语言，使用 uv 管理依赖
-- **生成模型**：Stable Diffusion 系列、Wan2.x 等扩散模型
+- **生成模型**：Z-Image-Turbo + ControlNet Union（当前基线），Wan2.x（规划中）
 - **视觉理解模型**：Qwen-VL 等多模态大模型用于图像/视频描述生成
 
 ## 分支与协作约定
