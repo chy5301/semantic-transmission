@@ -80,6 +80,7 @@ src/semantic_transmission/
 
 - 所有变更必须走 feature branch → PR → Squash Merge，禁止直接 push main
 - 协作者的 PR 需至少 1 人 approve + CI 通过；管理员的 PR 仅需 CI 通过即可自行合并
+- 管理员合并自己的 PR 时需使用 `gh pr merge <number> --squash --delete-branch --admin`（GitHub 不允许自我 approve，需用 `--admin` 绕过 Rulesets）
 - 分支命名规范见 `docs/collaboration/05-project-conventions.md`
 
 ### workflow 系统使用规范
