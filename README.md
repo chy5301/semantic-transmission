@@ -60,7 +60,8 @@ graph LR
 ├── resources/
 │   ├── comfyui/                    # ComfyUI 工作流文件及截图
 │   └── test_images/                # 测试用图片集
-├── output/                          # 脚本输出（运行 demo 后本地生成，不纳入版本管理）
+├── output/
+│   └── demo/                       # 端到端测试结果（PNG 通过 Git LFS 管理）
 ├── .github/                        # GitHub 模板与 CI 工作流
 └── CLAUDE.md                       # AI 辅助开发配置
 ```

@@ -40,12 +40,12 @@ graph TD
 ### 第四步：创建分支保护规则（Rulesets）
 > 详见 [03-仓库设置](./03-repo-settings.md#一分支保护规则rulesets)
 >
-> **注意**：私有仓库需要 GitHub Pro 才能启用。如暂未升级，先跳过此步，依靠团队约定和 CI 检查保障流程。
+> **注意**：Rulesets 在私有仓库上需要 GitHub Pro；公共仓库免费可用。本仓库已转为公开。
 
-- [ ] Settings → Rules → Rulesets → New branch ruleset
-- [ ] 添加 Bypass：Repository admin（Always）
-- [ ] 开启 "Require a pull request before merging"（1 approval）
-- [ ] 开启 "Require status checks to pass"（选择 `lint-and-test`）
+- [x] Settings → Rules → Rulesets → New branch ruleset
+- [x] 添加 Bypass：Repository admin（Always）
+- [x] 开启 "Require a pull request before merging"（1 approval）
+- [x] 开启 "Require status checks to pass"（选择 `lint-and-test`）
 
 ### 第五步：初始化 Labels
 > 详见 [04-模板与标签](./04-templates-and-labels.md)
