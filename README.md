@@ -58,6 +58,8 @@ graph LR
 ├── scripts/                        # 工具脚本（模型下载、连通性测试、工作流验证）
 ├── resources/
 │   └── comfyui/                    # ComfyUI 工作流文件及截图
+├── output/
+│   └── demo/                       # 端到端测试结果（PNG 通过 Git LFS 管理）
 ├── .github/                        # GitHub 模板与 CI 工作流
 └── CLAUDE.md                       # AI 辅助开发配置
 ```
@@ -66,7 +68,12 @@ graph LR
 
 ### 1. 安装项目依赖
 
-需要 Python >= 3.10 和 [uv](https://docs.astral.sh/uv/)：
+需要 Python >= 3.10、[uv](https://docs.astral.sh/uv/) 和 [Git LFS](https://git-lfs.com/)：
+
+```bash
+# 安装 Git LFS（首次使用需执行）
+git lfs install
+```
 
 ```bash
 uv sync
