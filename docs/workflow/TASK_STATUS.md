@@ -11,9 +11,9 @@
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 | 0 |
 | Phase 1: 工作流拆分与语义压缩 | 8 | 8 | 0 | 0 | 0 |
-| Phase 2: 中继传输与双机演示 | 2 | 0 | 0 | 0 | 2 |
+| Phase 2: 中继传输与双机演示 | 2 | 1 | 0 | 0 | 1 |
 | Phase 3: 质量优化 | 1 | 0 | 0 | 0 | 1 |
-| **合计** | **15** | **12** | **0** | **0** | **3** |
+| **合计** | **15** | **13** | **0** | **0** | **2** |
 
 ## 任务状态
 
@@ -31,7 +31,7 @@
 | P2-16 | 部署-本机 ComfyUI 实例 | Phase 1 | ✅ 已完成 | P2-05 |
 | P2-10 | 搭建-端到端 Demo 脚本 | Phase 1 | ✅ 已完成 | P2-08, P2-09, P2-16 |
 | P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | ✅ 已完成 | P2-10 |
-| P2-11 | 实现-中继传输协议 | Phase 2 | ⬜ 待开始 | P2-10 |
+| P2-11 | 实现-中继传输协议 | Phase 2 | ✅ 已完成 | P2-10 |
 | P2-12 | 编写-双机演示脚本 | Phase 2 | ⬜ 待开始 | P2-11 |
 | P2-14 | 实现-质量评估模块 | Phase 3 | ⬜ 待开始 | P2-10 |
 | P2-15 | 脱离-ComfyUI 发送端 | Phase 3 | ❌ 已取消 | P2-13 |
@@ -509,5 +509,47 @@
 **下一任务需关注**：
 - Phase 1 全部 8 个任务已完成，建议先进行 Phase 1 阶段回顾（/task-review）确认退出标准
 - Phase 1 退出标准：单机上能跑通"VLM 自动语义压缩→条件还原"完整流程，demo 脚本支持手动/自动 prompt 双模式——已满足
+
+**遗留问题**：无
+
+### P2-11 实现-中继传输协议（2026-03-24）
+
+**完成内容**：
+- 实现中继传输模块 `pipeline/relay.py`，支持两种传输模式
+- 定义 `TransmissionPacket` 数据结构：edge_image (bytes) + prompt_text (str) + metadata (dict)
+- 实现 `LocalRelay`：基于 `queue.Queue` 的线程安全内存传递，支持超时
+- 实现 `SocketRelaySender`：TCP 客户端，主动连接接收端并发送数据，支持上下文管理器
+- 实现 `SocketRelayReceiver`：TCP 服务端，监听端口接收数据，支持上下文管理器
+- 传输协议：length-prefixed framing（每个字段 4 字节大端 uint32 长度头 + 原始数据）
+- 内部辅助函数：`_serialize_packet` / `_deserialize_packet` / `_recv_exactly` / `_receive_packet_from_socket`
+- 编写 18 个测试覆盖数据结构、序列化往返、LocalRelay、SocketRelay（含大数据包、多包、超时、Unicode）
+
+**修改的文件**（2 个新建，1 个修改）：
+- `src/semantic_transmission/pipeline/relay.py`（新建：中继传输核心实现）
+- `tests/test_relay.py`（新建：18 个测试）
+- `src/semantic_transmission/pipeline/__init__.py`（修改：导出 TransmissionPacket、LocalRelay、SocketRelaySender、SocketRelayReceiver）
+
+**验证结果**：
+- 18 个新测试全部通过 ✅
+- 100 个测试全部通过（含 82 个已有测试），无回归 ✅
+- ruff check 通过 ✅
+- ruff format 通过 ✅
+
+**关键决策**：
+- TransmissionPacket 与 TransmissionData 分离：前者是传输层概念（bytes 图像），后者是应用层概念（NDArray 图像），职责不同
+- SocketRelay 拆分为 Sender/Receiver 两个类：符合双机部署实际使用模式，各自只暴露需要的方法
+- length-prefixed framing：零依赖、支持二进制、无编码膨胀，仅用标准库 struct + socket
+- 不引入第三方库：全部使用标准库（socket、struct、json、queue、threading）
+
+**计划变更**：无
+
+**下一任务**：P2-12 编写-双机演示脚本
+
+**下一任务需关注**：
+- P2-12 需要使用 `SocketRelaySender` 和 `SocketRelayReceiver` 实现 `run_sender.py` 和 `run_receiver.py`
+- `run_sender.py` 流程：读取图像 → ComfyUISender 提取边缘图 → VLM 生成 prompt（可选）→ SocketRelaySender 发送 TransmissionPacket
+- `run_receiver.py` 流程：SocketRelayReceiver 监听 → 接收 TransmissionPacket → ComfyUIReceiver 还原图像 → 保存结果
+- 边缘图需从 PIL.Image 转为 PNG bytes 打包到 TransmissionPacket，接收端再从 bytes 传给 ComfyUIReceiver
+- SocketRelaySender 支持自动连接（send 时如未连接则自动 connect），SocketRelayReceiver 支持自动 accept（receive 时如未连接则自动 accept）
 
 **遗留问题**：无
