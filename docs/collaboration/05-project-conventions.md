@@ -107,30 +107,32 @@ uv run pytest tests/
 
 ```mermaid
 graph TD
-    A[查看 Issue / TASK_STATUS.md] --> B[认领任务]
-    B --> C[创建功能分支]
-    C --> D[开发 + 本地测试]
-    D --> E[ruff check + pytest]
-    E --> F[Push + 创建 PR]
-    F --> G[Code Review]
-    G --> H{通过?}
-    H -->|是| I[Squash Merge]
-    H -->|否| J[根据反馈修改]
-    J --> E
-    I --> K[关闭 Issue]
-    K --> L[更新 TASK_STATUS.md]
+    A[查看 Issue / 认领任务] --> B[创建功能分支]
+    B --> C[开发 + 本地测试]
+    C --> D[ruff check + pytest]
+    D --> E[Push + 创建 PR]
+    E --> F[Code Review]
+    F --> G{通过?}
+    G -->|是| H[Squash Merge]
+    G -->|否| I[根据反馈修改]
+    I --> D
+    H --> J[关闭 Issue]
 ```
 
-## 七、与现有工作流系统的配合
+## 七、与 workflow 系统的关系
 
-本项目使用 `docs/workflow/` 下的结构化工作流进行阶段管理：
+本项目 `docs/workflow/` 下的结构化工作流（structured-workflow）是开发者与 Claude Code 配合使用的 agent coding 工具，用于在 feature branch 上进行任务分解和进度跟踪。它不是团队协作的任务分配系统。
 
-- **TASK_STATUS.md**：记录整体任务进度和阶段状态
-- **TASK_PLAN.md**：详细的任务规格说明
+**对不使用 structured-workflow 的协作者而言**：
+- `docs/workflow/` 下的活跃文件（TASK_STATUS.md、TASK_PLAN.md 等）由 structured-workflow 插件生成和管理，直接阅读可能缺少上下文；`docs/workflow/archive/` 下的归档内容可正常查阅
+- structured-workflow 是 [cc-plugins](https://github.com/chy5301/cc-plugins) 中的一个插件，需要使用 Claude Code 或兼容其插件生态的工具并安装该插件后才能正常使用
+- 团队任务分配通过 GitHub Issues 按需进行
+- 按本文档第六节的协作流程开发即可
 
-### 建议配合方式
-
-1. **规划阶段**：在 TASK_PLAN.md 中定义任务规格
-2. **执行阶段**：为每个任务创建 GitHub Issue，指派负责人
-3. **开发阶段**：基于 Issue 创建分支和 PR
-4. **完成阶段**：PR 合并后，更新 TASK_STATUS.md 中的状态
+**使用 structured-workflow 开发时的流程**：
+1. 从 main 创建 feature branch
+2. 在分支上运行 task-init，分解子任务
+3. 通过 task-exec / task-auto 完成开发
+4. task-review 验证完成度
+5. task-archive 归档 workflow 产物，清理活跃文件
+6. 提交 PR，合并回 main

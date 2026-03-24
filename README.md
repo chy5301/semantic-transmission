@@ -54,7 +54,7 @@ graph LR
 │   │   ├── models/                 # 模型对比（待完成）
 │   │   └── comfyui-workflow-analysis.md  # ComfyUI 工作流分析
 │   ├── collaboration/              # 协作规范（Git/GitHub/PR/Issue）
-│   └── workflow/                   # 结构化工作流管理
+│   └── workflow/                   # 结构化工作流（Claude Code agent coding 工具）
 ├── scripts/                        # 工具脚本（模型下载、连通性测试、工作流验证）
 ├── resources/
 │   └── comfyui/                    # ComfyUI 工作流文件及截图
@@ -139,6 +139,19 @@ uv run python scripts/verify_workflows.py
 - **视觉理解**：Qwen-VL 等多模态大模型
 - **图像生成**：Z-Image-Turbo + ControlNet Union（当前基线）
 - **视频生成**：Wan2.x（规划中）
+
+## 参与开发
+
+本项目采用 GitHub Flow 协作模式，禁止直接 push main。基本流程：
+
+1. 从 main 创建功能分支（`feature/xxx`、`fix/xxx`、`docs/xxx`）
+2. 在分支上开发，提交前运行 `uv run ruff check .` 和 `uv run pytest`
+3. 推送分支并创建 Pull Request
+4. 等待 CI 通过 + Code Review 后 Squash Merge 合入 main
+
+Commit 遵循 Angular Convention，示例：`feat(模块): 功能描述`、`fix(模块): 问题修复`
+
+详细规范见 [docs/collaboration/](docs/collaboration/)。
 
 ## 调研成果
 
