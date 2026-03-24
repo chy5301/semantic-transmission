@@ -58,8 +58,7 @@ graph LR
 ├── scripts/                        # 工具脚本（模型下载、连通性测试、工作流验证）
 ├── resources/
 │   └── comfyui/                    # ComfyUI 工作流文件及截图
-├── output/
-│   └── demo/                       # 端到端测试结果（PNG 通过 Git LFS 管理）
+├── output/                          # 脚本输出（运行 demo 后本地生成，不纳入版本管理）
 ├── .github/                        # GitHub 模板与 CI 工作流
 └── CLAUDE.md                       # AI 辅助开发配置
 ```
@@ -141,6 +140,8 @@ uv run python scripts/verify_workflows.py
 - **视频生成**：Wan2.x（规划中）
 
 ## 参与开发
+
+**主仓库**：[Gitee](https://gitee.com/chy5301/semantic-transmission)（私有）| GitHub 仓库为镜像
 
 本项目采用 GitHub Flow 协作模式，禁止直接 push main。基本流程：
 
