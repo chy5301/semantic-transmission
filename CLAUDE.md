@@ -58,6 +58,8 @@ src/semantic_transmission/
 - `docs/collaboration/` — Git/GitHub 协作指南（分支管理、PR 流程、Issue 管理等）
 - `scripts/` — 工具脚本
   - `demo_e2e.py` — 端到端 demo 脚本（发送端→接收端完整流程）
+  - `run_sender.py` — 双机演示发送端脚本（提取边缘图 + 语义描述 → 网络发送）
+  - `run_receiver.py` — 双机演示接收端脚本（监听接收 → 还原图像）
   - `verify_workflows.py` — 工作流验证脚本
   - `test_comfyui_connection.py` — ComfyUI API 连通性测试
   - `download_models.py` — 模型下载辅助脚本
@@ -76,7 +78,7 @@ src/semantic_transmission/
 - ComfyUI 服务需在本地运行（默认地址 `127.0.0.1:8188`），配置见 `src/semantic_transmission/common/config.py`
 - PyTorch 使用 CUDA 13.0 索引源安装（`pyproject.toml` 中已配置 `pytorch-cu130`）
 
-## 技术栈（规划中）
+## 技术栈
 
 - **工作流管理**：使用 structured-workflow 系统管理任务，状态见 `docs/workflow/TASK_STATUS.md`
 - **ComfyUI API 模式**：通过 HTTP API 调用 ComfyUI 工作流

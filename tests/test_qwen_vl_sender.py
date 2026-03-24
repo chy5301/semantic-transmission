@@ -172,3 +172,45 @@ class TestSystemPrompt:
         call_args = mock_processor.apply_chat_template.call_args
         messages = call_args[0][0]
         assert messages[0]["content"][0]["text"] == "Custom system prompt"
+
+
+class TestUnload:
+    """测试 unload() 方法。"""
+
+    def test_unload_clears_model(self, mock_vlm_sender):
+        assert mock_vlm_sender._model is not None
+        assert mock_vlm_sender._processor is not None
+        mock_vlm_sender.unload()
+        assert mock_vlm_sender._model is None
+        assert mock_vlm_sender._processor is None
+
+    def test_unload_idempotent(self):
+        sender = QwenVLSender()
+        assert sender._model is None
+        sender.unload()  # 未加载状态调用不应报错
+        sender.unload()  # 连续调用不应报错
+        assert sender._model is None
+
+    def test_describe_after_unload_reloads(self, mock_vlm_sender, sample_image):
+        mock_vlm_sender.unload()
+        assert mock_vlm_sender._model is None
+
+        with patch.object(mock_vlm_sender, "_load_model") as mock_load:
+
+            def reload():
+                mock_vlm_sender._model = MagicMock()
+                mock_vlm_sender._model.device = "cpu"
+                mock_vlm_sender._model.generate.return_value = [[1, 2, 3, 100]]
+                mock_vlm_sender._processor = MagicMock()
+                mock_vlm_sender._processor.apply_chat_template.return_value = "text"
+                mock_vlm_sender._processor.return_value = MagicMock(
+                    input_ids=[[1, 2, 3]],
+                    to=MagicMock(return_value=MagicMock(input_ids=[[1, 2, 3]])),
+                )
+                mock_vlm_sender._processor.batch_decode.return_value = ["reloaded"]
+                mock_vlm_sender._actual_quantization = "int4"
+
+            mock_load.side_effect = reload
+            result = mock_vlm_sender.describe(sample_image)
+            mock_load.assert_called_once()
+            assert result.text == "reloaded"
