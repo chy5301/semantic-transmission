@@ -11,9 +11,9 @@
 |------|------|------|------|--------|--------|
 | Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 | 0 |
 | Phase 1: 工作流拆分与语义压缩 | 8 | 8 | 0 | 0 | 0 |
-| Phase 2: 中继传输与双机演示 | 2 | 1 | 0 | 0 | 1 |
+| Phase 2: 中继传输与双机演示 | 2 | 2 | 0 | 0 | 0 |
 | Phase 3: 质量优化 | 1 | 0 | 0 | 0 | 1 |
-| **合计** | **15** | **13** | **0** | **0** | **2** |
+| **合计** | **15** | **14** | **0** | **0** | **1** |
 
 ## 任务状态
 
@@ -32,7 +32,7 @@
 | P2-10 | 搭建-端到端 Demo 脚本 | Phase 1 | ✅ 已完成 | P2-08, P2-09, P2-16 |
 | P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | ✅ 已完成 | P2-10 |
 | P2-11 | 实现-中继传输协议 | Phase 2 | ✅ 已完成 | P2-10 |
-| P2-12 | 编写-双机演示脚本 | Phase 2 | ⬜ 待开始 | P2-11 |
+| P2-12 | 编写-双机演示脚本 | Phase 2 | ✅ 已完成 | P2-11 |
 | P2-14 | 实现-质量评估模块 | Phase 3 | ⬜ 待开始 | P2-10 |
 | P2-15 | 脱离-ComfyUI 发送端 | Phase 3 | ❌ 已取消 | P2-13 |
 
@@ -551,5 +551,44 @@
 - `run_receiver.py` 流程：SocketRelayReceiver 监听 → 接收 TransmissionPacket → ComfyUIReceiver 还原图像 → 保存结果
 - 边缘图需从 PIL.Image 转为 PNG bytes 打包到 TransmissionPacket，接收端再从 bytes 传给 ComfyUIReceiver
 - SocketRelaySender 支持自动连接（send 时如未连接则自动 connect），SocketRelayReceiver 支持自动 accept（receive 时如未连接则自动 accept）
+
+**遗留问题**：无
+
+### P2-12 编写-双机演示脚本（2026-03-24）
+
+**完成内容**：
+- 创建 `scripts/run_sender.py`：发送端独立脚本，提取边缘图 + 生成语义描述 → 通过 SocketRelaySender 发送到接收端
+- 创建 `scripts/run_receiver.py`：接收端独立脚本，监听端口接收数据 → ComfyUIReceiver 还原图像 → 保存结果
+- 发送端支持手动 prompt（`--prompt`）和 VLM 自动 prompt（`--auto-prompt`）双模式
+- 接收端支持单次模式和连续模式（`--continuous`，持续监听多次接收）
+- 两个脚本均支持 `--comfyui-host/port`（本机 ComfyUI）和 `--relay-host/port`（网络传输）参数
+- seed 通过 TransmissionPacket.metadata 从发送端传递到接收端
+- 接收端按序号创建子目录（0001/、0002/...），每次接收保存边缘图、prompt 文本、还原图像
+
+**修改的文件**（2 个新建）：
+- `scripts/run_sender.py`（新建：发送端脚本）
+- `scripts/run_receiver.py`（新建：接收端脚本）
+
+**验证结果**：
+- `run_sender.py --help` 正常显示帮助 ✅
+- `run_receiver.py --help` 正常显示帮助 ✅
+- ruff check 通过 ✅
+- ruff format 通过 ✅
+- 100 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- seed 通过 metadata 传递而非新增 TransmissionPacket 字段，保持传输协议通用性
+- 接收端连续模式：每次连接处理完后关闭 _conn，保留 _server 继续 accept 新连接
+- 接收端输出按序号分目录存放，避免多次接收的文件覆盖
+- CLI 参数风格与 demo_e2e.py 保持一致（ComfyUI 地址、VLM 配置等）
+
+**计划变更**：无
+
+**下一任务**：P2-14 实现-质量评估模块（Phase 3）或进行 Phase 2 阶段回顾
+
+**下一任务需关注**：
+- Phase 2 全部 2 个任务已完成，建议先进行 Phase 2 阶段回顾（/task-review）确认退出标准
+- Phase 2 退出标准：两台机器分别运行发送端和接收端，通过网络传输完成还原——需实际双机验证
+- 端到端双机验证需要两台局域网机器各部署 ComfyUI，运行 run_sender.py 和 run_receiver.py
 
 **遗留问题**：无
