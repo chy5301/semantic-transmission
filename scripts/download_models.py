@@ -30,9 +30,9 @@ from pathlib import Path
 
 # === 默认配置 ===
 
-# ComfyUI 安装路径
-DEFAULT_COMFYUI_DIR = Path(
-    r"D:\CONGHAOYANG\工具\ComfyUI\ComfyUI-aki\ComfyUI-aki-v3\ComfyUI"
+# ComfyUI 安装路径（从环境变量 COMFYUI_DIR 读取）
+DEFAULT_COMFYUI_DIR = (
+    Path(os.environ["COMFYUI_DIR"]) if os.environ.get("COMFYUI_DIR") else None
 )
 
 # 默认代理地址（用于 HuggingFace 下载）
@@ -41,8 +41,10 @@ DEFAULT_PROXY = "http://127.0.0.1:7890"
 # HuggingFace 国内镜像（--hf-mirror 启用时替代代理）
 HF_MIRROR_ENDPOINT = "https://hf-mirror.com"
 
-# 模型下载缓存目录（避免占用 C 盘默认缓存）
-DEFAULT_CACHE_DIR = Path(r"D:\Downloads\Models")
+# 模型下载缓存目录（从环境变量 MODEL_CACHE_DIR 读取）
+DEFAULT_CACHE_DIR = (
+    Path(os.environ["MODEL_CACHE_DIR"]) if os.environ.get("MODEL_CACHE_DIR") else None
+)
 
 # === 模型定义 ===
 
@@ -82,7 +84,7 @@ COMFYUI_MODELS = [
 ]
 
 # HuggingFace 完整仓库模型（transformers 格式）: (仓库ID, 本地目录名)
-# 保存路径: DEFAULT_CACHE_DIR / 供应方 / 模型名（如 D:\Downloads\Models\Qwen\Qwen2.5-VL-7B-Instruct）
+# 保存路径: DEFAULT_CACHE_DIR / 供应方 / 模型名（如 $MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct）
 HF_REPO_MODELS = [
     ("Qwen/Qwen2.5-VL-7B-Instruct",),
 ]
@@ -227,7 +229,7 @@ def main():
         "--comfyui-dir",
         type=Path,
         default=DEFAULT_COMFYUI_DIR,
-        help=f"ComfyUI 安装目录 (默认: {DEFAULT_COMFYUI_DIR})",
+        help="ComfyUI 安装目录（默认从环境变量 COMFYUI_DIR 读取）",
     )
     parser.add_argument(
         "--proxy",
@@ -244,7 +246,7 @@ def main():
         "--cache-dir",
         type=Path,
         default=DEFAULT_CACHE_DIR,
-        help=f"下载缓存目录 (默认: {DEFAULT_CACHE_DIR})",
+        help="下载缓存目录（默认从环境变量 MODEL_CACHE_DIR 读取）",
     )
     parser.add_argument(
         "--dry-run",
@@ -252,6 +254,17 @@ def main():
         help="仅显示将要执行的操作，不实际下载",
     )
     args = parser.parse_args()
+
+    if args.comfyui_dir is None:
+        print(
+            "错误：未指定 ComfyUI 目录。请设置环境变量 COMFYUI_DIR 或使用 --comfyui-dir 参数"
+        )
+        sys.exit(1)
+    if args.cache_dir is None:
+        print(
+            "错误：未指定缓存目录。请设置环境变量 MODEL_CACHE_DIR 或使用 --cache-dir 参数"
+        )
+        sys.exit(1)
 
     # 确定 HuggingFace 访问方式：默认使用镜像，--no-mirror 时走代理或直连
     hf_mirror = not args.no_mirror
@@ -364,7 +377,7 @@ def main():
         print("=== HuggingFace 仓库模型 ===\n")
 
     for (repo_id,) in HF_REPO_MODELS:
-        # 保存到 cache_dir/供应方/模型名（如 D:\Downloads\Models\Qwen\Qwen2.5-VL-7B-Instruct）
+        # 保存到 cache_dir/供应方/模型名（如 $MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct）
         target_dir = args.cache_dir / repo_id
         print(f"[huggingface_repo] {repo_id}")
         print(f"  目标: {target_dir}")

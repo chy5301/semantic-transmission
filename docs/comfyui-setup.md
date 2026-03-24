@@ -3,7 +3,7 @@
 ## 环境信息
 
 - **ComfyUI 版本**: v0.9.2（秋叶整合包 v3）
-- **安装路径**: `D:\CONGHAOYANG\工具\ComfyUI\ComfyUI-aki\ComfyUI-aki-v3\ComfyUI`
+- **安装路径**: `<ComfyUI 安装目录>`（通过环境变量 `COMFYUI_DIR` 配置）
 - **Python 环境**: 整合包自带 `ComfyUI-aki-v3\python\python.exe`
 - **GPU 需求**: CUDA 兼容 GPU，显存 ≥6GB（仅 ComfyUI），≥24GB（ComfyUI + VLM）
 
@@ -61,8 +61,9 @@ uv tool install "huggingface_hub[cli]"
 以 `--listen` 模式启动，开放 API 端口供项目调用：
 
 ```bash
-cd "D:\CONGHAOYANG\工具\ComfyUI\ComfyUI-aki\ComfyUI-aki-v3"
-python\python.exe ComfyUI\main.py --listen
+# 将 $COMFYUI_DIR 替换为实际的 ComfyUI 安装路径（秋叶整合包为 ComfyUI-aki-v3 目录）
+cd "$COMFYUI_DIR/.."
+python/python.exe ComfyUI/main.py --listen
 ```
 
 启动后 API 默认监听 `http://0.0.0.0:8188`。

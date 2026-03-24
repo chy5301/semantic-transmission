@@ -14,6 +14,7 @@
 
 import argparse
 import io
+import os
 import sys
 import time
 from pathlib import Path
@@ -74,11 +75,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="VLM 模型名称（默认 Qwen/Qwen2.5-VL-7B-Instruct）",
     )
+    _default_vlm_path = (
+        os.path.join(os.environ["MODEL_CACHE_DIR"], "Qwen", "Qwen2.5-VL-7B-Instruct")
+        if os.environ.get("MODEL_CACHE_DIR")
+        else None
+    )
     parser.add_argument(
         "--vlm-model-path",
         type=str,
-        default=r"D:\Downloads\Models\Qwen\Qwen2.5-VL-7B-Instruct",
-        help="VLM 模型本地路径（默认 D:\\Downloads\\Models\\Qwen\\Qwen2.5-VL-7B-Instruct）",
+        default=_default_vlm_path,
+        help="VLM 模型本地路径（默认 $MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct）",
     )
 
     return parser.parse_args()

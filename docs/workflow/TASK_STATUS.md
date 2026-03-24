@@ -81,7 +81,7 @@
 | 2026-03-22 | PyTorch 使用 cu130 索引（不区分平台） | RTX 5090 需 CUDA 13.0+；cu130 wheels 兼容 CPU-only 环境；用户可能在 Linux 带 GPU 环境使用 |
 | 2026-03-22 | torchao 不列入依赖，运行时可选 | torchao 无 Windows wheels，代码中已有 ImportError 回退到 float16 的容错逻辑 |
 | 2026-03-22 | VLM 描述与边缘图提取串行执行 | 并行仅节省 ~2.5s（边缘图提取耗时），相对 VLM 推理 10-20s 和总流程 60s+ 效果有限，保持代码简单 |
-| 2026-03-23 | VLM 模型下载纳入 download_models.py 统一管理 | 用户要求统一下载流程和保存位置。VLM 模型保存到 `D:\Downloads\Models\Qwen\Qwen2.5-VL-7B-Instruct`（供应方/模型名格式）。QwenVLSender 新增 model_path 参数支持本地加载 |
+| 2026-03-23 | VLM 模型下载纳入 download_models.py 统一管理 | 用户要求统一下载流程和保存位置。VLM 模型保存到 `$MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct`（供应方/模型名格式）。QwenVLSender 新增 model_path 参数支持本地加载 |
 | 2026-03-23 | download_models.py 默认使用 hf-mirror | 用户建议 HuggingFace 默认不开代理使用镜像源。`--hf-mirror` 改为默认行为，新增 `--no-mirror` 用于禁用 |
 | 2026-03-23 | HF 仓库完整性检查基于权重分片文件 | 仅检查 config.json 不够，之前导致半下载的模型被误判为完整。改为解析 model.safetensors.index.json 列出的分片文件逐个检查 |
 | 2026-03-24 | **取消 P2-15（脱离-ComfyUI 发送端），Phase 3 更名为"质量优化"** | P2-15 属于 ROADMAP 阶段四（工程化与脱离 ComfyUI）的范畴，放在阶段二工作流的 Phase 3 中越界。脱离 ComfyUI 应在 ROADMAP 阶段四独立规划，当前工作流聚焦原型搭建。Phase 3 仅剩 P2-14（质量评估），去掉"工程精简"后缀 |
@@ -474,7 +474,7 @@
 - 集成到 `demo_e2e.py` 的 `--auto-prompt` 模式，新增 `--vlm-model` 和 `--vlm-model-path` 参数
 - 添加 VLM 依赖到主依赖（transformers、torch、torchvision、accelerate、qwen-vl-utils），配置 PyTorch cu130 索引
 - 编写 13 个 mock 测试
-- VLM 模型下载纳入 `download_models.py` 统一管理，保存到 `D:\Downloads\Models\Qwen\Qwen2.5-VL-7B-Instruct`
+- VLM 模型下载纳入 `download_models.py` 统一管理，保存到 `$MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct`
 - `download_models.py` 默认使用 hf-mirror 镜像，修复仓库完整性检查（基于权重分片文件而非仅 config.json）
 - 新增 `unload()` 方法释放 GPU 显存，解决 VLM + ComfyUI VRAM 冲突（float16 ~14GB + ComfyUI ~6GB > 24GB）
 - demo 脚本保存 prompt 文本到 `prompt.txt`
