@@ -6,7 +6,7 @@ dist/
 build/
 
 # IDE / Agent configs (local)
-.claude/settings.local.json
+.claude/
 .continue/
 .trae/
 

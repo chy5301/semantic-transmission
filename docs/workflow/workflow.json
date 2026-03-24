@@ -29,8 +29,16 @@
       "exitCriteria": "两台机器分别运行发送端和接收端，通过网络传输完成还原"
     },
     {
-      "name": "Phase 3: 质量优化",
-      "exitCriteria": "质量评估指标可计算"
+      "name": "Phase 3: 质量评估与文档重构",
+      "exitCriteria": "质量评估指标可计算；README 作为文档门户完成；开发指南、使用指南、项目总览三类文档各有独立入口和索引"
+    },
+    {
+      "name": "Phase 4: CLI 正规化",
+      "exitCriteria": "semantic-tx 命令已注册为 console_scripts 入口点；send/receive/demo/check/download 子命令可用且功能等价于原有脚本"
+    },
+    {
+      "name": "Phase 5: GUI 开发",
+      "exitCriteria": "semantic-tx gui 可启动 Gradio 界面；覆盖配置面板、发送端、接收端、端到端演示四个标签页"
     }
   ],
   "projectContext": {

@@ -29,7 +29,9 @@
 | Phase 0 | 契约确认与项目骨架 | Python 项目结构就绪，ComfyUI API 连通性验证通过，工作流转换器完成 |
 | Phase 1 | 工作流拆分与语义压缩 | 单机上能跑通"VLM 自动语义压缩→条件还原"完整流程，demo 脚本支持手动/自动 prompt 双模式 |
 | Phase 2 | 中继传输与双机演示 | 两台机器分别运行发送端和接收端，通过网络传输完成还原 |
-| Phase 3 | 质量优化 | 质量评估指标可计算 |
+| Phase 3 | 质量评估与文档重构 | 质量评估指标可计算；README 门户完成；开发指南、使用指南、项目总览三类文档各就位 |
+| Phase 4 | CLI 正规化 | semantic-tx 命令可用；send/receive/demo/check/download 子命令功能等价于原脚本 |
+| Phase 5 | GUI 开发 | semantic-tx gui 启动 Gradio 界面；覆盖配置/发送/接收/端到端四个面板 |
 
 ## 任务列表
 
@@ -388,7 +390,7 @@
 
 ---
 
-### Phase 3: 质量优化
+### Phase 3: 质量评估与文档重构
 
 > **同事技术建议（2026-03-18）**：
 > - **接收端模型选型约束**：接收端不是普通文生图，需要具备图片编辑功能或 ControlNet 参考能力，才能实现"基于上一帧 + 下一帧特征"的条件生成。当前推荐：Z-Image-Turbo（已在用）、FLUX.2-klein-9B（备选）
@@ -396,7 +398,7 @@
 
 #### [P2-14] 实现-质量评估模块
 
-- **阶段**: Phase 3 - 质量优化
+- **阶段**: Phase 3 - 质量评估与文档重构
 - **依赖**: P2-10
 - **目标**: 实现 CLIP Score、LPIPS、PSNR、SSIM 等质量评估指标
 - **预估工作量**: M
@@ -406,3 +408,278 @@
 #### ~~[P2-15] 脱离-ComfyUI 发送端~~ ❌ 已取消
 
 - **取消原因**: 属于 ROADMAP 阶段四（工程化与脱离 ComfyUI）的范畴，不应在阶段二工作流中实施，留待阶段四独立规划
+
+---
+
+#### [P2-17] 重构-README 为文档门户
+
+- **阶段**: Phase 3 - 质量评估与文档重构
+- **依赖**: 无
+- **目标**: 将根 README.md 重构为面向所有受众的导航中枢，精简正文、补充文档索引
+- **背景信息**: 当前 README.md 143 行，以开发者视角为主，缺少按受众分类的文档导航。docs/ 下 41 个文件分散在 6 个子目录，无统一索引。需要将 README 定位为"项目门户"，保留核心信息（架构图、快速开始），增加按受众分层的文档导航表。
+- **涉及文件**:
+  - `README.md`（修改）
+  - `docs/README.md`（新建 — 文档总索引）
+- **具体步骤**:
+  1. 精简 README.md：保留项目简介、架构图、快速开始（安装+部署+验证），移除冗余细节
+  2. 增加"文档导航"章节，按三类受众（开发者、用户、项目负责人）列出入口链接
+  3. 新建 `docs/README.md` 作为文档总索引，列出所有文档及简要说明
+  4. 确保所有链接有效
+- **验收标准**:
+  - [ ] README.md 包含文档导航章节，指向三类受众入口
+  - [ ] `docs/README.md` 列出全部文档的分类索引
+  - [ ] 所有内部链接可达
+- **自测方法**: 手动检查每个链接的目标文件存在
+- **回滚方案**: git restore README.md，删除 docs/README.md
+- **预估工作量**: S
+
+---
+
+#### [P2-18] 编写-开发指南
+
+- **阶段**: Phase 3 - 质量评估与文档重构
+- **依赖**: 无
+- **目标**: 编写面向开发者的完整开发指南，涵盖架构说明、环境搭建、测试规范、贡献流程
+- **背景信息**: 开发相关信息分散在 CLAUDE.md（命令速查）、README.md（快速开始）、`docs/collaboration/`（Git 协作规范）多处。架构详解（源码模块关系、数据流、扩展点）完全缺失。需要一份整合文档，含架构图（Mermaid）。
+- **涉及文件**:
+  - `docs/development-guide.md`（新建）
+  - `docs/architecture.md`（新建）
+- **具体步骤**:
+  1. 编写 `docs/development-guide.md`：环境要求、依赖安装、项目结构说明、开发工作流（分支/测试/CI）、代码规范（ruff）
+  2. 编写 `docs/architecture.md`：模块关系图（Mermaid）、核心数据流（sender→relay→receiver）、ComfyUI 客户端调用流程、抽象接口设计、扩展点说明
+- **验收标准**:
+  - [ ] 开发指南覆盖：环境搭建、项目结构、测试方法、CI 说明、编码规范
+  - [ ] 架构文档包含至少 2 个 Mermaid 图（模块关系、数据流）
+  - [ ] 新开发者可仅凭文档完成环境搭建和首次测试
+- **自测方法**: 按文档步骤操作验证流程可行
+- **回滚方案**: 删除两个新建文件
+- **预估工作量**: M
+
+---
+
+#### [P2-19] 编写-使用指南与演示手册
+
+- **阶段**: Phase 3 - 质量评估与文档重构
+- **依赖**: 无
+- **目标**: 编写面向用户的操作手册，覆盖单机演示和双机演示的完整步骤
+- **背景信息**: 脚本用法仅在脚本 docstring 中简要说明，缺少完整操作手册。用户需要从零开始的演示步骤，包括前置环境准备、ComfyUI 启动、各脚本的参数说明和示例。双机演示尤其需要网络配置说明。
+- **涉及文件**:
+  - `docs/user-guide.md`（新建）
+  - `docs/demo-handbook.md`（新建）
+- **具体步骤**:
+  1. 编写 `docs/user-guide.md`：系统要求、ComfyUI 安装（引用 comfyui-setup.md）、模型下载、项目安装、基本使用流程
+  2. 编写 `docs/demo-handbook.md`：单机端到端演示（完整操作步骤+参数说明）、双机演示（各端启动步骤、网络配置、防火墙注意事项）、常见错误与排查
+  3. 每个命令附参数表格和示例
+- **验收标准**:
+  - [ ] 用户指南覆盖完整安装流程
+  - [ ] 演示手册包含单机和双机两种模式的逐步操作说明
+  - [ ] 每个命令都有参数表格和示例
+- **自测方法**: 按手册步骤操作一遍验证流程
+- **回滚方案**: 删除两个新建文件
+- **预估工作量**: M
+
+---
+
+#### [P2-20] 编写-项目总览与进度摘要
+
+- **阶段**: Phase 3 - 质量评估与文档重构
+- **依赖**: 无
+- **目标**: 编写面向项目负责人的项目总览，概括目标、技术路线、进展、关键成果
+- **背景信息**: 负责人需要快速了解项目状态，不需要代码细节。ROADMAP.md 偏技术路线，缺少可快速浏览的进度摘要和关键成果展示。
+- **涉及文件**:
+  - `docs/project-overview.md`（新建）
+  - `docs/ROADMAP.md`（修改 — 更新完成状态，补充新阶段）
+- **具体步骤**:
+  1. 编写 `docs/project-overview.md`：项目目标与愿景、技术路线（精简架构图）、阶段进展汇总表、关键成果、后续计划与风险
+  2. 更新 ROADMAP.md：补充阶段二完成标记，添加新增阶段内容
+- **验收标准**:
+  - [ ] 项目总览可在 2 分钟内读完
+  - [ ] ROADMAP 与实际进展同步
+  - [ ] 包含进度汇总表
+- **自测方法**: 检查文档内容与 TASK_STATUS.md 一致
+- **回滚方案**: 删除 project-overview.md，git restore ROADMAP.md
+- **预估工作量**: S
+
+---
+
+### Phase 4: CLI 正规化
+
+#### [P2-21] 注册-CLI 入口与基础框架
+
+- **阶段**: Phase 4 - CLI 正规化
+- **依赖**: 无
+- **目标**: 在 pyproject.toml 注册 `semantic-tx` CLI 入口点，搭建 click 子命令框架
+- **背景信息**: 当前 6 个脚本通过 `uv run python scripts/xxx.py` 调用，没有统一入口。需要注册 `[project.scripts]` 入口点，使用 click 构建子命令体系（click 比 argparse 子命令支持更好、帮助文档自动生成更完善）。
+- **涉及文件**:
+  - `pyproject.toml`（修改 — 添加 click 依赖 + scripts 入口）
+  - `src/semantic_transmission/cli/__init__.py`（新建）
+  - `src/semantic_transmission/cli/main.py`（新建）
+- **具体步骤**:
+  1. 在 pyproject.toml dependencies 中添加 `click>=8.0`
+  2. 在 `[project.scripts]` 中注册 `semantic-tx = "semantic_transmission.cli.main:cli"`
+  3. 创建 `src/semantic_transmission/cli/` 包
+  4. 在 `cli/main.py` 中实现 click Group 主入口（`--version`、帮助信息、子命令占位）
+  5. 运行 `uv sync` 确认入口点注册成功
+- **验收标准**:
+  - [ ] `uv run semantic-tx --help` 输出子命令列表
+  - [ ] `uv run semantic-tx --version` 输出版本号
+  - [ ] click 依赖已添加到 pyproject.toml
+- **自测方法**: `uv sync && uv run semantic-tx --help`
+- **回滚方案**: 还原 pyproject.toml，删除 cli/ 目录
+- **预估工作量**: S
+
+---
+
+#### [P2-22] 实现-CLI 核心子命令（send/receive/demo）
+
+- **阶段**: Phase 4 - CLI 正规化
+- **依赖**: P2-21
+- **目标**: 将 demo_e2e.py、run_sender.py、run_receiver.py 的功能迁移为 CLI 子命令
+- **背景信息**: 三个脚本各自使用 argparse 解析参数。需将参数迁移为 click 选项，核心业务逻辑保持不变，仅替换 CLI 入口层。原脚本保留但添加废弃提示。
+- **涉及文件**:
+  - `src/semantic_transmission/cli/main.py`（修改）
+  - `src/semantic_transmission/cli/send.py`（新建）
+  - `src/semantic_transmission/cli/receive.py`（新建）
+  - `src/semantic_transmission/cli/demo.py`（新建）
+  - `scripts/demo_e2e.py`（修改 — 添加废弃提示）
+  - `scripts/run_sender.py`（修改 — 添加废弃提示）
+  - `scripts/run_receiver.py`（修改 — 添加废弃提示）
+- **具体步骤**:
+  1. 创建 `cli/send.py`：将 run_sender.py 的 argparse 参数转为 click 选项，复用业务逻辑
+  2. 创建 `cli/receive.py`：迁移 run_receiver.py
+  3. 创建 `cli/demo.py`：迁移 demo_e2e.py
+  4. 在 main.py 中注册三个子命令
+  5. 原脚本 `__main__` 中添加打印提示：建议使用 `semantic-tx send/receive/demo`
+- **验收标准**:
+  - [ ] `semantic-tx send/receive/demo --help` 各显示与原脚本等价的参数
+  - [ ] 三个子命令功能与原脚本一致
+- **自测方法**: 分别运行三个子命令的 `--help`，确认参数完整
+- **回滚方案**: 删除新建文件，还原 main.py 和三个脚本
+- **预估工作量**: M
+
+---
+
+#### [P2-23] 实现-CLI 工具子命令（check/download）
+
+- **阶段**: Phase 4 - CLI 正规化
+- **依赖**: P2-21
+- **目标**: 将 test_comfyui_connection.py、verify_workflows.py、download_models.py 迁移为 CLI 子命令
+- **背景信息**: check 子命令合并连通性测试和工作流验证（`semantic-tx check connection` / `semantic-tx check workflows`），download 子命令迁移模型下载功能。
+- **涉及文件**:
+  - `src/semantic_transmission/cli/main.py`（修改）
+  - `src/semantic_transmission/cli/check.py`（新建）
+  - `src/semantic_transmission/cli/download.py`（新建）
+  - `scripts/test_comfyui_connection.py`（修改 — 添加废弃提示）
+  - `scripts/verify_workflows.py`（修改 — 添加废弃提示）
+  - `scripts/download_models.py`（修改 — 添加废弃提示）
+- **具体步骤**:
+  1. 创建 `cli/check.py`：click Group 含 `connection` 和 `workflows` 两个子命令
+  2. 创建 `cli/download.py`：迁移 download_models.py 参数（--hf-mirror, --proxy, --dry-run 等）
+  3. 在 main.py 中注册 check 和 download 子命令
+  4. 原脚本添加废弃提示
+- **验收标准**:
+  - [ ] `semantic-tx check connection/workflows` 等价于原脚本
+  - [ ] `semantic-tx download --help` 显示完整参数
+- **自测方法**: 运行各子命令的 `--help` 确认参数完整
+- **回滚方案**: 删除新建文件，还原 main.py 和三个脚本
+- **预估工作量**: M
+
+---
+
+#### [P2-24] 编写-CLI 参考文档与测试
+
+- **阶段**: Phase 4 - CLI 正规化
+- **依赖**: P2-22, P2-23
+- **目标**: 编写 CLI 完整参考文档，补充集成测试
+- **背景信息**: CLI 实现后需要完整的参考文档和基本测试确保入口点注册正确、子命令可发现。
+- **涉及文件**:
+  - `docs/cli-reference.md`（新建）
+  - `tests/test_cli.py`（新建）
+- **具体步骤**:
+  1. 编写 `docs/cli-reference.md`：命令总览表、每个子命令的参数表格+示例
+  2. 编写 `tests/test_cli.py`：使用 click.testing.CliRunner 测试各子命令 `--help` 和参数解析
+  3. 更新 README.md 文档导航中的 CLI 参考链接
+- **验收标准**:
+  - [ ] CLI 参考文档覆盖所有子命令
+  - [ ] 每个子命令至少 1 个 CliRunner 测试
+  - [ ] `uv run pytest tests/test_cli.py` 通过
+- **自测方法**: `uv run pytest tests/test_cli.py -v`
+- **回滚方案**: 删除两个新建文件
+- **预估工作量**: M
+
+---
+
+### Phase 5: GUI 开发
+
+#### [P2-25] 搭建-Gradio GUI 基础框架与配置面板
+
+- **阶段**: Phase 5 - GUI 开发
+- **依赖**: P2-21
+- **目标**: 搭建 Gradio GUI 基础框架，实现配置面板和 `semantic-tx gui` 启动入口
+- **背景信息**: 项目完全没有 GUI。Gradio 是 Python 原生 AI Demo 框架，适合本项目的展示需求。通过 `semantic-tx gui` 启动。首先实现配置面板（ComfyUI 地址、VLM 模型路径的可视化配置和连通性测试）。
+- **涉及文件**:
+  - `pyproject.toml`（修改 — 添加 gradio 依赖）
+  - `src/semantic_transmission/gui/__init__.py`（新建）
+  - `src/semantic_transmission/gui/app.py`（新建）
+  - `src/semantic_transmission/gui/config_panel.py`（新建）
+  - `src/semantic_transmission/cli/main.py`（修改 — 实现 gui 子命令）
+- **具体步骤**:
+  1. 在 pyproject.toml 添加 `gradio>=4.0` 依赖
+  2. 创建 `gui/app.py`：Gradio Blocks 主界面，Tabs 组织多面板
+  3. 实现 `gui/config_panel.py`：ComfyUI 地址输入、VLM 路径配置、"测试连接"按钮、状态显示
+  4. 在 cli/main.py 的 gui 子命令中调用 `app.launch()`，支持 `--port`/`--share`
+- **验收标准**:
+  - [ ] `uv run semantic-tx gui` 启动 Gradio 界面
+  - [ ] 配置面板可输入 ComfyUI 地址并测试连接
+  - [ ] 界面包含 Tabs 结构（配置/发送端/接收端/端到端 — 后三个暂为占位）
+- **自测方法**: 启动 GUI，在配置面板中输入地址并测试连接
+- **回滚方案**: 还原 pyproject.toml 和 cli/main.py，删除 gui/ 目录
+- **预估工作量**: M
+
+---
+
+#### [P2-26] 实现-GUI 发送端与接收端视图
+
+- **阶段**: Phase 5 - GUI 开发
+- **依赖**: P2-25
+- **目标**: 实现 GUI 的发送端和接收端标签页
+- **背景信息**: 发送端视图：上传图片 → 提取 Canny 边缘图 + VLM 语义描述。接收端视图：输入 prompt + 边缘图 → 还原图像并对比。两个面板调用现有的 ComfyUISender 和 ComfyUIReceiver 业务逻辑。
+- **涉及文件**:
+  - `src/semantic_transmission/gui/sender_panel.py`（新建）
+  - `src/semantic_transmission/gui/receiver_panel.py`（新建）
+  - `src/semantic_transmission/gui/app.py`（修改 — 集成新面板）
+- **具体步骤**:
+  1. 实现 `gui/sender_panel.py`：图片上传、prompt 模式选择（手动/自动）、"提取"按钮、结果展示（边缘图+prompt 文本）
+  2. 实现 `gui/receiver_panel.py`：边缘图上传、prompt 输入、"还原"按钮、还原结果+对比
+  3. 在 app.py 中注册到对应 Tab
+- **验收标准**:
+  - [ ] 发送端面板：上传图片后可提取边缘图和语义描述
+  - [ ] 接收端面板：输入边缘图和 prompt 后可还原图像
+  - [ ] 处理过程中有进度提示
+- **自测方法**: 启动 GUI，在两个面板分别完成操作
+- **回滚方案**: 删除两个新建文件，还原 app.py
+- **预估工作量**: M
+
+---
+
+#### [P2-27] 实现-GUI 端到端模式与日志面板
+
+- **阶段**: Phase 5 - GUI 开发
+- **依赖**: P2-26
+- **目标**: 实现一键端到端演示和实时日志面板
+- **背景信息**: 端到端模式：上传图片 → 一键完成"边缘提取→语义描述→还原→对比"全流程。日志面板：显示 API 调用过程、耗时统计、错误信息。
+- **涉及文件**:
+  - `src/semantic_transmission/gui/pipeline_panel.py`（新建）
+  - `src/semantic_transmission/gui/app.py`（修改 — 集成 Pipeline Tab）
+- **具体步骤**:
+  1. 实现 `gui/pipeline_panel.py`：图片上传 + prompt 模式 → "一键演示" → 展示中间结果 → 最终对比
+  2. 添加实时日志区域（Textbox streaming）
+  3. 添加耗时统计（发送端/接收端/总耗时）
+  4. 在 app.py 中注册 Pipeline Tab
+- **验收标准**:
+  - [ ] 一键演示可完成端到端流程
+  - [ ] 界面展示中间结果和最终对比
+  - [ ] 日志区域显示处理过程信息
+- **自测方法**: 启动 GUI，上传图片完成端到端演示
+- **回滚方案**: 删除 pipeline_panel.py，还原 app.py
+- **预估工作量**: M
