@@ -7,7 +7,9 @@ uv sync                  # 安装依赖
 uv run pytest            # 运行全部测试
 uv run pytest tests/test_comfyui_client.py  # 运行单个测试文件
 uv run ruff check .      # 代码检查（与 CI 一致，覆盖 src/ scripts/ tests/）
-uv run ruff format .     # 代码格式化（与 CI 一致）
+uv run ruff format .     # 代码格式化
+uv run ruff format --check .  # 格式化检查（与 CI 一致，仅检查不修改）
+uv run python scripts/demo_e2e.py  # 运行端到端 demo（需 ComfyUI 服务运行中）
 ```
 
 ## 项目概述
@@ -30,7 +32,7 @@ uv run ruff format .     # 代码格式化（与 CI 一致）
 ```
 src/semantic_transmission/
 ├── common/          # 公共模块：ComfyUI 客户端、配置、类型定义
-├── pipeline/        # 端到端管道编排
+├── pipeline/        # 端到端管道编排（含 relay 中继转发）
 ├── sender/          # 发送端：图像/视频 → 语义描述 + 条件信息
 └── receiver/        # 接收端：语义描述 → 图像/视频还原
 ```
@@ -46,11 +48,14 @@ src/semantic_transmission/
   - `projects/` — 开源项目评估（ComfyUI API 集成路径已确定）
   - `models/` — 模型对比
   - `comfyui-workflow-analysis.md` — ComfyUI 工作流技术基线分析
+  - `selection-report.md` — 模型/方案选型报告
+  - `skill-evaluation.md` — 技能评估文档
 - `docs/comfyui-setup.md` — ComfyUI 部署指南（模型下载、自定义节点安装、验证步骤）
 - `docs/test-reports/` — 测试报告
   - `01-e2e-manual-prompt-test.md` — Round 1：简短 prompt 测试（6 张越野车场景）
   - `02-e2e-detailed-prompt-test.md` — Round 2：详细 prompt 测试 + 两轮对比分析
 - `docs/workflow/` — 结构化工作流管理（workflow.json、TASK_STATUS.md 等）
+- `docs/collaboration/` — Git/GitHub 协作指南（分支管理、PR 流程、Issue 管理等）
 - `scripts/` — 工具脚本
   - `demo_e2e.py` — 端到端 demo 脚本（发送端→接收端完整流程）
   - `verify_workflows.py` — 工作流验证脚本
@@ -65,6 +70,11 @@ src/semantic_transmission/
 ## 文档规范
 
 - 文档中的流程图、拓扑图等使用 Mermaid 格式（```mermaid），不使用 ASCII art
+
+## 环境前置条件
+
+- ComfyUI 服务需在本地运行（默认地址 `127.0.0.1:8188`），配置见 `src/semantic_transmission/common/config.py`
+- PyTorch 使用 CUDA 13.0 索引源安装（`pyproject.toml` 中已配置 `pytorch-cu130`）
 
 ## 技术栈（规划中）
 
