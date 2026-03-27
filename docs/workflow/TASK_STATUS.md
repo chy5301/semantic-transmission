@@ -12,10 +12,10 @@
 | Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 | 0 |
 | Phase 1: 工作流拆分与语义压缩 | 8 | 8 | 0 | 0 | 0 |
 | Phase 2: 中继传输与双机演示 | 2 | 2 | 0 | 0 | 0 |
-| Phase 3: 质量评估与文档重构 | 5 | 0 | 0 | 0 | 5 |
+| Phase 3: 质量评估与文档重构 | 6 | 1 | 0 | 0 | 5 |
 | Phase 4: CLI 正规化 | 4 | 0 | 0 | 0 | 4 |
 | Phase 5: GUI 开发 | 3 | 0 | 0 | 0 | 3 |
-| **合计** | **26** | **14** | **0** | **0** | **12** |
+| **合计** | **27** | **15** | **0** | **0** | **12** |
 
 ## 任务状态
 
@@ -35,12 +35,13 @@
 | P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | ✅ 已完成 | P2-10 |
 | P2-11 | 实现-中继传输协议 | Phase 2 | ✅ 已完成 | P2-10 |
 | P2-12 | 编写-双机演示脚本 | Phase 2 | ✅ 已完成 | P2-11 |
-| P2-14 | 实现-质量评估模块 | Phase 3 | ⬜ 待开始 | P2-10 |
+| P2-14 | 实现-质量评估模块 | Phase 3 | ✅ 已完成 | P2-10 |
 | P2-15 | 脱离-ComfyUI 发送端 | Phase 3 | ❌ 已取消 | P2-13 |
 | P2-17 | 重构-README 为文档门户 | Phase 3 | ⬜ 待开始 | 无 |
 | P2-18 | 编写-开发指南 | Phase 3 | ⬜ 待开始 | 无 |
 | P2-19 | 编写-使用指南与演示手册 | Phase 3 | ⬜ 待开始 | 无 |
 | P2-20 | 编写-项目总览与进度摘要 | Phase 3 | ⬜ 待开始 | 无 |
+| P2-28 | 编写-评估脚本与报告生成 | Phase 3 | ⬜ 待开始 | P2-14 |
 | P2-21 | 注册-CLI 入口与基础框架 | Phase 4 | ⬜ 待开始 | 无 |
 | P2-22 | 实现-CLI 核心子命令 | Phase 4 | ⬜ 待开始 | P2-21 |
 | P2-23 | 实现-CLI 工具子命令 | Phase 4 | ⬜ 待开始 | P2-21 |
@@ -87,6 +88,10 @@
 | 2026-03-24 | **取消 P2-15（脱离-ComfyUI 发送端），Phase 3 更名为"质量优化"** | P2-15 属于 ROADMAP 阶段四（工程化与脱离 ComfyUI）的范畴，放在阶段二工作流的 Phase 3 中越界。脱离 ComfyUI 应在 ROADMAP 阶段四独立规划，当前工作流聚焦原型搭建。Phase 3 仅剩 P2-14（质量评估），去掉"工程精简"后缀 |
 | 2026-03-24 | Phase 2 阶段回顾通过 | 2/2 任务完成，代码层面退出标准满足（TCP 传输 + 独立脚本），实际双机验证需用户在物理环境中确认。100 个测试通过，无回归 |
 | 2026-03-24 | **工作流增量变更：新增文档体系+CLI+GUI 三大方向（P2-17~P2-27）** | 项目协作者包括开发人员、用户和项目负责人，但当前文档偏开发者视角、CLI 未正规化、完全没有 GUI。Phase 3 扩展为"质量评估与文档重构"（P2-14 保留+4 个文档任务），新增 Phase 4"CLI 正规化"（click+semantic-tx 入口）和 Phase 5"GUI 开发"（Gradio 界面）。CLI 使用 click 库，GUI 使用 Gradio 框架 |
+| 2026-03-28 | 质量评估选择独立库（scikit-image + lpips + transformers）而非 torchmetrics | 依赖透明、代码量小（4 函数 <200 行）、预研项目需要可见可控的实现；torchmetrics CLIP Score 函数式 API 每次重加载模型 |
+| 2026-03-28 | LPIPS 使用 normalize=True 而非手动归一化 | 库内置 [0,1]→[-1,1] 转换，减少出错面 |
+| 2026-03-28 | CLIP Score 标准公式 max(100×cos_sim, 0) | 符合 CLIPScore 论文定义（Hessel et al., EMNLP 2021），截断负值 |
+| 2026-03-28 | **新增 P2-28（编写-评估脚本与报告生成）** | P2-14 实现了评估模块但无脚本实际运行指标。评估脚本需复用 LPIPS/CLIP 模型、批量处理测试结果、输出结构化报告，是质量评估闭环的必要环节 |
 
 ## 交接记录
 
@@ -592,3 +597,48 @@
 - 端到端双机验证需要两台局域网机器各部署 ComfyUI，运行 run_sender.py 和 run_receiver.py
 
 **遗留问题**：无
+
+### P2-14 实现-质量评估模块（2026-03-28）
+
+**完成内容**：
+- 新建 `evaluation` 子包，实现 PSNR、SSIM、LPIPS、CLIP Score 四类质量评估指标
+- 实现图像预处理工具链：to_numpy（类型统一）、align_sizes（尺寸对齐）、to_tensor_normalized（tensor 转换）
+- 编写质量评估体系调研报告 `docs/research/evaluation-metrics.md`，包含指标原理、学术文献综述、库选型决策、实现方案和使用指南
+- 新增依赖：scikit-image>=0.24.0、lpips>=0.1.4
+- 编写 37 个单元测试（utils 16 + pixel 5 + perceptual 6 mock + semantic 5 mock + 5 边界测试）
+
+**修改的文件**（8 个，1 修改 7 新建）：
+- `docs/research/evaluation-metrics.md`（新建：调研报告，含 12 篇参考文献）
+- `pyproject.toml`（修改：添加 scikit-image、lpips 依赖）
+- `src/semantic_transmission/evaluation/__init__.py`（新建：模块导出）
+- `src/semantic_transmission/evaluation/utils.py`（新建：图像预处理工具）
+- `src/semantic_transmission/evaluation/pixel_metrics.py`（新建：PSNR、SSIM）
+- `src/semantic_transmission/evaluation/perceptual_metrics.py`（新建：LPIPS）
+- `src/semantic_transmission/evaluation/semantic_metrics.py`（新建：CLIP Score）
+- `tests/test_evaluation.py`（新建：37 个测试）
+
+**验证结果**：
+- 37 个新测试全部通过 ✅
+- 140 个测试全部通过（含 103 个已有测试），无回归 ✅
+- ruff check 通过 ✅
+- ruff format 通过 ✅
+
+**关键决策**：
+- 选择独立库（scikit-image + lpips + transformers）而非 torchmetrics，理由：依赖透明、代码量小、预研项目控制力优先
+- LPIPS 使用 `normalize=True` 接受 [0,1] 输入，避免手动归一化出错
+- CLIP Score 使用标准公式 `max(100 × cos_sim, 0)` 截断负值
+- 尺寸对齐策略：resize 到较小图尺寸（LANCZOS 插值）
+
+**调研发现（范围外需求）**：
+- 调研发现 DreamSim（中级感知）和 DISTS（结构+纹理）两个指标高度适合语义传输评估，建议后续纳入
+- 当前缺少评估脚本任务——评估模块已实现但无脚本实际运行指标、生成评估报告
+- 需使用 /plan-adjust 补充评估脚本任务
+
+**下一任务及关注点**：
+- 需先通过 /plan-adjust 新增评估脚本任务（P2-28），将评估模块闭环
+- P2-17~P2-20 文档任务无依赖，可按需并行
+- 评估脚本应调用 evaluation 模块的四个函数，批量处理 output/demo/ 下的测试结果
+
+**遗留问题**：
+- 缺少评估脚本（计划通过 /plan-adjust 补充）
+- DreamSim 和 DISTS 指标留待后续迭代

@@ -411,6 +411,35 @@
 
 ---
 
+#### [P2-28] 编写-评估脚本与报告生成
+
+- **阶段**: Phase 3 - 质量评估与文档重构
+- **依赖**: P2-14
+- **目标**: 编写评估脚本，调用 evaluation 模块批量计算质量指标并生成评估报告
+- **背景信息**: P2-14 已实现 PSNR、SSIM、LPIPS、CLIP Score 四个质量评估函数（位于 `src/semantic_transmission/evaluation/`），但缺少实际运行指标的脚本。`output/demo/` 目录下有端到端测试的输出结果（原图、边缘图、还原图、prompt 文本），需要一个脚本批量处理这些结果，计算四类指标，输出结构化的评估报告。LPIPS 和 CLIP Score 涉及模型加载，脚本应支持模型复用以提升批量评估性能。
+- **涉及文件**:
+  - `scripts/evaluate.py`（新建：评估脚本，批量处理 + 报告生成）
+  - `tests/test_evaluate_script.py`（新建：脚本参数解析和输出格式测试）
+- **具体步骤**:
+  1. 创建 `scripts/evaluate.py`，接受输入目录（含原图、还原图、prompt）和输出路径
+  2. 实现批量模式：遍历目录下所有测试样本，逐一计算 PSNR、SSIM、LPIPS、CLIP Score
+  3. 对 LPIPS 和 CLIP Score 的模型做复用（加载一次，多次调用），避免重复初始化
+  4. 输出结构化评估报告（终端表格 + JSON/CSV 文件），包含每张图的四项指标和汇总统计（均值、标准差）
+  5. 支持 `--device` 参数（cuda/cpu）加速 LPIPS 和 CLIP Score
+  6. 编写测试验证参数解析和输出格式
+- **验收标准**:
+  - [ ] `uv run python scripts/evaluate.py --help` 正常显示帮助
+  - [ ] 给定测试目录，能正确计算四类指标
+  - [ ] 输出包含每张图的详细指标和汇总统计
+  - [ ] LPIPS/CLIP 模型仅加载一次
+  - [ ] ruff check / format 通过
+  - [ ] 全量测试无回归
+- **自测方法**: `uv run python scripts/evaluate.py --input output/demo/round-03/ --output output/evaluation/`，检查输出报告内容
+- **回滚方案**: 删除 `scripts/evaluate.py` 和 `tests/test_evaluate_script.py`
+- **预估工作量**: M
+
+---
+
 #### [P2-17] 重构-README 为文档门户
 
 - **阶段**: Phase 3 - 质量评估与文档重构
