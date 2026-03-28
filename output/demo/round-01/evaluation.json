@@ -1,0 +1,105 @@
+{
+  "metadata": {
+    "input_dir": "output\\demo\\round-01",
+    "original_dir": "resources\\test_images",
+    "device": "cuda",
+    "timestamp": "2026-03-28T12:04:39.049176+00:00",
+    "sample_count": 6
+  },
+  "samples": [
+    {
+      "name": "01_canyon_jeep",
+      "original": "resources\\test_images\\canyon_jeep.jpg",
+      "restored": "output\\demo\\round-01\\01_canyon_jeep\\restored.png",
+      "prompt": null,
+      "metrics": {
+        "psnr": 12.711154710601768,
+        "ssim": 0.3133592602788293,
+        "lpips": 0.47655951976776123,
+        "clip_score": null
+      }
+    },
+    {
+      "name": "02_rock_climbing",
+      "original": "resources\\test_images\\rock_climbing.jpeg",
+      "restored": "output\\demo\\round-01\\02_rock_climbing\\restored.png",
+      "prompt": null,
+      "metrics": {
+        "psnr": 12.807724842393512,
+        "ssim": 0.2651983966951827,
+        "lpips": 0.49934718012809753,
+        "clip_score": null
+      }
+    },
+    {
+      "name": "03_jungle_trail",
+      "original": "resources\\test_images\\jungle_trail.jpg",
+      "restored": "output\\demo\\round-01\\03_jungle_trail\\restored.png",
+      "prompt": null,
+      "metrics": {
+        "psnr": 15.984032084163006,
+        "ssim": 0.3606476583297735,
+        "lpips": 0.4245644211769104,
+        "clip_score": null
+      }
+    },
+    {
+      "name": "04_forest_snow",
+      "original": "resources\\test_images\\forest_snow.jpg",
+      "restored": "output\\demo\\round-01\\04_forest_snow\\restored.png",
+      "prompt": null,
+      "metrics": {
+        "psnr": 10.789878206176173,
+        "ssim": 0.11919107387728789,
+        "lpips": 0.615483820438385,
+        "clip_score": null
+      }
+    },
+    {
+      "name": "05_mountain_road",
+      "original": "resources\\test_images\\mountain_road.jpg",
+      "restored": "output\\demo\\round-01\\05_mountain_road\\restored.png",
+      "prompt": null,
+      "metrics": {
+        "psnr": 17.44175977437405,
+        "ssim": 0.7071682785753279,
+        "lpips": 0.39068537950515747,
+        "clip_score": null
+      }
+    },
+    {
+      "name": "06_prairie_highway",
+      "original": "resources\\test_images\\prairie_highway.jpg",
+      "restored": "output\\demo\\round-01\\06_prairie_highway\\restored.png",
+      "prompt": null,
+      "metrics": {
+        "psnr": 14.22306470744518,
+        "ssim": 0.5423934890096564,
+        "lpips": 0.5819420218467712,
+        "clip_score": null
+      }
+    }
+  ],
+  "summary": {
+    "psnr": {
+      "mean": 13.992935720858949,
+      "std": 2.2067727664921577,
+      "count": 6
+    },
+    "ssim": {
+      "mean": 0.384659692794343,
+      "std": 0.19117908565112093,
+      "count": 6
+    },
+    "lpips": {
+      "mean": 0.49809705714384717,
+      "std": 0.0798116278828972,
+      "count": 6
+    },
+    "clip_score": {
+      "mean": null,
+      "std": null,
+      "count": 0
+    }
+  }
+}
