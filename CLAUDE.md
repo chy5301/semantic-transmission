@@ -11,6 +11,10 @@ uv run ruff format .     # 代码格式化
 uv run ruff format --check .  # 格式化检查（与 CI 一致，仅检查不修改）
 uv run python scripts/demo_e2e.py  # 运行端到端 demo（需 ComfyUI 服务运行中）
 uv run python scripts/evaluate.py --input-dir <输出目录> --original-dir resources/test_images  # 批量评估还原质量
+uv run semantic-tx --help           # 查看 CLI 所有子命令
+uv run semantic-tx demo --image <图片> --prompt "描述文本"  # CLI 方式运行端到端 demo
+uv run semantic-tx check connection  # 检查 ComfyUI 连通性
+uv run semantic-tx download --dry-run  # 查看模型下载计划
 ```
 
 ## 项目概述
@@ -38,6 +42,7 @@ uv run python scripts/evaluate.py --input-dir <输出目录> --original-dir reso
 ```
 src/semantic_transmission/
 ├── common/          # 公共模块：ComfyUI 客户端、配置、类型定义
+├── cli/             # CLI 入口：click 子命令（sender/receiver/demo/check/download）
 ├── pipeline/        # 端到端管道编排（含 relay 中继转发）
 ├── sender/          # 发送端：图像/视频 → 语义描述 + 条件信息
 ├── receiver/        # 接收端：语义描述 → 图像/视频还原
@@ -58,6 +63,7 @@ src/semantic_transmission/
 - `docs/architecture.md` — 系统架构（模块关系、数据流、接口设计）
 - `docs/user-guide.md` — 使用指南
 - `docs/demo-handbook.md` — 演示手册（单机/双机操作步骤）
+- `docs/cli-reference.md` — CLI 参考文档（semantic-tx 全部子命令参数说明）
 - `docs/project-overview.md` — 项目总览（面向负责人）
 - `resources/test_images/` — 测试用图片集
 
@@ -83,6 +89,7 @@ src/semantic_transmission/
 - **Python**：主要开发语言，使用 uv 管理依赖
 - **生成模型**：Z-Image-Turbo + ControlNet Union（当前基线），Wan2.x（规划中）
 - **视觉理解模型**：Qwen-VL 等多模态大模型用于图像/视频描述生成
+- **CLI 框架**：click（子命令体系，入口点 `semantic-tx`）
 
 ## 分支与协作约定
 

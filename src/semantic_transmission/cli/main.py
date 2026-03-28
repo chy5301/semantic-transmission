@@ -6,8 +6,8 @@ from semantic_transmission import __version__
 from semantic_transmission.cli.check import check
 from semantic_transmission.cli.demo import demo
 from semantic_transmission.cli.download import download
-from semantic_transmission.cli.receive import receive
-from semantic_transmission.cli.send import send
+from semantic_transmission.cli.receiver import receiver
+from semantic_transmission.cli.sender import sender
 
 
 @click.group()
@@ -16,8 +16,8 @@ def cli():
     """语义传输系统 CLI 工具。"""
 
 
-cli.add_command(send)
-cli.add_command(receive)
+cli.add_command(sender)
+cli.add_command(receiver)
 cli.add_command(demo)
 cli.add_command(check)
 cli.add_command(download)

@@ -1,4 +1,4 @@
-"""semantic-tx receive 子命令：双机演示接收端。"""
+"""semantic-tx receiver 子命令：双机演示接收端。"""
 
 import sys
 import time
@@ -59,7 +59,7 @@ def _process_packet(receiver: ComfyUIReceiver, packet, output_dir: Path, index: 
 @click.option("--comfyui-port", default=8188, type=int, help="本机 ComfyUI 端口（默认 8188）")
 @click.option("--output-dir", default=Path("output/received"), type=click.Path(path_type=Path), help="输出目录（默认 output/received）")
 @click.option("--continuous", is_flag=True, default=False, help="连续模式：持续监听，每次接收后等待下一次连接")
-def receive(relay_host, relay_port, comfyui_host, comfyui_port, output_dir, continuous):
+def receiver(relay_host, relay_port, comfyui_host, comfyui_port, output_dir, continuous):
     """接收端：监听端口接收数据 → 还原图像。"""
     import builtins
     import functools

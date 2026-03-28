@@ -1,4 +1,4 @@
-"""semantic-tx send 子命令：双机演示发送端。"""
+"""semantic-tx sender 子命令：双机演示发送端。"""
 
 import io
 import os
@@ -33,7 +33,7 @@ def _default_vlm_path() -> str | None:
 @click.option("--relay-host", required=True, help="接收端机器 IP 地址")
 @click.option("--relay-port", default=9000, type=int, help="接收端监听端口（默认 9000）")
 @click.option("--seed", default=None, type=int, help="KSampler 随机种子（可选，传递给接收端）")
-def send(image, prompt, auto_prompt, vlm_model, vlm_model_path, comfyui_host, comfyui_port, relay_host, relay_port, seed):
+def sender(image, prompt, auto_prompt, vlm_model, vlm_model_path, comfyui_host, comfyui_port, relay_host, relay_port, seed):
     """发送端：提取边缘图 + 语义描述 → 发送到接收端。"""
     import builtins
     import functools

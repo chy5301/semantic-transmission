@@ -30,12 +30,12 @@ class TestCLIEntryPoint:
         assert "Usage:" in result.output
 
 
-class TestSendCommand:
-    """测试 send 子命令。"""
+class TestSenderCommand:
+    """测试 sender 子命令。"""
 
     def test_help(self):
         runner = CliRunner()
-        result = runner.invoke(cli, ["send", "--help"])
+        result = runner.invoke(cli, ["sender", "--help"])
         assert result.exit_code == 0
         assert "--image" in result.output
         assert "--prompt" in result.output
@@ -44,16 +44,16 @@ class TestSendCommand:
 
     def test_missing_required_args(self):
         runner = CliRunner()
-        result = runner.invoke(cli, ["send"])
+        result = runner.invoke(cli, ["sender"])
         assert result.exit_code != 0
 
 
-class TestReceiveCommand:
-    """测试 receive 子命令。"""
+class TestReceiverCommand:
+    """测试 receiver 子命令。"""
 
     def test_help(self):
         runner = CliRunner()
-        result = runner.invoke(cli, ["receive", "--help"])
+        result = runner.invoke(cli, ["receiver", "--help"])
         assert result.exit_code == 0
         assert "--relay-host" in result.output
         assert "--relay-port" in result.output
@@ -131,5 +131,5 @@ class TestCommandDiscovery:
         runner = CliRunner()
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0
-        for cmd in ["send", "receive", "demo", "check", "download"]:
+        for cmd in ["sender", "receiver", "demo", "check", "download"]:
             assert cmd in result.output, f"子命令 {cmd} 未在 --help 中列出"

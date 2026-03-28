@@ -173,7 +173,7 @@ if __name__ == "__main__":
     import warnings
 
     warnings.warn(
-        "此脚本已废弃，请使用 `semantic-tx receive` 命令代替。",
+        "此脚本已废弃，请使用 `semantic-tx receiver` 命令代替。",
         DeprecationWarning,
         stacklevel=1,
     )

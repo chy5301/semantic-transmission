@@ -193,7 +193,7 @@ if __name__ == "__main__":
     import warnings
 
     warnings.warn(
-        "此脚本已废弃，请使用 `semantic-tx send` 命令代替。",
+        "此脚本已废弃，请使用 `semantic-tx sender` 命令代替。",
         DeprecationWarning,
         stacklevel=1,
     )

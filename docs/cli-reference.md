@@ -14,8 +14,8 @@ uv sync
 
 | 命令 | 说明 |
 |------|------|
-| `semantic-tx send` | 发送端：提取边缘图 + 语义描述 → 发送到接收端 |
-| `semantic-tx receive` | 接收端：监听端口接收数据 → 还原图像 |
+| `semantic-tx sender` | 发送端：提取边缘图 + 语义描述 → 发送到接收端 |
+| `semantic-tx receiver` | 接收端：监听端口接收数据 → 还原图像 |
 | `semantic-tx demo` | 端到端演示：图像 → 边缘提取 → 语义还原 |
 | `semantic-tx check connection` | 测试 ComfyUI API 连通性 |
 | `semantic-tx check workflows` | 验证发送端/接收端工作流 |
@@ -30,7 +30,7 @@ uv sync
 
 ---
 
-## semantic-tx send
+## semantic-tx sender
 
 双机演示的发送端。提取输入图像的 Canny 边缘图，生成语义描述，通过网络发送到接收端。
 
@@ -53,18 +53,18 @@ uv sync
 
 ```bash
 # 手动 prompt 模式
-semantic-tx send --image photo.jpg --prompt "A red car" --relay-host 192.168.1.20
+semantic-tx sender --image photo.jpg --prompt "A red car" --relay-host 192.168.1.20
 
 # VLM 自动描述模式
-semantic-tx send --image photo.jpg --auto-prompt --relay-host 192.168.1.20
+semantic-tx sender --image photo.jpg --auto-prompt --relay-host 192.168.1.20
 
 # 指定端口和种子
-semantic-tx send --image photo.jpg --prompt "..." --relay-host 192.168.1.20 --relay-port 9000 --seed 42
+semantic-tx sender --image photo.jpg --prompt "..." --relay-host 192.168.1.20 --relay-port 9000 --seed 42
 ```
 
 ---
 
-## semantic-tx receive
+## semantic-tx receiver
 
 双机演示的接收端。监听端口接收发送端数据，调用 ComfyUI 还原图像。
 
@@ -83,13 +83,13 @@ semantic-tx send --image photo.jpg --prompt "..." --relay-host 192.168.1.20 --re
 
 ```bash
 # 默认配置，单次接收
-semantic-tx receive
+semantic-tx receiver
 
 # 连续接收模式
-semantic-tx receive --continuous
+semantic-tx receiver --continuous
 
 # 指定监听地址和端口
-semantic-tx receive --relay-host 0.0.0.0 --relay-port 9000 --comfyui-host 127.0.0.1
+semantic-tx receiver --relay-host 0.0.0.0 --relay-port 9000 --comfyui-host 127.0.0.1
 ```
 
 ---
@@ -219,8 +219,8 @@ semantic-tx download --comfyui-dir D:\path\to\ComfyUI
 
 | 旧脚本 | 新命令 |
 |--------|--------|
-| `scripts/run_sender.py` | `semantic-tx send` |
-| `scripts/run_receiver.py` | `semantic-tx receive` |
+| `scripts/run_sender.py` | `semantic-tx sender` |
+| `scripts/run_receiver.py` | `semantic-tx receiver` |
 | `scripts/demo_e2e.py` | `semantic-tx demo` |
 | `scripts/test_comfyui_connection.py` | `semantic-tx check connection` |
 | `scripts/verify_workflows.py` | `semantic-tx check workflows` |
