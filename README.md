@@ -89,9 +89,9 @@ uv run python scripts/verify_workflows.py
 
 | 文档 | 说明 |
 |------|------|
+| [项目总览](docs/project-overview.md) | 目标、进展、关键成果、后续计划（2 分钟速览） |
 | [项目路线图](docs/ROADMAP.md) | 各阶段目标、状态与技术路线 |
 | [调研报告](docs/research/selection-report.md) | 模型与方案选型结论 |
-| [调研成果](docs/research/) | 论文综述、开源项目评估、模型对比 |
 
 > 完整文档索引见 [docs/README.md](docs/README.md)。
 

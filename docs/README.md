@@ -6,6 +6,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| [project-overview.md](project-overview.md) | 项目总览：目标、进展、关键成果、后续计划（面向负责人） |
 | [ROADMAP.md](ROADMAP.md) | 项目路线图：各阶段目标、当前状态、技术路线 |
 
 ## 开发
