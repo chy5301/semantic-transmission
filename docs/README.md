@@ -8,6 +8,13 @@
 |------|------|
 | [ROADMAP.md](ROADMAP.md) | 项目路线图：各阶段目标、当前状态、技术路线 |
 
+## 开发
+
+| 文档 | 说明 |
+|------|------|
+| [development-guide.md](development-guide.md) | 开发指南：环境搭建、项目结构、测试方法、CI、编码规范 |
+| [architecture.md](architecture.md) | 系统架构：模块关系图、数据流、接口设计、扩展点 |
+
 ## 环境部署
 
 | 文档 | 说明 |

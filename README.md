@@ -72,9 +72,10 @@ uv run python scripts/verify_workflows.py
 
 | 文档 | 说明 |
 |------|------|
+| [开发指南](docs/development-guide.md) | 环境搭建、项目结构、测试方法、CI、编码规范 |
+| [系统架构](docs/architecture.md) | 模块关系图、数据流、接口设计、扩展点 |
 | [ComfyUI 部署指南](docs/comfyui-setup.md) | 本机 ComfyUI 部署与配置 |
 | [协作规范](docs/collaboration/) | Git 分支、PR、Issue 流程与编码规范 |
-| [CLAUDE.md](CLAUDE.md) | AI 辅助开发配置与常用命令速查 |
 
 ### 面向用户
 
