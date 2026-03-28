@@ -1582,6 +1582,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
+    { name = "click" },
     { name = "lpips" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1606,6 +1607,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=0.30.0" },
+    { name = "click", specifier = ">=8.0" },
     { name = "lpips", specifier = ">=0.1.4" },
     { name = "numpy" },
     { name = "opencv-python" },

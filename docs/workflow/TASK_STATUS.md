@@ -13,9 +13,9 @@
 | Phase 1: 工作流拆分与语义压缩 | 8 | 8 | 0 | 0 | 0 |
 | Phase 2: 中继传输与双机演示 | 2 | 2 | 0 | 0 | 0 |
 | Phase 3: 质量评估与文档重构 | 6 | 6 | 0 | 0 | 0 |
-| Phase 4: CLI 正规化 | 4 | 0 | 0 | 0 | 4 |
+| Phase 4: CLI 正规化 | 4 | 1 | 0 | 0 | 3 |
 | Phase 5: GUI 开发 | 3 | 0 | 0 | 0 | 3 |
-| **合计** | **27** | **20** | **0** | **0** | **7** |
+| **合计** | **27** | **21** | **0** | **0** | **6** |
 
 ## 任务状态
 
@@ -42,7 +42,7 @@
 | P2-19 | 编写-使用指南与演示手册 | Phase 3 | ✅ 已完成 | 无 |
 | P2-20 | 编写-项目总览与进度摘要 | Phase 3 | ✅ 已完成 | 无 |
 | P2-28 | 编写-评估脚本与报告生成 | Phase 3 | ✅ 已完成 | P2-14 |
-| P2-21 | 注册-CLI 入口与基础框架 | Phase 4 | ⬜ 待开始 | 无 |
+| P2-21 | 注册-CLI 入口与基础框架 | Phase 4 | ✅ 已完成 | 无 |
 | P2-22 | 实现-CLI 核心子命令 | Phase 4 | ⬜ 待开始 | P2-21 |
 | P2-23 | 实现-CLI 工具子命令 | Phase 4 | ⬜ 待开始 | P2-21 |
 | P2-24 | 编写-CLI 参考文档与测试 | Phase 4 | ⬜ 待开始 | P2-22, P2-23 |
@@ -800,5 +800,38 @@
 **计划变更**：无
 
 **下一任务**：Phase 3 全部完成，进入阶段检查点
+
+**遗留问题**：无
+
+### P2-21 注册-CLI 入口与基础框架（2026-03-28）
+
+**完成内容**：
+- 在 pyproject.toml 添加 `click>=8.0` 依赖和 `[project.scripts]` 入口点（`semantic-tx`）
+- 创建 `src/semantic_transmission/cli/` 包，实现 click Group 主入口
+- 在 `__init__.py` 中添加 `__version__` 变量供 `--version` 使用
+- `semantic-tx --help` 和 `semantic-tx --version` 均正常工作
+
+**修改的文件**（3 个新建 + 2 个修改）：
+- `pyproject.toml`（修改：添加 click 依赖 + scripts 入口点）
+- `src/semantic_transmission/__init__.py`（修改：添加 __version__ 变量）
+- `src/semantic_transmission/cli/__init__.py`（新建：空包文件）
+- `src/semantic_transmission/cli/main.py`（新建：click Group 主入口，含 --version）
+
+**验证结果**：
+- `uv run semantic-tx --help` 输出正常 ✅
+- `uv run semantic-tx --version` 输出 0.1.0 ✅
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- 版本号从 pyproject.toml 中的 `version = "0.1.0"` 同步到 `__init__.py.__version__`，click 通过 `@click.version_option` 读取
+
+**计划变更**：无
+
+**下一任务**：P2-22 实现-CLI 核心子命令（send/receive/demo）
+
+**下一任务需关注**：
+- 需读取 scripts/demo_e2e.py、run_sender.py、run_receiver.py 的 argparse 参数定义，转为 click 选项
+- 业务逻辑保持不变，仅替换 CLI 入口层
+- 原脚本需添加废弃提示
 
 **遗留问题**：无

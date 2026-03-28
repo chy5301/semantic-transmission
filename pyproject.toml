@@ -16,7 +16,11 @@ dependencies = [
     "qwen-vl-utils>=0.0.8",
     "scikit-image>=0.24.0",
     "lpips>=0.1.4",
+    "click>=8.0",
 ]
+
+[project.scripts]
+semantic-tx = "semantic_transmission.cli.main:cli"
 
 [build-system]
 requires = ["hatchling"]
