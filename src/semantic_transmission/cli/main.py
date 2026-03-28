@@ -3,6 +3,9 @@
 import click
 
 from semantic_transmission import __version__
+from semantic_transmission.cli.demo import demo
+from semantic_transmission.cli.receive import receive
+from semantic_transmission.cli.send import send
 
 
 @click.group()
@@ -10,6 +13,10 @@ from semantic_transmission import __version__
 def cli():
     """语义传输系统 CLI 工具。"""
 
+
+cli.add_command(send)
+cli.add_command(receive)
+cli.add_command(demo)
 
 if __name__ == "__main__":
     cli()

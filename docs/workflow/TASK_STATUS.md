@@ -13,9 +13,9 @@
 | Phase 1: 工作流拆分与语义压缩 | 8 | 8 | 0 | 0 | 0 |
 | Phase 2: 中继传输与双机演示 | 2 | 2 | 0 | 0 | 0 |
 | Phase 3: 质量评估与文档重构 | 6 | 6 | 0 | 0 | 0 |
-| Phase 4: CLI 正规化 | 4 | 1 | 0 | 0 | 3 |
+| Phase 4: CLI 正规化 | 4 | 2 | 0 | 0 | 2 |
 | Phase 5: GUI 开发 | 3 | 0 | 0 | 0 | 3 |
-| **合计** | **27** | **21** | **0** | **0** | **6** |
+| **合计** | **27** | **22** | **0** | **0** | **5** |
 
 ## 任务状态
 
@@ -43,7 +43,7 @@
 | P2-20 | 编写-项目总览与进度摘要 | Phase 3 | ✅ 已完成 | 无 |
 | P2-28 | 编写-评估脚本与报告生成 | Phase 3 | ✅ 已完成 | P2-14 |
 | P2-21 | 注册-CLI 入口与基础框架 | Phase 4 | ✅ 已完成 | 无 |
-| P2-22 | 实现-CLI 核心子命令 | Phase 4 | ⬜ 待开始 | P2-21 |
+| P2-22 | 实现-CLI 核心子命令 | Phase 4 | ✅ 已完成 | P2-21 |
 | P2-23 | 实现-CLI 工具子命令 | Phase 4 | ⬜ 待开始 | P2-21 |
 | P2-24 | 编写-CLI 参考文档与测试 | Phase 4 | ⬜ 待开始 | P2-22, P2-23 |
 | P2-25 | 搭建-Gradio GUI 基础框架 | Phase 5 | ⬜ 待开始 | P2-21 |
@@ -833,5 +833,44 @@
 - 需读取 scripts/demo_e2e.py、run_sender.py、run_receiver.py 的 argparse 参数定义，转为 click 选项
 - 业务逻辑保持不变，仅替换 CLI 入口层
 - 原脚本需添加废弃提示
+
+**遗留问题**：无
+
+### P2-22 实现-CLI 核心子命令 send/receive/demo（2026-03-28）
+
+**完成内容**：
+- 创建 `cli/send.py`：将 run_sender.py 的 argparse 参数转为 click 选项，复用全部业务逻辑
+- 创建 `cli/receive.py`：迁移 run_receiver.py 功能，含连续模式和单次模式
+- 创建 `cli/demo.py`：迁移 demo_e2e.py 端到端演示功能，含对比图生成和传输统计
+- 在 main.py 中注册三个子命令（send/receive/demo）
+- 三个原脚本 `__main__` 中添加 DeprecationWarning 废弃提示
+
+**修改的文件**（3 个新建 + 4 个修改）：
+- `src/semantic_transmission/cli/send.py`（新建：send 子命令，含互斥参数校验）
+- `src/semantic_transmission/cli/receive.py`（新建：receive 子命令，含连续模式）
+- `src/semantic_transmission/cli/demo.py`（新建：demo 子命令，含对比图生成）
+- `src/semantic_transmission/cli/main.py`（修改：注册三个子命令）
+- `scripts/run_sender.py`（修改：添加废弃提示）
+- `scripts/run_receiver.py`（修改：添加废弃提示）
+- `scripts/demo_e2e.py`（修改：添加废弃提示）
+
+**验证结果**：
+- `semantic-tx send --help` 参数与原脚本一致 ✅
+- `semantic-tx receive --help` 参数与原脚本一致 ✅
+- `semantic-tx demo --help` 参数与原脚本一致 ✅
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- click 不原生支持互斥选项组，send/demo 中 `--prompt`/`--auto-prompt` 通过回调手动校验
+- 业务逻辑直接在 CLI 命令中实现（而非调用原脚本 main()），因为原脚本 main() 内部绑定了 argparse
+- 废弃提示使用 `warnings.warn(DeprecationWarning)`，而非 print，遵循 Python 标准警告机制
+
+**计划变更**：无
+
+**下一任务**：P2-23 实现-CLI 工具子命令（check/download）
+
+**下一任务需关注**：
+- check 子命令需合并 test_comfyui_connection.py 和 verify_workflows.py 为 check connection / check workflows
+- download 子命令迁移 download_models.py 参数
 
 **遗留问题**：无
