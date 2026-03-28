@@ -82,6 +82,7 @@ uv run python scripts/verify_workflows.py
 | 文档 | 说明 |
 |------|------|
 | [使用指南](docs/user-guide.md) | 系统要求、完整安装步骤、基本使用 |
+| [CLI 参考](docs/cli-reference.md) | `semantic-tx` 命令行工具完整参数说明 |
 | [演示手册](docs/demo-handbook.md) | 单机/双机演示操作步骤与参数说明 |
 | [端到端测试报告](docs/test-reports/) | Demo 运行的实际效果与指标数据 |
 
