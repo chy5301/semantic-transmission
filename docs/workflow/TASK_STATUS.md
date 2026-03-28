@@ -13,9 +13,9 @@
 | Phase 1: 工作流拆分与语义压缩 | 8 | 8 | 0 | 0 | 0 |
 | Phase 2: 中继传输与双机演示 | 2 | 2 | 0 | 0 | 0 |
 | Phase 3: 质量评估与文档重构 | 6 | 6 | 0 | 0 | 0 |
-| Phase 4: CLI 正规化 | 4 | 2 | 0 | 0 | 2 |
+| Phase 4: CLI 正规化 | 4 | 3 | 0 | 0 | 1 |
 | Phase 5: GUI 开发 | 3 | 0 | 0 | 0 | 3 |
-| **合计** | **27** | **22** | **0** | **0** | **5** |
+| **合计** | **27** | **23** | **0** | **0** | **4** |
 
 ## 任务状态
 
@@ -44,7 +44,7 @@
 | P2-28 | 编写-评估脚本与报告生成 | Phase 3 | ✅ 已完成 | P2-14 |
 | P2-21 | 注册-CLI 入口与基础框架 | Phase 4 | ✅ 已完成 | 无 |
 | P2-22 | 实现-CLI 核心子命令 | Phase 4 | ✅ 已完成 | P2-21 |
-| P2-23 | 实现-CLI 工具子命令 | Phase 4 | ⬜ 待开始 | P2-21 |
+| P2-23 | 实现-CLI 工具子命令 | Phase 4 | ✅ 已完成 | P2-21 |
 | P2-24 | 编写-CLI 参考文档与测试 | Phase 4 | ⬜ 待开始 | P2-22, P2-23 |
 | P2-25 | 搭建-Gradio GUI 基础框架 | Phase 5 | ⬜ 待开始 | P2-21 |
 | P2-26 | 实现-GUI 发送端与接收端视图 | Phase 5 | ⬜ 待开始 | P2-25 |
@@ -872,5 +872,46 @@
 **下一任务需关注**：
 - check 子命令需合并 test_comfyui_connection.py 和 verify_workflows.py 为 check connection / check workflows
 - download 子命令迁移 download_models.py 参数
+
+**遗留问题**：无
+
+### P2-23 实现-CLI 工具子命令 check/download（2026-03-28）
+
+**完成内容**：
+- 创建 `cli/check.py`：click Group 含 `connection` 和 `workflows` 两个子命令
+  - `connection`：6 步连通性测试（健康检查→上传→提交→WebSocket→历史→下载）
+  - `workflows`：验证发送端/接收端工作流，支持 --sender-only / --receiver-only
+- 创建 `cli/download.py`：迁移 download_models.py 全部功能（ComfyUI 模型 + HF 仓库模型下载）
+- 在 main.py 中注册 check 和 download 子命令
+- 三个原脚本添加 DeprecationWarning 废弃提示
+
+**修改的文件**（2 个新建 + 4 个修改）：
+- `src/semantic_transmission/cli/check.py`（新建：check 子命令组）
+- `src/semantic_transmission/cli/download.py`（新建：download 子命令）
+- `src/semantic_transmission/cli/main.py`（修改：注册 check + download）
+- `scripts/test_comfyui_connection.py`（修改：添加废弃提示）
+- `scripts/verify_workflows.py`（修改：添加废弃提示）
+- `scripts/download_models.py`（修改：添加废弃提示）
+
+**验证结果**：
+- `semantic-tx check connection --help` 参数与原脚本一致 ✅
+- `semantic-tx check workflows --help` 参数与原脚本一致 ✅
+- `semantic-tx download --help` 显示完整参数 ✅
+- ruff check 通过 ✅
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- check 子命令中的逻辑直接在 CLI 中实现，而非从 scripts/ 导入（scripts 不是 Python 包）
+- download 子命令中模型定义和下载函数直接在 CLI 中复制，保持与原脚本功能完全等价
+- _step 辅助函数返回 (success, result) 元组，便于 workflows 中判断发送端是否成功
+
+**计划变更**：无
+
+**下一任务**：P2-24 编写-CLI 参考文档与测试
+
+**下一任务需关注**：
+- CLI 参考文档需覆盖全部子命令（send/receive/demo/check/download）
+- 使用 click.testing.CliRunner 编写测试
+- 更新 README.md 文档导航中的 CLI 参考链接
 
 **遗留问题**：无
