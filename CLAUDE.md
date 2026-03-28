@@ -10,6 +10,7 @@ uv run ruff check .      # 代码检查（与 CI 一致，覆盖 src/ scripts/ t
 uv run ruff format .     # 代码格式化
 uv run ruff format --check .  # 格式化检查（与 CI 一致，仅检查不修改）
 uv run python scripts/demo_e2e.py  # 运行端到端 demo（需 ComfyUI 服务运行中）
+uv run python scripts/evaluate.py --input-dir <输出目录> --original-dir resources/test_images  # 批量评估还原质量
 ```
 
 ## 项目概述
@@ -39,7 +40,8 @@ src/semantic_transmission/
 ├── common/          # 公共模块：ComfyUI 客户端、配置、类型定义
 ├── pipeline/        # 端到端管道编排（含 relay 中继转发）
 ├── sender/          # 发送端：图像/视频 → 语义描述 + 条件信息
-└── receiver/        # 接收端：语义描述 → 图像/视频还原
+├── receiver/        # 接收端：语义描述 → 图像/视频还原
+└── evaluation/      # 质量评估：PSNR/SSIM/LPIPS/CLIP Score
 ```
 
 ## 关键资源
@@ -51,6 +53,12 @@ src/semantic_transmission/
 - `docs/workflow/` — structured-workflow 插件产物（agent coding 任务管理，详见"分支与协作约定"）
 - `docs/test-reports/` — 端到端测试报告
 - `docs/collaboration/` — 团队协作指南
+- `docs/README.md` — 文档总索引
+- `docs/development-guide.md` — 开发指南
+- `docs/architecture.md` — 系统架构（模块关系、数据流、接口设计）
+- `docs/user-guide.md` — 使用指南
+- `docs/demo-handbook.md` — 演示手册（单机/双机操作步骤）
+- `docs/project-overview.md` — 项目总览（面向负责人）
 - `resources/test_images/` — 测试用图片集
 
 ## CI 注意事项
