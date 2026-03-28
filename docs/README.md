@@ -15,10 +15,12 @@
 | [development-guide.md](development-guide.md) | 开发指南：环境搭建、项目结构、测试方法、CI、编码规范 |
 | [architecture.md](architecture.md) | 系统架构：模块关系图、数据流、接口设计、扩展点 |
 
-## 环境部署
+## 使用
 
 | 文档 | 说明 |
 |------|------|
+| [user-guide.md](user-guide.md) | 使用指南：系统要求、完整安装步骤、基本使用 |
+| [demo-handbook.md](demo-handbook.md) | 演示手册：单机/双机演示操作步骤、参数说明、常见错误排查 |
 | [comfyui-setup.md](comfyui-setup.md) | ComfyUI 本机部署指南：安装、模型下载、配置验证 |
 
 ## 调研成果
