@@ -42,10 +42,14 @@ src/semantic_transmission/
 │   └── workflow_converter.py# 工作流 JSON→API 格式转换器
 ├── pipeline/            # 管道编排
 │   └── relay.py         #   中继传输（LocalRelay / SocketRelay）
-└── evaluation/          # 质量评估
+├── evaluation/          # 质量评估
     ├── pixel_metrics.py #   PSNR / SSIM
     ├── perceptual_metrics.py# LPIPS
     └── semantic_metrics.py#  CLIP Score
+└── gui/                 # Gradio 可视化界面
+    ├── app.py           #   主应用组装（Blocks + Tabs）
+    ├── theme.py         #   主题定义（Sky/Slate 配色 + 自定义 CSS）
+    └── config_panel.py  #   配置面板（连接测试 + VLM 模型检查）
 
 scripts/                 # 工具脚本
 ├── demo_e2e.py          #   端到端演示（单机）

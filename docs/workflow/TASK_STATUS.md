@@ -14,8 +14,8 @@
 | Phase 2: 中继传输与双机演示 | 2 | 2 | 0 | 0 | 0 |
 | Phase 3: 质量评估与文档重构 | 6 | 6 | 0 | 0 | 0 |
 | Phase 4: CLI 正规化 | 4 | 4 | 0 | 0 | 0 |
-| Phase 5: GUI 开发 | 3 | 0 | 0 | 0 | 3 |
-| **合计** | **27** | **24** | **0** | **0** | **3** |
+| Phase 5: GUI 开发 | 3 | 1 | 0 | 0 | 2 |
+| **合计** | **27** | **25** | **0** | **0** | **2** |
 
 ## 任务状态
 
@@ -46,7 +46,7 @@
 | P2-22 | 实现-CLI 核心子命令 | Phase 4 | ✅ 已完成 | P2-21 |
 | P2-23 | 实现-CLI 工具子命令 | Phase 4 | ✅ 已完成 | P2-21 |
 | P2-24 | 编写-CLI 参考文档与测试 | Phase 4 | ✅ 已完成 | P2-22, P2-23 |
-| P2-25 | 搭建-Gradio GUI 基础框架 | Phase 5 | ⬜ 待开始 | P2-21 |
+| P2-25 | 搭建-Gradio GUI 基础框架 | Phase 5 | ✅ 已完成 | P2-21 |
 | P2-26 | 实现-GUI 发送端与接收端视图 | Phase 5 | ⬜ 待开始 | P2-25 |
 | P2-27 | 实现-GUI 端到端模式与日志 | Phase 5 | ⬜ 待开始 | P2-26 |
 
@@ -94,6 +94,9 @@
 | 2026-03-28 | **新增 P2-28（编写-评估脚本与报告生成）** | P2-14 实现了评估模块但无脚本实际运行指标。评估脚本需复用 LPIPS/CLIP 模型、批量处理测试结果、输出结构化报告，是质量评估闭环的必要环节 |
 | 2026-03-28 | **Phase 3 阶段回顾通过** | 6/6 任务完成（P2-15 已取消不计），退出标准全部满足。变更审计：27 个文件变更共 3670 行新增，全部在任务范围内，无超范围修改。167 个测试通过、ruff 检查通过。下游 Phase 4/5 任务定义无需调整 |
 | 2026-03-28 | **Phase 4 阶段回顾通过** | 4/4 任务完成。变更审计：20 个文件变更共 1631 行新增，全部在任务范围内。审计发现 1 个 🔵 建议项（CLI 与 scripts 代码重复，有意为之）。退出标准全部满足：semantic-tx 入口点注册、5 个子命令可用。180 个测试通过、ruff 通过。下游 Phase 5 任务定义无需调整 |
+| 2026-03-29 | Gradio 6.x theme/css 参数迁移 | Gradio 6.0 将 `theme` 和 `css` 从 `gr.Blocks()` 构造函数移至 `launch()` 方法。`create_app()` 仅构建 UI，`get_launch_kwargs()` 返回 launch 所需的主题参数 |
+| 2026-03-29 | GUI 采用扁平模块结构 | 不创建 `tabs/` 子目录，占位 Tab 内联在 `app.py`。P2-26/P2-27 实现完整 Tab 时按需拆分文件 |
+| 2026-03-29 | GUI 文档分三档更新 | 第一档（CLAUDE.md、cli-reference、development-guide、architecture）在 P2-25 完成后立即更新；第二档（README、user-guide、demo-handbook）等 Phase 5 全部完成后更新；第三档（project-overview、ROADMAP）在阶段回顾时更新 |
 
 ## 交接记录
 
@@ -943,3 +946,57 @@
 **下一任务**：Phase 4 全部完成，进入阶段检查点
 
 **遗留问题**：无
+
+### P2-25 搭建-Gradio GUI 基础框架（2026-03-29）
+
+**完成内容**：
+- 添加 `gradio>=5.0` 依赖（实际安装 6.10.0）
+- 创建 `gui/` 模块：`__init__.py`、`app.py`、`theme.py`、`config_panel.py`
+- 实现配置 Tab：ComfyUI 发送端/接收端连接测试、VLM 模型路径检查、中继传输配置
+- 3 个占位 Tab（发送端、接收端、端到端演示）
+- 实现 `cli/gui.py` Click 子命令，支持 `--host`/`--port`/`--share`
+- 在 `cli/main.py` 注册 `gui` 子命令
+
+**修改的文件**（5 个新建 + 2 个修改）：
+- `pyproject.toml`（修改：添加 gradio 依赖）
+- `src/semantic_transmission/gui/__init__.py`（新建）
+- `src/semantic_transmission/gui/theme.py`（新建：Soft 主题 + Sky/Slate 配色 + 自定义 CSS）
+- `src/semantic_transmission/gui/config_panel.py`（新建：配置 Tab UI + 连接测试事件处理）
+- `src/semantic_transmission/gui/app.py`（新建：Blocks 主应用 + 4 Tab 组装）
+- `src/semantic_transmission/cli/gui.py`（新建：Click gui 子命令）
+- `src/semantic_transmission/cli/main.py`（修改：注册 gui 命令）
+
+**验证结果**：
+- `uv run semantic-tx gui --help` 显示正确帮助信息 ✅
+- `create_app()` 创建成功，`launch()` 启动正常（http://127.0.0.1:7862）✅
+- 180 个已有测试全部通过，无回归 ✅
+- ruff check + format 通过 ✅
+
+**关键决策**：
+- Gradio 6.x 将 `theme`/`css` 从 `Blocks()` 移至 `launch()`，通过 `get_launch_kwargs()` 分离
+- 采用扁平模块结构，不创建 `tabs/` 子目录，占位 Tab 内联在 `app.py`
+- 配置 Tab 默认值复用 `ComfyUIConfig.from_env()` 和 `_default_vlm_path()` 模式
+- 连接测试复用 `ComfyUIClient.check_health()` 方法
+
+**计划变更**：无
+
+**下一任务及关注点**：
+- P2-26（实现-GUI 发送端与接收端视图）已解锁
+- 需要将占位 Tab 替换为完整的发送端/接收端 UI
+- 发送端需调用 `ComfyUISender.process()` 和 `QwenVLSender.describe()`
+- 接收端需调用 `ComfyUIReceiver.process()`
+- 需实现流式日志（generator yield）和 Tab 间数据传递
+- 考虑将 Tab 拆分为独立文件（`sender_panel.py`、`receiver_panel.py`）
+
+**遗留问题**：
+
+以下文档需在后续时机更新（不属于 P2-25 范围）：
+
+1. **Phase 5 全部完成后**（GUI 功能完整时）：
+   - `README.md` — 快速开始中添加 GUI 入口说明
+   - `docs/user-guide.md` — 添加 GUI 使用说明章节
+   - `docs/demo-handbook.md` — 添加 GUI 演示操作步骤
+
+2. **Phase 5 阶段回顾时**（进度数据更新）：
+   - `docs/project-overview.md` — Phase 5 进度从 0/3 更新为实际完成数
+   - `docs/ROADMAP.md` — Phase 5 状态标记

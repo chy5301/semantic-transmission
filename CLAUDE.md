@@ -15,6 +15,7 @@ uv run semantic-tx --help           # 查看 CLI 所有子命令
 uv run semantic-tx demo --image <图片> --prompt "描述文本"  # CLI 方式运行端到端 demo
 uv run semantic-tx check connection  # 检查 ComfyUI 连通性
 uv run semantic-tx download --dry-run  # 查看模型下载计划
+uv run semantic-tx gui               # 启动 Gradio 可视化界面（默认 127.0.0.1:7860）
 ```
 
 ## 项目概述
@@ -42,7 +43,8 @@ uv run semantic-tx download --dry-run  # 查看模型下载计划
 ```
 src/semantic_transmission/
 ├── common/          # 公共模块：ComfyUI 客户端、配置、类型定义
-├── cli/             # CLI 入口：click 子命令（sender/receiver/demo/check/download）
+├── cli/             # CLI 入口：click 子命令（sender/receiver/demo/check/download/gui）
+├── gui/             # Gradio 可视化界面（配置面板、发送端、接收端、端到端演示）
 ├── pipeline/        # 端到端管道编排（含 relay 中继转发）
 ├── sender/          # 发送端：图像/视频 → 语义描述 + 条件信息
 ├── receiver/        # 接收端：语义描述 → 图像/视频还原
@@ -90,6 +92,7 @@ src/semantic_transmission/
 - **生成模型**：Z-Image-Turbo + ControlNet Union（当前基线），Wan2.x（规划中）
 - **视觉理解模型**：Qwen-VL 等多模态大模型用于图像/视频描述生成
 - **CLI 框架**：click（子命令体系，入口点 `semantic-tx`）
+- **GUI 框架**：Gradio（可视化界面，`semantic-tx gui` 启动）
 
 ## 分支与协作约定
 

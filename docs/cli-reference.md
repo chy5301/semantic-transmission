@@ -20,6 +20,7 @@ uv sync
 | `semantic-tx check connection` | 测试 ComfyUI API 连通性 |
 | `semantic-tx check workflows` | 验证发送端/接收端工作流 |
 | `semantic-tx download` | 下载 ComfyUI 所需模型文件 |
+| `semantic-tx gui` | 启动 Gradio 可视化界面 |
 
 ## 全局选项
 
@@ -211,6 +212,36 @@ semantic-tx download --no-mirror --proxy http://127.0.0.1:7890
 
 # 指定 ComfyUI 路径
 semantic-tx download --comfyui-dir D:\path\to\ComfyUI
+```
+
+---
+
+## semantic-tx gui
+
+启动 Gradio 可视化界面。提供配置面板、发送端、接收端、端到端演示四个标签页。
+
+### 参数
+
+| 参数 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--host` | TEXT | 否 | 127.0.0.1 | 监听地址 |
+| `--port` | INT | 否 | 7860 | 监听端口 |
+| `--share` | FLAG | 否 | - | 生成 Gradio 公网分享链接 |
+
+### 示例
+
+```bash
+# 默认启动
+semantic-tx gui
+
+# 指定端口
+semantic-tx gui --port 8080
+
+# 局域网访问
+semantic-tx gui --host 0.0.0.0
+
+# 生成公网链接（用于远程演示）
+semantic-tx gui --share
 ```
 
 ---

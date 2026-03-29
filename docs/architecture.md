@@ -32,6 +32,15 @@ graph TB
         semantic["semantic_metrics.py<br/>CLIP Score"]
     end
 
+    subgraph gui["gui — 可视化界面"]
+        app["app.py<br/>Gradio Blocks 主应用"]
+        theme["theme.py<br/>主题与样式"]
+        config_panel["config_panel.py<br/>配置面板"]
+    end
+
+    config_panel --> client
+    config_panel --> config
+
     base_s --> types
     base_r --> types
     comfyui_s --> client
