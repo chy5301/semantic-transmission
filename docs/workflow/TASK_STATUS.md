@@ -62,6 +62,8 @@
 
 - **GUI 缺少运行记录持久化**（待讨论）：当前日志和结果仅显示在界面上，刷新或重新运行即丢失。对调参对比和多组评估不便。可选方案：(1) 轻量级——自动写本地 JSON/CSV 日志；(2) 中等——增加历史记录 Tab 支持对比；(3) 重度——完整实验管理。需确认当前阶段是否需要以及到什么程度。（发现于 Phase 5 双端 GUI 测试）
 
+- **GUI 端到端质量评估报错**：`pipeline_panel.py:362` 中 `Image.open(restored_img)` 假设输入是文件路径，但 Gradio 传入的是 `numpy.ndarray`，导致 `AttributeError: 'numpy.ndarray' object has no attribute 'seek'`。应改为 `Image.fromarray(restored_img)` 或根据类型分支处理。原始图像（`original_img`）可能也有同样问题。（发现于 Phase 6 端到端 GUI 测试）
+
 - **GUI 接收端 seed=0 被误判为未设置**：`receiver_panel.py:53` 中 `if seed` 对 `0` 求值为 `False`，导致用户输入 `0` 时不会覆盖工作流种子，而是回退到工作流 JSON 中的硬编码默认值（`582911328872996`）。同理，GUI 默认值 `0` 实际上等同于"不设置种子"，每次都使用同一个固定种子，缺乏随机化选项。应改为用 `None` 表示未设置，`0` 视为有效种子值。（发现于 Phase 5 双端 GUI 测试）
 
 ## 决策日志

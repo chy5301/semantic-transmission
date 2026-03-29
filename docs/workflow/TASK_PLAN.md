@@ -727,6 +727,7 @@
   1. **seed=0 误判为未设置**：`receiver_panel.py` 和 `pipeline_panel.py` 中 `if seed` 对 `0` 求值为 `False`，导致用户输入 `0` 时回退到工作流硬编码种子。应改为 `is not None` 判断。
   2. **Radio 圆点指示器冗余**：描述模式 Radio 组件选中项已有蓝色背景，圆点（●）视觉多余。需通过 CSS 隐藏，仅靠颜色区分。
   3. **接收端输出区重复显示边缘图**：输出区左侧"边缘图（输入）"echo 与上方输入区完全相同，视觉冗余。但简单移除会导致布局失衡，需重新设计输出区布局。
+  4. **端到端质量评估报错**：`Image.open()` 收到 numpy.ndarray 导致 AttributeError，需改为 `Image.fromarray()` 或类型分支处理。
   后续测试中发现的新问题将追加到已知问题列表，执行时一并处理。
 - **涉及文件**:
   - `src/semantic_transmission/gui/receiver_panel.py`（修改 — 修复 seed 判断逻辑）
