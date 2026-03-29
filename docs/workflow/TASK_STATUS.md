@@ -14,8 +14,8 @@
 | Phase 2: 中继传输与双机演示 | 2 | 2 | 0 | 0 | 0 |
 | Phase 3: 质量评估与文档重构 | 6 | 6 | 0 | 0 | 0 |
 | Phase 4: CLI 正规化 | 4 | 4 | 0 | 0 | 0 |
-| Phase 5: GUI 开发 | 3 | 1 | 0 | 0 | 2 |
-| **合计** | **27** | **25** | **0** | **0** | **2** |
+| Phase 5: GUI 开发 | 3 | 2 | 0 | 0 | 1 |
+| **合计** | **27** | **26** | **0** | **0** | **1** |
 
 ## 任务状态
 
@@ -47,7 +47,7 @@
 | P2-23 | 实现-CLI 工具子命令 | Phase 4 | ✅ 已完成 | P2-21 |
 | P2-24 | 编写-CLI 参考文档与测试 | Phase 4 | ✅ 已完成 | P2-22, P2-23 |
 | P2-25 | 搭建-Gradio GUI 基础框架 | Phase 5 | ✅ 已完成 | P2-21 |
-| P2-26 | 实现-GUI 发送端与接收端视图 | Phase 5 | ⬜ 待开始 | P2-25 |
+| P2-26 | 实现-GUI 发送端与接收端视图 | Phase 5 | ✅ 已完成 | P2-25 |
 | P2-27 | 实现-GUI 端到端模式与日志 | Phase 5 | ⬜ 待开始 | P2-26 |
 
 状态图例: ⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ⏸️ 冻结 | ❌ 已取消 | 🔀 已拆分
@@ -1000,3 +1000,37 @@
 2. **Phase 5 阶段回顾时**（进度数据更新）：
    - `docs/project-overview.md` — Phase 5 进度从 0/3 更新为实际完成数
    - `docs/ROADMAP.md` — Phase 5 状态标记
+
+### P2-26 实现-GUI 发送端与接收端视图（2026-03-29）
+
+**完成内容**：
+- 创建 `gui/sender_panel.py`：图片上传、手动/VLM 描述模式切换、边缘图提取、流式日志输出
+- 创建 `gui/receiver_panel.py`：边缘图上传、语义描述输入、随机种子、图像还原、流式日志输出
+- 修改 `gui/app.py`：集成两个新面板替换占位 Tab，绑定"发送到接收端"跨 Tab 数据传递
+
+**修改的文件**（2 个新建 + 1 个修改）：
+- `src/semantic_transmission/gui/sender_panel.py`（新建）
+- `src/semantic_transmission/gui/receiver_panel.py`（新建）
+- `src/semantic_transmission/gui/app.py`（修改：导入面板 + 替换占位 + 跨 Tab 事件绑定）
+
+**验证结果**：
+- ruff check + format 通过 ✅
+- 180 个测试全部通过，无回归 ✅
+- `create_app()` 创建成功，GUI 启动正常 ✅
+
+**关键决策**：
+- 配置共享通过 `config_components` dict 传递组件引用，sender/receiver 的事件 inputs 直接引用配置 Tab 的组件
+- 流式更新使用 generator yield，每步更新 log + 图像
+- VLM 延迟导入：仅在 VLM 模式运行时才 `from ... import QwenVLSender`，避免启动时加载重依赖
+- 跨 Tab 传递使用显式"发送到接收端"按钮 + lambda 传递 edge_output 和 prompt_result
+
+**计划变更**：无
+
+**下一任务及关注点**：
+- P2-27（实现-GUI 端到端模式与日志面板）已解锁
+- 需要创建 `gui/pipeline_panel.py`，串联发送端 + 接收端完整流程
+- 步骤进度展示需要 ✓/◉/○ 符号标记
+- 需实现传输统计面板（压缩比、各步骤耗时）
+- 可选集成质量评估（PSNR/SSIM/LPIPS/CLIP Score）
+
+**遗留问题**：无

@@ -4,6 +4,8 @@ import gradio as gr
 
 from semantic_transmission import __version__
 from semantic_transmission.gui.config_panel import build_config_tab
+from semantic_transmission.gui.receiver_panel import build_receiver_tab
+from semantic_transmission.gui.sender_panel import build_sender_tab
 from semantic_transmission.gui.theme import CUSTOM_CSS, get_theme
 
 
@@ -23,21 +25,13 @@ def create_app() -> gr.Blocks:
 
         with gr.Tabs():
             with gr.TabItem("⚙ 配置"):
-                build_config_tab()
+                config_components = build_config_tab()
 
             with gr.TabItem("▲ 发送端"):
-                gr.Markdown(
-                    "### 发送端\n\n"
-                    "> 此功能将在后续版本中实现。\n\n"
-                    "发送端将支持：上传图像 → Canny 边缘提取 → VLM 语义描述生成"
-                )
+                sender_components = build_sender_tab(config_components)
 
             with gr.TabItem("▼ 接收端"):
-                gr.Markdown(
-                    "### 接收端\n\n"
-                    "> 此功能将在后续版本中实现。\n\n"
-                    "接收端将支持：边缘图 + 语义描述 → 图像还原"
-                )
+                receiver_components = build_receiver_tab(config_components)
 
             with gr.TabItem("◆ 端到端演示"):
                 gr.Markdown(
@@ -45,5 +39,18 @@ def create_app() -> gr.Blocks:
                     "> 此功能将在后续版本中实现。\n\n"
                     "端到端演示将支持：一键完成 发送 → 传输 → 接收 全流程"
                 )
+
+        # Tab 间传递：发送端 → 接收端
+        sender_components["send_to_receiver_btn"].click(
+            fn=lambda edge, prompt: (edge, prompt),
+            inputs=[
+                sender_components["edge_output"],
+                sender_components["prompt_result"],
+            ],
+            outputs=[
+                receiver_components["edge_input"],
+                receiver_components["prompt_input"],
+            ],
+        )
 
     return app
