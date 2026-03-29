@@ -97,6 +97,7 @@
 | 2026-03-29 | Gradio 6.x theme/css 参数迁移 | Gradio 6.0 将 `theme` 和 `css` 从 `gr.Blocks()` 构造函数移至 `launch()` 方法。`create_app()` 仅构建 UI，`get_launch_kwargs()` 返回 launch 所需的主题参数 |
 | 2026-03-29 | GUI 采用扁平模块结构 | 不创建 `tabs/` 子目录，占位 Tab 内联在 `app.py`。P2-26/P2-27 实现完整 Tab 时按需拆分文件 |
 | 2026-03-29 | GUI 文档分三档更新 | 第一档（CLAUDE.md、cli-reference、development-guide、architecture）在 P2-25 完成后立即更新；第二档（README、user-guide、demo-handbook）等 Phase 5 全部完成后更新；第三档（project-overview、ROADMAP）在阶段回顾时更新 |
+| 2026-03-29 | **Phase 5 阶段回顾通过** | 3/3 任务完成。变更审计：17 个文件变更共 2743 行新增，全部在任务范围内（含 4 个文档同步更新，用户主动要求）。审计发现 0 个 🔴/🟡 问题，1 个 🔵 建议项（`c78de6e` CLI 重命名属于 Phase 4 收尾，不影响 Phase 5）。退出标准全部满足：4 个 Tab 可用。180 个测试通过、ruff 通过。工作流 27/27 任务全部完成 |
 
 ## 交接记录
 
