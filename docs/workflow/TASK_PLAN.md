@@ -32,6 +32,7 @@
 | Phase 3 | 质量评估与文档重构 | 质量评估指标可计算；README 门户完成；开发指南、使用指南、项目总览三类文档各就位 |
 | Phase 4 | CLI 正规化 | semantic-tx 命令可用；send/receive/demo/check/download 子命令功能等价于原脚本 |
 | Phase 5 | GUI 开发 | semantic-tx gui 启动 Gradio 界面；覆盖配置/发送/接收/端到端四个面板 |
+| Phase 6 | 修复与体验优化 | 已知问题全部修复；GUI/CLI 交互体验无明显缺陷；用户测试中发现的问题均已处理 |
 
 ## 任务列表
 
@@ -711,4 +712,38 @@
   - [ ] 日志区域显示处理过程信息
 - **自测方法**: 启动 GUI，上传图片完成端到端演示
 - **回滚方案**: 删除 pipeline_panel.py，还原 app.py
+- **预估工作量**: M
+
+---
+
+### Phase 6: 修复与体验优化
+
+#### [P2-29] 修复-GUI 已知体验问题
+
+- **阶段**: Phase 6 - 修复与体验优化
+- **依赖**: P2-26
+- **目标**: 批量修复双端 GUI 测试中发现的已知体验问题
+- **背景信息**: Phase 5 完成后进行双端 GUI 测试，发现以下问题（完整列表见 TASK_STATUS.md「已知问题」章节）：
+  1. **seed=0 误判为未设置**：`receiver_panel.py` 和 `pipeline_panel.py` 中 `if seed` 对 `0` 求值为 `False`，导致用户输入 `0` 时回退到工作流硬编码种子。应改为 `is not None` 判断。
+  2. **Radio 圆点指示器冗余**：描述模式 Radio 组件选中项已有蓝色背景，圆点（●）视觉多余。需通过 CSS 隐藏，仅靠颜色区分。
+  3. **接收端输出区重复显示边缘图**：输出区左侧"边缘图（输入）"echo 与上方输入区完全相同，视觉冗余。但简单移除会导致布局失衡，需重新设计输出区布局。
+  后续测试中发现的新问题将追加到已知问题列表，执行时一并处理。
+- **涉及文件**:
+  - `src/semantic_transmission/gui/receiver_panel.py`（修改 — 修复 seed 判断逻辑）
+  - `src/semantic_transmission/gui/pipeline_panel.py`（修改 — 同步修复 seed 判断逻辑）
+  - `src/semantic_transmission/gui/theme.py`（修改 — CSS 隐藏 Radio 圆点）
+- **具体步骤**:
+  1. 修复 seed 判断：将 `int(seed) if seed else None` 改为正确的 None 判断，receiver_panel 和 pipeline_panel 同步修改
+  2. 调整 seed 输入框默认行为：默认留空或随机，使行为符合直觉
+  3. 确认 Gradio 版本对应的 Radio 组件 CSS 选择器，添加隐藏圆点的样式
+  4. 逐项处理已知问题列表中的其他条目（如有新增）
+  5. 启动 GUI 完整验证所有修复项
+- **验收标准**:
+  - [ ] seed=0 被正确传递给 ComfyUI
+  - [ ] seed 输入框默认行为明确且符合直觉
+  - [ ] Radio 选中项无圆点，仅通过背景色区分
+  - [ ] TASK_STATUS.md「已知问题」章节中所有条目均已处理
+  - [ ] `uv run ruff check .` 和 `uv run ruff format --check .` 通过
+- **自测方法**: 启动 GUI 逐项验证每个修复项；seed 测试 0/42/留空三种情况
+- **回滚方案**: `git checkout -- src/semantic_transmission/gui/receiver_panel.py src/semantic_transmission/gui/pipeline_panel.py src/semantic_transmission/gui/theme.py`
 - **预估工作量**: M
