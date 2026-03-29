@@ -66,6 +66,14 @@ uv run python scripts/test_comfyui_connection.py
 uv run python scripts/verify_workflows.py
 ```
 
+### 5. 启动 GUI
+
+```bash
+uv run semantic-tx gui
+```
+
+浏览器打开 http://127.0.0.1:7860 即可使用可视化界面，支持配置管理、发送端/接收端独立操作和一键端到端演示。
+
 ## 文档导航
 
 ### 面向开发者

@@ -73,6 +73,8 @@
 - [x] 初步评估还原质量
   - 质量评估模块：PSNR、SSIM、LPIPS、CLIP Score
   - 批量评估脚本：逐样本指标 + 汇总统计 + JSON 报告
+- [x] CLI 正规化：click 框架统一入口 `semantic-tx`（sender/receiver/demo/check/download/gui）
+- [x] Gradio GUI 开发：可视化界面（配置管理、发送端/接收端、端到端演示、质量评估）
 
 ### 交付物
 
@@ -83,6 +85,8 @@
 - 端到端测试报告（`docs/test-reports/`）
 - 质量评估模块和批量评估脚本
 - 完整文档体系（开发指南、架构文档、使用指南、演示手册、项目总览）
+- CLI 工具 `semantic-tx`（7 个子命令）
+- Gradio GUI（`semantic-tx gui`，4 个功能面板）
 
 ---
 

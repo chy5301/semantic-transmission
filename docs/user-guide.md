@@ -109,3 +109,26 @@ uv run python scripts/evaluate.py --input-dir output/demo --original-dir resourc
 ```
 
 详细演示操作说明见 [demo-handbook.md](demo-handbook.md)。
+
+### GUI 可视化界面
+
+除了命令行方式，还可以通过 Gradio GUI 进行操作：
+
+```bash
+uv run semantic-tx gui
+```
+
+浏览器打开 http://127.0.0.1:7860，界面包含 4 个标签页：
+
+- **配置**：ComfyUI 连接管理、VLM 模型路径、中继传输配置
+- **发送端**：上传图像 → 提取边缘图 + 生成语义描述
+- **接收端**：输入边缘图和描述 → 还原图像
+- **端到端演示**：一键完成全流程，展示传输统计和质量评估
+
+常用选项：
+
+```bash
+semantic-tx gui --port 8080      # 指定端口
+semantic-tx gui --host 0.0.0.0   # 允许局域网访问
+semantic-tx gui --share           # 生成公网分享链接
+```
