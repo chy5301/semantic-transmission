@@ -4,6 +4,7 @@ import gradio as gr
 
 from semantic_transmission import __version__
 from semantic_transmission.gui.config_panel import build_config_tab
+from semantic_transmission.gui.pipeline_panel import build_pipeline_tab
 from semantic_transmission.gui.receiver_panel import build_receiver_tab
 from semantic_transmission.gui.sender_panel import build_sender_tab
 from semantic_transmission.gui.theme import CUSTOM_CSS, get_theme
@@ -34,11 +35,7 @@ def create_app() -> gr.Blocks:
                 receiver_components = build_receiver_tab(config_components)
 
             with gr.TabItem("◆ 端到端演示"):
-                gr.Markdown(
-                    "### 端到端演示\n\n"
-                    "> 此功能将在后续版本中实现。\n\n"
-                    "端到端演示将支持：一键完成 发送 → 传输 → 接收 全流程"
-                )
+                build_pipeline_tab(config_components)
 
         # Tab 间传递：发送端 → 接收端
         sender_components["send_to_receiver_btn"].click(
