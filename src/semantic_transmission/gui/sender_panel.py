@@ -129,6 +129,7 @@ def build_sender_tab(config_components: dict) -> dict:
         choices=[MODE_MANUAL, MODE_VLM_AUTO],
         value=MODE_MANUAL,
         label="描述模式",
+        elem_classes=["mode-radio"],
     )
     prompt_input = gr.Textbox(
         label="Prompt",
