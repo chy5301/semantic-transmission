@@ -65,18 +65,24 @@ src/semantic_transmission/
 - `docs/architecture.md` — 系统架构（模块关系、数据流、接口设计）
 - `docs/user-guide.md` — 使用指南
 - `docs/demo-handbook.md` — 演示手册（单机/双机操作步骤）
+- `docs/gui-design.md` — GUI 设计文档（Gradio 界面布局与交互设计）
 - `docs/cli-reference.md` — CLI 参考文档（semantic-tx 全部子命令参数说明）
 - `docs/project-overview.md` — 项目总览（面向负责人）
 - `resources/test_images/` — 测试用图片集
 
 ## CI 注意事项
 
+- **编辑代码前必须先创建 feature branch**（`git checkout -b <branch>`），禁止在 main 上直接修改
 - 推送前务必在本地运行 `uv run ruff check .` 和 `uv run ruff format --check .` 确认通过
 - CI 检查范围是整个项目（`.`），不仅限于 `src/`
 
 ## 文档规范
 
 - 文档中的流程图、拓扑图等使用 Mermaid 格式（```mermaid），不使用 ASCII art
+
+## GUI 开发注意事项
+
+- Gradio `gr.Image` 默认 `type="numpy"`，回调收到的是 `numpy.ndarray` 而非 PIL Image 或文件路径；需要文件路径时须显式指定 `type="filepath"`
 
 ## 环境前置条件
 
