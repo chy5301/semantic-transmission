@@ -27,11 +27,14 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from semantic_transmission.evaluation.perceptual_metrics import (
+    compute_lpips,
+    load_lpips_model,
+)
 from semantic_transmission.evaluation.pixel_metrics import compute_psnr, compute_ssim
-from semantic_transmission.evaluation.utils import (
-    align_sizes,
-    to_numpy,
-    to_tensor_normalized,
+from semantic_transmission.evaluation.semantic_metrics import (
+    compute_clip_score,
+    load_clip_model,
 )
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff")
@@ -65,91 +68,6 @@ def discover_samples(
     return samples
 
 
-def load_lpips_model(net: str = "alex", device: str | None = None):
-    """加载 LPIPS 模型（仅调用一次，多次复用）。"""
-    import lpips as lpips_lib
-
-    model = lpips_lib.LPIPS(net=net, verbose=False)
-    model.eval()
-    if device:
-        model = model.to(device)
-    return model
-
-
-def compute_lpips_with_model(
-    original: np.ndarray,
-    reconstructed: np.ndarray,
-    model,
-    device: str | None = None,
-) -> float:
-    """使用已加载的 LPIPS 模型计算感知距离。"""
-    import torch
-
-    a = to_numpy(original)
-    b = to_numpy(reconstructed)
-    a, b = align_sizes(a, b)
-
-    tensor_a = to_tensor_normalized(a)
-    tensor_b = to_tensor_normalized(b)
-
-    if device:
-        tensor_a = tensor_a.to(device)
-        tensor_b = tensor_b.to(device)
-
-    with torch.no_grad():
-        distance = model(tensor_a, tensor_b, normalize=True)
-
-    return float(distance.item())
-
-
-def load_clip_model(
-    model_name: str = "openai/clip-vit-base-patch32",
-    device: str | None = None,
-):
-    """加载 CLIP 模型和 processor（仅调用一次，多次复用）。"""
-    from transformers import CLIPModel, CLIPProcessor
-
-    processor = CLIPProcessor.from_pretrained(model_name)
-    model = CLIPModel.from_pretrained(model_name)
-    model.eval()
-    if device:
-        model = model.to(device)
-    return model, processor
-
-
-def compute_clip_score_with_model(
-    image: np.ndarray,
-    text: str,
-    model,
-    processor,
-    device: str | None = None,
-) -> float:
-    """使用已加载的 CLIP 模型计算图文匹配分数。"""
-    import torch
-
-    arr = to_numpy(image)
-    pil_image = Image.fromarray(arr)
-
-    inputs = processor(
-        text=[text], images=[pil_image], return_tensors="pt", padding=True
-    )
-    if device:
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    with torch.no_grad():
-        image_features = model.get_image_features(pixel_values=inputs["pixel_values"])
-        text_features = model.get_text_features(
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-        )
-
-    image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-    text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-
-    cosine_sim = (image_features * text_features).sum(dim=-1)
-    return max(100.0 * cosine_sim.item(), 0.0)
-
-
 def evaluate_sample(
     original_path: Path,
     restored_path: Path,
@@ -175,13 +93,17 @@ def evaluate_sample(
     }
 
     if lpips_model is not None:
-        result["lpips"] = compute_lpips_with_model(
-            original_arr, restored_arr, lpips_model, device
+        result["lpips"] = compute_lpips(
+            original_arr, restored_arr, loss_fn=lpips_model, device=device
         )
 
     if clip_model is not None and clip_processor is not None and prompt_text:
-        result["clip_score"] = compute_clip_score_with_model(
-            restored_arr, prompt_text, clip_model, clip_processor, device
+        result["clip_score"] = compute_clip_score(
+            restored_arr,
+            prompt_text,
+            model=clip_model,
+            processor=clip_processor,
+            device=device,
         )
 
     return result

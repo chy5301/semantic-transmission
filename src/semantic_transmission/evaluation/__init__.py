@@ -5,13 +5,15 @@
 - 语义级：CLIP Score
 """
 
-from .perceptual_metrics import compute_lpips
+from .perceptual_metrics import compute_lpips, load_lpips_model
 from .pixel_metrics import compute_psnr, compute_ssim
-from .semantic_metrics import compute_clip_score
+from .semantic_metrics import compute_clip_score, load_clip_model
 
 __all__ = [
     "compute_psnr",
     "compute_ssim",
     "compute_lpips",
+    "load_lpips_model",
     "compute_clip_score",
+    "load_clip_model",
 ]

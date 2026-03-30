@@ -1,21 +1,12 @@
 """配置 Tab：ComfyUI 连接管理、VLM 模型检查、中继传输配置。"""
 
-import os
 import time
 from pathlib import Path
 
 import gradio as gr
 
 from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig
-
-
-def _default_vlm_path() -> str:
-    """获取 VLM 模型默认本地路径。"""
-    cache_dir = os.environ.get("MODEL_CACHE_DIR", "")
-    if cache_dir:
-        return os.path.join(cache_dir, "Qwen", "Qwen2.5-VL-7B-Instruct")
-    return ""
+from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
 
 
 def _test_comfyui_connection(host: str, port: float) -> str:
@@ -85,7 +76,7 @@ def build_config_tab() -> dict:
     gr.Markdown("### VLM 模型")
     vlm_model_name = gr.Textbox(value="Qwen/Qwen2.5-VL-7B-Instruct", label="模型名称")
     vlm_model_path = gr.Textbox(
-        value=_default_vlm_path(),
+        value=get_default_vlm_path() or "",
         label="本地路径",
         placeholder="留空则使用 HuggingFace 在线加载",
     )

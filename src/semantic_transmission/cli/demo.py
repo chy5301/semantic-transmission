@@ -1,7 +1,6 @@
 """semantic-tx demo 子命令：端到端语义传输演示。"""
 
 import io
-import os
 import sys
 import time
 from pathlib import Path
@@ -10,16 +9,9 @@ import click
 from PIL import Image
 
 from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig
+from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
 from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
 from semantic_transmission.sender.comfyui_sender import ComfyUISender
-
-
-def _default_vlm_path() -> str | None:
-    cache_dir = os.environ.get("MODEL_CACHE_DIR")
-    if cache_dir:
-        return os.path.join(cache_dir, "Qwen", "Qwen2.5-VL-7B-Instruct")
-    return None
 
 
 def _make_comparison_image(
@@ -50,18 +42,65 @@ def _make_comparison_image(
 
 
 @click.command()
-@click.option("--image", required=True, type=click.Path(exists=True, path_type=Path), help="输入图像路径")
+@click.option(
+    "--image",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="输入图像路径",
+)
 @click.option("--prompt", default=None, type=str, help="手动指定描述文本")
-@click.option("--auto-prompt", is_flag=True, default=False, help="使用 VLM (Qwen2.5-VL) 自动生成描述")
-@click.option("--sender-host", default="127.0.0.1", help="发送端 ComfyUI 地址（默认 127.0.0.1）")
-@click.option("--sender-port", default=8188, type=int, help="发送端 ComfyUI 端口（默认 8188）")
-@click.option("--receiver-host", default="127.0.0.1", help="接收端 ComfyUI 地址（默认 127.0.0.1）")
-@click.option("--receiver-port", default=8188, type=int, help="接收端 ComfyUI 端口（默认 8188）")
-@click.option("--output-dir", default=Path("output/demo"), type=click.Path(path_type=Path), help="输出目录（默认 output/demo）")
-@click.option("--seed", default=None, type=int, help="KSampler 随机种子（可选，便于复现）")
-@click.option("--vlm-model", default=None, type=str, help="VLM 模型名称（默认 Qwen/Qwen2.5-VL-7B-Instruct）")
-@click.option("--vlm-model-path", default=None, type=str, help="VLM 模型本地路径（默认 $MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct）")
-def demo(image, prompt, auto_prompt, sender_host, sender_port, receiver_host, receiver_port, output_dir, seed, vlm_model, vlm_model_path):
+@click.option(
+    "--auto-prompt",
+    is_flag=True,
+    default=False,
+    help="使用 VLM (Qwen2.5-VL) 自动生成描述",
+)
+@click.option(
+    "--sender-host", default="127.0.0.1", help="发送端 ComfyUI 地址（默认 127.0.0.1）"
+)
+@click.option(
+    "--sender-port", default=8188, type=int, help="发送端 ComfyUI 端口（默认 8188）"
+)
+@click.option(
+    "--receiver-host", default="127.0.0.1", help="接收端 ComfyUI 地址（默认 127.0.0.1）"
+)
+@click.option(
+    "--receiver-port", default=8188, type=int, help="接收端 ComfyUI 端口（默认 8188）"
+)
+@click.option(
+    "--output-dir",
+    default=Path("output/demo"),
+    type=click.Path(path_type=Path),
+    help="输出目录（默认 output/demo）",
+)
+@click.option(
+    "--seed", default=None, type=int, help="KSampler 随机种子（可选，便于复现）"
+)
+@click.option(
+    "--vlm-model",
+    default=None,
+    type=str,
+    help="VLM 模型名称（默认 Qwen/Qwen2.5-VL-7B-Instruct）",
+)
+@click.option(
+    "--vlm-model-path",
+    default=None,
+    type=str,
+    help="VLM 模型本地路径（默认 $MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct）",
+)
+def demo(
+    image,
+    prompt,
+    auto_prompt,
+    sender_host,
+    sender_port,
+    receiver_host,
+    receiver_port,
+    output_dir,
+    seed,
+    vlm_model,
+    vlm_model_path,
+):
     """端到端演示：图像 → 边缘提取 → 语义还原。"""
     import builtins
     import functools
@@ -75,7 +114,7 @@ def demo(image, prompt, auto_prompt, sender_host, sender_port, receiver_host, re
         raise click.UsageError("--prompt 和 --auto-prompt 不能同时使用")
 
     if vlm_model_path is None:
-        vlm_model_path = _default_vlm_path()
+        vlm_model_path = get_default_vlm_path()
 
     # 创建输出目录
     output_dir.mkdir(parents=True, exist_ok=True)

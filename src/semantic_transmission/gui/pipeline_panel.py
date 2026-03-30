@@ -9,16 +9,10 @@ import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig
+from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
 from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
+from semantic_transmission.gui import MODE_MANUAL, MODE_VLM_AUTO
 from semantic_transmission.sender.comfyui_sender import ComfyUISender
-
-
-def _default_vlm_path() -> str:
-    cache_dir = os.environ.get("MODEL_CACHE_DIR", "")
-    if cache_dir:
-        return os.path.join(cache_dir, "Qwen", "Qwen2.5-VL-7B-Instruct")
-    return ""
 
 
 def _format_steps(steps, current_idx):
@@ -193,7 +187,7 @@ def _run_e2e(
     # --- [3/5] 获取语义描述 ---
     vlm_elapsed = 0.0
     log += "[3/5] 获取语义描述...\n"
-    if mode == "VLM 自动生成":
+    if mode == MODE_VLM_AUTO:
         log += "  正在加载 VLM 模型...\n"
         yield (
             original_img,
@@ -211,7 +205,7 @@ def _run_e2e(
             vlm_kwargs = {}
             if vlm_model_name:
                 vlm_kwargs["model_name"] = vlm_model_name
-            vlm_path = vlm_model_path or _default_vlm_path()
+            vlm_path = vlm_model_path or get_default_vlm_path() or ""
             if vlm_path:
                 vlm_kwargs["model_path"] = vlm_path
 
@@ -275,7 +269,6 @@ def _run_e2e(
     seed_int = int(seed) if seed else None
     try:
         receiver = ComfyUIReceiver(r_client)
-        # 将边缘图转为 bytes 传给接收端
         buf = io.BytesIO()
         edge_pil.save(buf, format="PNG")
         edge_bytes = buf.getvalue()
@@ -409,8 +402,8 @@ def build_pipeline_tab(config_components: dict) -> dict:
             image_input = gr.Image(label="原始图像", type="filepath")
         with gr.Column(scale=1):
             mode_radio = gr.Radio(
-                choices=["手动输入", "VLM 自动生成"],
-                value="手动输入",
+                choices=[MODE_MANUAL, MODE_VLM_AUTO],
+                value=MODE_MANUAL,
                 label="描述模式",
             )
             prompt_input = gr.Textbox(
@@ -476,7 +469,7 @@ def build_pipeline_tab(config_components: dict) -> dict:
 
     # --- 描述模式切换 ---
     mode_radio.change(
-        fn=lambda m: gr.update(visible=(m == "手动输入")),
+        fn=lambda m: gr.update(visible=(m == MODE_MANUAL)),
         inputs=mode_radio,
         outputs=prompt_input,
     )

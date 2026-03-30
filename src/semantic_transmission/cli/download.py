@@ -21,10 +21,34 @@ DEFAULT_CACHE_DIR = (
 
 # === 模型定义 ===
 COMFYUI_MODELS = [
-    ("huggingface", "Comfy-Org/z_image_turbo", "split_files/text_encoders/qwen_3_4b.safetensors", "text_encoders", "qwen_3_4b.safetensors"),
-    ("huggingface", "Comfy-Org/z_image_turbo", "split_files/diffusion_models/z_image_turbo_bf16.safetensors", "diffusion_models", "z_image_turbo_bf16.safetensors"),
-    ("huggingface", "Comfy-Org/z_image_turbo", "split_files/vae/ae.safetensors", "vae", "ae.safetensors"),
-    ("modelscope", "PAI/Z-Image-Turbo-Fun-Controlnet-Union", "Z-Image-Turbo-Fun-Controlnet-Union.safetensors", "model_patches", "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"),
+    (
+        "huggingface",
+        "Comfy-Org/z_image_turbo",
+        "split_files/text_encoders/qwen_3_4b.safetensors",
+        "text_encoders",
+        "qwen_3_4b.safetensors",
+    ),
+    (
+        "huggingface",
+        "Comfy-Org/z_image_turbo",
+        "split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+        "diffusion_models",
+        "z_image_turbo_bf16.safetensors",
+    ),
+    (
+        "huggingface",
+        "Comfy-Org/z_image_turbo",
+        "split_files/vae/ae.safetensors",
+        "vae",
+        "ae.safetensors",
+    ),
+    (
+        "modelscope",
+        "PAI/Z-Image-Turbo-Fun-Controlnet-Union",
+        "Z-Image-Turbo-Fun-Controlnet-Union.safetensors",
+        "model_patches",
+        "Z-Image-Turbo-Fun-Controlnet-Union.safetensors",
+    ),
 ]
 
 HF_REPO_MODELS = [
@@ -50,7 +74,17 @@ def _is_hf_repo_complete(target_dir: Path) -> bool:
 
 def _download_modelscope(repo_id, file_path, target_dir, cache_dir):
     target_dir.mkdir(parents=True, exist_ok=True)
-    cmd = ["modelscope", "download", "--model", repo_id, file_path, "--local_dir", str(target_dir), "--cache_dir", str(cache_dir / "modelscope")]
+    cmd = [
+        "modelscope",
+        "download",
+        "--model",
+        repo_id,
+        file_path,
+        "--local_dir",
+        str(target_dir),
+        "--cache_dir",
+        str(cache_dir / "modelscope"),
+    ]
     env = os.environ.copy()
     for key in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
         env.pop(key, None)
@@ -61,7 +95,16 @@ def _download_modelscope(repo_id, file_path, target_dir, cache_dir):
 
 def _download_huggingface(repo_id, file_path, target_dir, proxy, hf_mirror, cache_dir):
     target_dir.mkdir(parents=True, exist_ok=True)
-    cmd = ["hf", "download", repo_id, file_path, "--local-dir", str(target_dir), "--cache-dir", str(cache_dir / "huggingface")]
+    cmd = [
+        "hf",
+        "download",
+        repo_id,
+        file_path,
+        "--local-dir",
+        str(target_dir),
+        "--cache-dir",
+        str(cache_dir / "huggingface"),
+    ]
     env = os.environ.copy()
     if hf_mirror:
         env["HF_ENDPOINT"] = HF_MIRROR_ENDPOINT
@@ -81,7 +124,15 @@ def _download_huggingface(repo_id, file_path, target_dir, proxy, hf_mirror, cach
 
 def _download_huggingface_repo(repo_id, target_dir, proxy, hf_mirror, cache_dir):
     target_dir.mkdir(parents=True, exist_ok=True)
-    cmd = ["hf", "download", repo_id, "--local-dir", str(target_dir), "--cache-dir", str(cache_dir / "huggingface")]
+    cmd = [
+        "hf",
+        "download",
+        repo_id,
+        "--local-dir",
+        str(target_dir),
+        "--cache-dir",
+        str(cache_dir / "huggingface"),
+    ]
     env = os.environ.copy()
     if hf_mirror:
         env["HF_ENDPOINT"] = HF_MIRROR_ENDPOINT
@@ -100,18 +151,44 @@ def _download_huggingface_repo(repo_id, target_dir, proxy, hf_mirror, cache_dir)
 
 
 @click.command()
-@click.option("--comfyui-dir", default=DEFAULT_COMFYUI_DIR, type=click.Path(path_type=Path), help="ComfyUI 安装目录（默认从环境变量 COMFYUI_DIR 读取）")
-@click.option("--proxy", default=None, type=str, help=f"HuggingFace 下载代理地址（默认: {DEFAULT_PROXY}，设为 'none' 禁用代理）")
-@click.option("--no-mirror", is_flag=True, default=False, help=f"禁用 HuggingFace 国内镜像（默认使用 {HF_MIRROR_ENDPOINT}）")
-@click.option("--cache-dir", default=DEFAULT_CACHE_DIR, type=click.Path(path_type=Path), help="下载缓存目录（默认从环境变量 MODEL_CACHE_DIR 读取）")
-@click.option("--dry-run", is_flag=True, default=False, help="仅显示将要执行的操作，不实际下载")
+@click.option(
+    "--comfyui-dir",
+    default=DEFAULT_COMFYUI_DIR,
+    type=click.Path(path_type=Path),
+    help="ComfyUI 安装目录（默认从环境变量 COMFYUI_DIR 读取）",
+)
+@click.option(
+    "--proxy",
+    default=None,
+    type=str,
+    help=f"HuggingFace 下载代理地址（默认: {DEFAULT_PROXY}，设为 'none' 禁用代理）",
+)
+@click.option(
+    "--no-mirror",
+    is_flag=True,
+    default=False,
+    help=f"禁用 HuggingFace 国内镜像（默认使用 {HF_MIRROR_ENDPOINT}）",
+)
+@click.option(
+    "--cache-dir",
+    default=DEFAULT_CACHE_DIR,
+    type=click.Path(path_type=Path),
+    help="下载缓存目录（默认从环境变量 MODEL_CACHE_DIR 读取）",
+)
+@click.option(
+    "--dry-run", is_flag=True, default=False, help="仅显示将要执行的操作，不实际下载"
+)
 def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
     """下载 ComfyUI 所需模型文件。"""
     if comfyui_dir is None:
-        print("错误：未指定 ComfyUI 目录。请设置环境变量 COMFYUI_DIR 或使用 --comfyui-dir 参数")
+        print(
+            "错误：未指定 ComfyUI 目录。请设置环境变量 COMFYUI_DIR 或使用 --comfyui-dir 参数"
+        )
         sys.exit(1)
     if cache_dir is None:
-        print("错误：未指定缓存目录。请设置环境变量 MODEL_CACHE_DIR 或使用 --cache-dir 参数")
+        print(
+            "错误：未指定缓存目录。请设置环境变量 MODEL_CACHE_DIR 或使用 --cache-dir 参数"
+        )
         sys.exit(1)
 
     hf_mirror = not no_mirror
@@ -120,7 +197,11 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
     elif proxy is not None:
         _proxy = None if proxy.lower() == "none" else proxy
     else:
-        _proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or DEFAULT_PROXY
+        _proxy = (
+            os.environ.get("HTTPS_PROXY")
+            or os.environ.get("HTTP_PROXY")
+            or DEFAULT_PROXY
+        )
 
     models_dir = comfyui_dir / "models"
     if not models_dir.exists():
@@ -182,7 +263,9 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
             if source == "modelscope":
                 downloaded = _download_modelscope(repo_id, file_path, dl_dir, cache_dir)
             else:
-                downloaded = _download_huggingface(repo_id, file_path, dl_dir, _proxy, hf_mirror, cache_dir)
+                downloaded = _download_huggingface(
+                    repo_id, file_path, dl_dir, _proxy, hf_mirror, cache_dir
+                )
 
             if not downloaded.exists():
                 print(f"  下载文件未找到: {downloaded}")
@@ -222,7 +305,9 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
             continue
 
         try:
-            _download_huggingface_repo(repo_id, target_dir, _proxy, hf_mirror, cache_dir)
+            _download_huggingface_repo(
+                repo_id, target_dir, _proxy, hf_mirror, cache_dir
+            )
             print("  下载完成")
         except subprocess.CalledProcessError as e:
             print(f"  下载失败（命令返回码 {e.returncode}）")

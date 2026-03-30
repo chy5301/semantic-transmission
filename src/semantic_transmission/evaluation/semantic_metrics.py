@@ -9,12 +9,35 @@ from transformers import CLIPModel, CLIPProcessor
 from .utils import ImageInput, to_numpy
 
 
+def load_clip_model(
+    model_name: str = "openai/clip-vit-base-patch32",
+    device: str | None = None,
+):
+    """加载 CLIP 模型和 processor（可复用以避免重复加载）。
+
+    Args:
+        model_name: CLIP 模型名称
+        device: 计算设备，None 时使用 CPU
+
+    Returns:
+        (model, processor) 元组。
+    """
+    processor = CLIPProcessor.from_pretrained(model_name)
+    model = CLIPModel.from_pretrained(model_name)
+    model.eval()
+    if device:
+        model = model.to(device)
+    return model, processor
+
+
 def compute_clip_score(
     image: ImageInput,
     text: str,
     *,
     model_name: str = "openai/clip-vit-base-patch32",
     device: str | None = None,
+    model=None,
+    processor=None,
 ) -> float:
     """计算 CLIP Score（图文语义匹配度）。
 
@@ -26,20 +49,18 @@ def compute_clip_score(
         text: 文本描述（通常是发送端生成的 prompt）
         model_name: CLIP 模型名称
         device: 计算设备，None 时使用 CPU
+        model: 预加载的 CLIPModel（通过 load_clip_model 创建），
+               传入时复用该模型，否则每次调用重新加载
+        processor: 预加载的 CLIPProcessor，需与 model 配对使用
 
     Returns:
         CLIP Score，范围 [0, 100]，越高表示图文匹配度越好。
     """
-    # 转为 PIL Image（CLIPProcessor 需要 PIL 输入）
     arr = to_numpy(image)
     pil_image = Image.fromarray(arr)
 
-    processor = CLIPProcessor.from_pretrained(model_name)
-    model = CLIPModel.from_pretrained(model_name)
-    model.eval()
-
-    if device:
-        model = model.to(device)
+    if model is None or processor is None:
+        model, processor = load_clip_model(model_name=model_name, device=device)
 
     inputs = processor(
         text=[text], images=[pil_image], return_tensors="pt", padding=True
@@ -54,12 +75,8 @@ def compute_clip_score(
             attention_mask=inputs["attention_mask"],
         )
 
-    # L2 归一化
     image_features = image_features / image_features.norm(dim=-1, keepdim=True)
     text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
-    # 余弦相似度 → CLIP Score
     cosine_sim = (image_features * text_features).sum(dim=-1)
-    score = max(100.0 * cosine_sim.item(), 0.0)
-
-    return score
+    return max(100.0 * cosine_sim.item(), 0.0)

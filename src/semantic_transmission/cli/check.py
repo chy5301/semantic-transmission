@@ -181,7 +181,12 @@ def connection(host, port):
 @click.option("--port", default=None, type=int, help="ComfyUI 端口")
 @click.option("--sender-only", is_flag=True, default=False, help="仅验证发送端")
 @click.option("--receiver-only", is_flag=True, default=False, help="仅验证接收端")
-@click.option("--edge-image", default=None, type=click.Path(exists=True, path_type=Path), help="接收端验证用的边缘图路径（--receiver-only 时使用）")
+@click.option(
+    "--edge-image",
+    default=None,
+    type=click.Path(exists=True, path_type=Path),
+    help="接收端验证用的边缘图路径（--receiver-only 时使用）",
+)
 def workflows(host, port, sender_only, receiver_only, edge_image):
     """验证 ComfyUI 发送端和接收端工作流。"""
     from PIL import ImageDraw
@@ -218,7 +223,9 @@ def workflows(host, port, sender_only, receiver_only, edge_image):
             nonlocal edge_path
             img = Image.new("RGB", (256, 256))
             draw = ImageDraw.Draw(img)
-            draw.rectangle([50, 50, 200, 200], fill=(255, 0, 0), outline=(255, 255, 255))
+            draw.rectangle(
+                [50, 50, 200, 200], fill=(255, 0, 0), outline=(255, 255, 255)
+            )
             draw.ellipse([80, 80, 180, 180], fill=(0, 0, 255), outline=(255, 255, 0))
             draw.line([(0, 0), (256, 256)], fill=(0, 255, 0), width=3)
 

@@ -1,6 +1,5 @@
 """发送端 Tab：图像上传 → Canny 边缘提取 → VLM 语义描述。"""
 
-import os
 import time
 
 import gradio as gr
@@ -8,19 +7,13 @@ import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig
+from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
+from semantic_transmission.gui import MODE_MANUAL, MODE_VLM_AUTO
 from semantic_transmission.sender.comfyui_sender import ComfyUISender
 
 
-def _default_vlm_path() -> str:
-    cache_dir = os.environ.get("MODEL_CACHE_DIR", "")
-    if cache_dir:
-        return os.path.join(cache_dir, "Qwen", "Qwen2.5-VL-7B-Instruct")
-    return ""
-
-
 def _on_mode_change(mode: str):
-    return gr.update(visible=(mode == "手动输入"))
+    return gr.update(visible=(mode == MODE_MANUAL))
 
 
 def _run_sender(
@@ -79,7 +72,7 @@ def _run_sender(
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
     # [3] 获取语义描述
-    if mode == "VLM 自动生成":
+    if mode == MODE_VLM_AUTO:
         log += "[3/3] VLM 生成语义描述...\n"
         log += "  正在加载 VLM 模型（首次加载可能需要几分钟）...\n"
         yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
@@ -90,7 +83,7 @@ def _run_sender(
             vlm_kwargs = {}
             if vlm_model_name:
                 vlm_kwargs["model_name"] = vlm_model_name
-            vlm_path = vlm_model_path or _default_vlm_path()
+            vlm_path = vlm_model_path or get_default_vlm_path() or ""
             if vlm_path:
                 vlm_kwargs["model_path"] = vlm_path
 
@@ -133,8 +126,8 @@ def build_sender_tab(config_components: dict) -> dict:
             edge_output = gr.Image(label="边缘图 (Canny)", interactive=False)
 
     mode_radio = gr.Radio(
-        choices=["手动输入", "VLM 自动生成"],
-        value="手动输入",
+        choices=[MODE_MANUAL, MODE_VLM_AUTO],
+        value=MODE_MANUAL,
         label="描述模式",
     )
     prompt_input = gr.Textbox(

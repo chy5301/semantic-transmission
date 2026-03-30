@@ -12,7 +12,9 @@ from semantic_transmission.pipeline.relay import SocketRelayReceiver
 from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
 
 
-def _process_packet(receiver: ComfyUIReceiver, packet, output_dir: Path, index: int, _print):
+def _process_packet(
+    receiver: ComfyUIReceiver, packet, output_dir: Path, index: int, _print
+):
     """处理接收到的数据包：还原图像并保存。"""
     prompt_text = packet.prompt_text
     edge_bytes = packet.edge_image
@@ -53,13 +55,31 @@ def _process_packet(receiver: ComfyUIReceiver, packet, output_dir: Path, index: 
 
 
 @click.command()
-@click.option("--relay-host", default="0.0.0.0", help="监听地址（默认 0.0.0.0，接受所有连接）")
+@click.option(
+    "--relay-host", default="0.0.0.0", help="监听地址（默认 0.0.0.0，接受所有连接）"
+)
 @click.option("--relay-port", default=9000, type=int, help="监听端口（默认 9000）")
-@click.option("--comfyui-host", default="127.0.0.1", help="本机 ComfyUI 地址（默认 127.0.0.1）")
-@click.option("--comfyui-port", default=8188, type=int, help="本机 ComfyUI 端口（默认 8188）")
-@click.option("--output-dir", default=Path("output/received"), type=click.Path(path_type=Path), help="输出目录（默认 output/received）")
-@click.option("--continuous", is_flag=True, default=False, help="连续模式：持续监听，每次接收后等待下一次连接")
-def receiver(relay_host, relay_port, comfyui_host, comfyui_port, output_dir, continuous):
+@click.option(
+    "--comfyui-host", default="127.0.0.1", help="本机 ComfyUI 地址（默认 127.0.0.1）"
+)
+@click.option(
+    "--comfyui-port", default=8188, type=int, help="本机 ComfyUI 端口（默认 8188）"
+)
+@click.option(
+    "--output-dir",
+    default=Path("output/received"),
+    type=click.Path(path_type=Path),
+    help="输出目录（默认 output/received）",
+)
+@click.option(
+    "--continuous",
+    is_flag=True,
+    default=False,
+    help="连续模式：持续监听，每次接收后等待下一次连接",
+)
+def receiver(
+    relay_host, relay_port, comfyui_host, comfyui_port, output_dir, continuous
+):
     """接收端：监听端口接收数据 → 还原图像。"""
     import builtins
     import functools
@@ -102,9 +122,7 @@ def receiver(relay_host, relay_port, comfyui_host, comfyui_port, output_dir, con
             packet = relay.receive()
             _print("  数据接收完成")
 
-            if relay._conn is not None:
-                relay._conn.close()
-                relay._conn = None
+            relay.close_connection()
 
             _, elapsed = _process_packet(receiver, packet, output_dir, index, _print)
 
