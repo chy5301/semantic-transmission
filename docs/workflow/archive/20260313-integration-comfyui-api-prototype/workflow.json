@@ -39,6 +39,10 @@
     {
       "name": "Phase 5: GUI 开发",
       "exitCriteria": "semantic-tx gui 可启动 Gradio 界面；覆盖配置面板、发送端、接收端、端到端演示四个标签页"
+    },
+    {
+      "name": "Phase 6: 修复与体验优化",
+      "exitCriteria": "已知问题全部修复；GUI/CLI 交互体验无明显缺陷；用户测试中发现的问题均已处理"
     }
   ],
   "projectContext": {

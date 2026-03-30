@@ -25,47 +25,6 @@ graph LR
 - **传输层**：仅传输文本和轻量条件信息，实现极低码率
 - **接收端**：通过扩散生成模型（如 Z-Image-Turbo、Wan2.x）从语义信息还原视觉内容
 
-## 项目阶段
-
-| 阶段 | 目标 | 状态 |
-|------|------|------|
-| 阶段一：调研与选型 | 论文综述、开源项目评估、技术路线确定 | ✅ 已完成 |
-| 阶段二：ComfyUI API 原型 | 基于 ComfyUI API 打通端到端流程 | 🔄 进行中 |
-| 阶段三：方案迭代优化 | 模型升级、条件优化、视频级扩展 | 待启动 |
-| 阶段四：工程化 | 脱离 ComfyUI，构建独立可部署系统 | 待启动 |
-
-详见 [项目路线图](docs/ROADMAP.md)。
-
-## 项目结构
-
-```
-├── src/semantic_transmission/
-│   ├── common/                     # 公共模块：ComfyUI 客户端、配置、类型定义
-│   ├── pipeline/                   # 端到端管道编排
-│   ├── sender/                     # 发送端：图像/视频 → 语义描述 + 条件信息
-│   └── receiver/                   # 接收端：语义描述 → 图像/视频还原
-├── tests/                          # 单元测试
-├── docs/
-│   ├── ROADMAP.md                  # 项目路线图
-│   ├── comfyui-setup.md            # ComfyUI 本机部署指南
-│   ├── research/                   # 调研产出
-│   │   ├── papers/                 # 论文综述
-│   │   ├── projects/               # 开源项目评估
-│   │   ├── models/                 # 模型对比
-│   │   └── comfyui-workflow-analysis.md  # ComfyUI 工作流分析
-│   ├── test-reports/               # 端到端测试报告
-│   ├── collaboration/              # 协作规范（Git/GitHub/PR/Issue）
-│   └── workflow/                   # 结构化工作流（Claude Code agent coding 工具）
-├── scripts/                        # 工具脚本（模型下载、连通性测试、工作流验证、双机演示）
-├── resources/
-│   ├── comfyui/                    # ComfyUI 工作流文件及截图
-│   └── test_images/                # 测试用图片集
-├── output/
-│   └── demo/                       # 端到端测试结果（PNG 通过 Git LFS 管理）
-├── .github/                        # GitHub 模板与 CI 工作流
-└── CLAUDE.md                       # AI 辅助开发配置
-```
-
 ## 快速开始
 
 ### 1. 安装项目依赖
@@ -73,22 +32,13 @@ graph LR
 需要 Python >= 3.10、[uv](https://docs.astral.sh/uv/) 和 [Git LFS](https://git-lfs.com/)：
 
 ```bash
-# 安装 Git LFS（首次使用需执行）
-git lfs install
-```
-
-```bash
+git lfs install   # 首次使用需执行
 uv sync
 ```
 
 ### 2. 部署 ComfyUI
 
-推荐使用 [秋叶 ComfyUI 整合包](https://space.bilibili.com/12566101)（ComfyUI-aki v3），下载后启动启动器即可使用，无需额外配置。
-
-参考资源：
-- [B 站视频教程](https://www.bilibili.com/video/BV1Ew411776J)
-- [B 站图文教程](https://www.bilibili.com/opus/1159516886456598528)
-- [飞书安装文档](https://my.feishu.cn/wiki/P7Qzwfnx4inVFLkVIPbclmY0nvb)
+推荐使用 [秋叶 ComfyUI 整合包](https://space.bilibili.com/12566101)（ComfyUI-aki v3），下载后启动启动器即可使用。
 
 详细部署说明见 [docs/comfyui-setup.md](docs/comfyui-setup.md)。
 
@@ -96,25 +46,9 @@ uv sync
 
 项目需要 4 个模型文件（总计约 24GB）：
 
-| 模型 | 大小 | 用途 |
-|------|------|------|
-| `qwen_3_4b.safetensors` | ~8 GB | 文本编码器 |
-| `z_image_turbo_bf16.safetensors` | ~12.3 GB | 扩散模型 |
-| `ae.safetensors` | ~335 MB | VAE 解码器 |
-| `Z-Image-Turbo-Fun-Controlnet-Union.safetensors` | ~3.1 GB | ControlNet Union |
-
-先安装下载工具，再运行下载脚本：
-
 ```bash
-# 安装下载工具
-uv tool install modelscope
-uv tool install "huggingface_hub[cli]"
-
-# 下载模型（使用国内镜像）
-uv run python scripts/download_models.py --hf-mirror
-
-# 或使用代理下载
-uv run python scripts/download_models.py --proxy http://127.0.0.1:7890
+# 下载模型（使用国内镜像，默认）
+uv run python scripts/download_models.py
 
 # 预览下载内容（不实际下载）
 uv run python scripts/download_models.py --dry-run
@@ -132,7 +66,54 @@ uv run python scripts/test_comfyui_connection.py
 uv run python scripts/verify_workflows.py
 ```
 
-验证通过后，输出结果保存在 `output/verify/` 目录。
+### 5. 启动 GUI
+
+```bash
+uv run semantic-tx gui
+```
+
+浏览器打开 http://127.0.0.1:7860 即可使用可视化界面，支持配置管理、发送端/接收端独立操作和一键端到端演示。
+
+## 文档导航
+
+### 面向开发者
+
+| 文档 | 说明 |
+|------|------|
+| [开发指南](docs/development-guide.md) | 环境搭建、项目结构、测试方法、CI、编码规范 |
+| [系统架构](docs/architecture.md) | 模块关系图、数据流、接口设计、扩展点 |
+| [ComfyUI 部署指南](docs/comfyui-setup.md) | 本机 ComfyUI 部署与配置 |
+| [协作规范](docs/collaboration/) | Git 分支、PR、Issue 流程与编码规范 |
+
+### 面向用户
+
+| 文档 | 说明 |
+|------|------|
+| [使用指南](docs/user-guide.md) | 系统要求、完整安装步骤、基本使用 |
+| [CLI 参考](docs/cli-reference.md) | `semantic-tx` 命令行工具完整参数说明 |
+| [演示手册](docs/demo-handbook.md) | 单机/双机演示操作步骤与参数说明 |
+| [端到端测试报告](docs/test-reports/) | Demo 运行的实际效果与指标数据 |
+
+### 面向项目负责人
+
+| 文档 | 说明 |
+|------|------|
+| [项目总览](docs/project-overview.md) | 目标、进展、关键成果、后续计划（2 分钟速览） |
+| [项目路线图](docs/ROADMAP.md) | 各阶段目标、状态与技术路线 |
+| [调研报告](docs/research/selection-report.md) | 模型与方案选型结论 |
+
+> 完整文档索引见 [docs/README.md](docs/README.md)。
+
+## 项目阶段
+
+| 阶段 | 目标 | 状态 |
+|------|------|------|
+| 阶段一：调研与选型 | 论文综述、开源项目评估、技术路线确定 | ✅ 已完成 |
+| 阶段二：ComfyUI API 原型 | 基于 ComfyUI API 打通端到端流程 | 🔄 进行中 |
+| 阶段三：方案迭代优化 | 模型升级、条件优化、视频级扩展 | 待启动 |
+| 阶段四：工程化 | 脱离 ComfyUI，构建独立可部署系统 | 待启动 |
+
+详见 [项目路线图](docs/ROADMAP.md)。
 
 ## 技术栈
 
@@ -151,14 +132,4 @@ uv run python scripts/verify_workflows.py
 3. 推送分支并创建 Pull Request
 4. 等待 CI 通过 + Code Review 后 Squash Merge 合入 main
 
-Commit 遵循 Angular Convention，示例：`feat(模块): 功能描述`、`fix(模块): 问题修复`
-
 详细规范见 [docs/collaboration/](docs/collaboration/)。
-
-## 调研成果
-
-阶段一调研已完成，主要结论：
-
-- 在 <0.01 bpp 超低码率下，生成式语义传输全面优于 H.264/H.265（多篇论文交叉验证）
-- 确定以 ComfyUI API 为基础设施，自行组装发送端（VLM）和接收端（生成模型）的技术路线
-- 详细调研报告见 [docs/research/](docs/research/)

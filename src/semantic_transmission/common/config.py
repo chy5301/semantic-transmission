@@ -1,7 +1,19 @@
-"""ComfyUI 连接配置。"""
+"""ComfyUI 连接配置与公共路径工具。"""
 
 import os
 from dataclasses import dataclass
+
+
+def get_default_vlm_path() -> str | None:
+    """获取 VLM 模型默认本地路径。
+
+    基于环境变量 MODEL_CACHE_DIR 拼接 Qwen2.5-VL-7B-Instruct 路径。
+    未设置 MODEL_CACHE_DIR 时返回 None。
+    """
+    cache_dir = os.environ.get("MODEL_CACHE_DIR")
+    if cache_dir:
+        return os.path.join(cache_dir, "Qwen", "Qwen2.5-VL-7B-Instruct")
+    return None
 
 
 @dataclass

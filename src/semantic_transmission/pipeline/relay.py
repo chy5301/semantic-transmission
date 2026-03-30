@@ -213,11 +213,15 @@ class SocketRelayReceiver:
         except socket.timeout:
             raise TimeoutError("SocketRelayReceiver 接收数据超时")
 
-    def close(self) -> None:
-        """关闭连接和服务端。"""
+    def close_connection(self) -> None:
+        """关闭当前客户端连接，保留服务端监听以接受下一次连接。"""
         if self._conn is not None:
             self._conn.close()
             self._conn = None
+
+    def close(self) -> None:
+        """关闭连接和服务端。"""
+        self.close_connection()
         if self._server is not None:
             self._server.close()
             self._server = None

@@ -70,10 +70,11 @@
   - 图像 → 发送端 → 序列化传输数据 → 接收端 → 还原图像
 - [x] 实现中继传输协议（LocalRelay + SocketRelay）
 - [x] 编写双机演示脚本（run_sender.py + run_receiver.py）
-- [ ] 初步评估还原质量
-  - 主要指标：CLIP Score、LPIPS（感知质量）
-  - 辅助指标：PSNR、SSIM（像素精确度，生成式方案非强项）
-  - 记录传输码率（文本 + 条件图的数据量）
+- [x] 初步评估还原质量
+  - 质量评估模块：PSNR、SSIM、LPIPS、CLIP Score
+  - 批量评估脚本：逐样本指标 + 汇总统计 + JSON 报告
+- [x] CLI 正规化：click 框架统一入口 `semantic-tx`（sender/receiver/demo/check/download/gui）
+- [x] Gradio GUI 开发：可视化界面（配置管理、发送端/接收端、端到端演示、质量评估）
 
 ### 交付物
 
@@ -82,7 +83,10 @@
 - 中继传输模块（LocalRelay + SocketRelay）
 - 端到端 demo 脚本 + 双机演示脚本
 - 端到端测试报告（`docs/test-reports/`）
-- 初步质量评估数据（含码率-质量权衡分析）
+- 质量评估模块和批量评估脚本
+- 完整文档体系（开发指南、架构文档、使用指南、演示手册、项目总览）
+- CLI 工具 `semantic-tx`（7 个子命令）
+- Gradio GUI（`semantic-tx gui`，4 个功能面板）
 
 ---
 
