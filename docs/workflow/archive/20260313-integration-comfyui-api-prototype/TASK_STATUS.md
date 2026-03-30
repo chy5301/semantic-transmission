@@ -12,10 +12,11 @@
 | Phase 0: 契约确认与项目骨架 | 4 | 4 | 0 | 0 | 0 |
 | Phase 1: 工作流拆分与语义压缩 | 8 | 8 | 0 | 0 | 0 |
 | Phase 2: 中继传输与双机演示 | 2 | 2 | 0 | 0 | 0 |
-| Phase 3: 质量评估与文档重构 | 5 | 0 | 0 | 0 | 5 |
-| Phase 4: CLI 正规化 | 4 | 0 | 0 | 0 | 4 |
-| Phase 5: GUI 开发 | 3 | 0 | 0 | 0 | 3 |
-| **合计** | **26** | **14** | **0** | **0** | **12** |
+| Phase 3: 质量评估与文档重构 | 6 | 6 | 0 | 0 | 0 |
+| Phase 4: CLI 正规化 | 4 | 4 | 0 | 0 | 0 |
+| Phase 5: GUI 开发 | 3 | 3 | 0 | 0 | 0 |
+| Phase 6: 修复与体验优化 | 1 | 0 | 0 | 0 | 0 |
+| **合计** | **28** | **27** | **0** | **0** | **0** |
 
 ## 任务状态
 
@@ -35,25 +36,37 @@
 | P2-13 | 集成-VLM 自动生成 prompt | Phase 1 | ✅ 已完成 | P2-10 |
 | P2-11 | 实现-中继传输协议 | Phase 2 | ✅ 已完成 | P2-10 |
 | P2-12 | 编写-双机演示脚本 | Phase 2 | ✅ 已完成 | P2-11 |
-| P2-14 | 实现-质量评估模块 | Phase 3 | ⬜ 待开始 | P2-10 |
+| P2-14 | 实现-质量评估模块 | Phase 3 | ✅ 已完成 | P2-10 |
 | P2-15 | 脱离-ComfyUI 发送端 | Phase 3 | ❌ 已取消 | P2-13 |
-| P2-17 | 重构-README 为文档门户 | Phase 3 | ⬜ 待开始 | 无 |
-| P2-18 | 编写-开发指南 | Phase 3 | ⬜ 待开始 | 无 |
-| P2-19 | 编写-使用指南与演示手册 | Phase 3 | ⬜ 待开始 | 无 |
-| P2-20 | 编写-项目总览与进度摘要 | Phase 3 | ⬜ 待开始 | 无 |
-| P2-21 | 注册-CLI 入口与基础框架 | Phase 4 | ⬜ 待开始 | 无 |
-| P2-22 | 实现-CLI 核心子命令 | Phase 4 | ⬜ 待开始 | P2-21 |
-| P2-23 | 实现-CLI 工具子命令 | Phase 4 | ⬜ 待开始 | P2-21 |
-| P2-24 | 编写-CLI 参考文档与测试 | Phase 4 | ⬜ 待开始 | P2-22, P2-23 |
-| P2-25 | 搭建-Gradio GUI 基础框架 | Phase 5 | ⬜ 待开始 | P2-21 |
-| P2-26 | 实现-GUI 发送端与接收端视图 | Phase 5 | ⬜ 待开始 | P2-25 |
-| P2-27 | 实现-GUI 端到端模式与日志 | Phase 5 | ⬜ 待开始 | P2-26 |
+| P2-17 | 重构-README 为文档门户 | Phase 3 | ✅ 已完成 | 无 |
+| P2-18 | 编写-开发指南 | Phase 3 | ✅ 已完成 | 无 |
+| P2-19 | 编写-使用指南与演示手册 | Phase 3 | ✅ 已完成 | 无 |
+| P2-20 | 编写-项目总览与进度摘要 | Phase 3 | ✅ 已完成 | 无 |
+| P2-28 | 编写-评估脚本与报告生成 | Phase 3 | ✅ 已完成 | P2-14 |
+| P2-21 | 注册-CLI 入口与基础框架 | Phase 4 | ✅ 已完成 | 无 |
+| P2-22 | 实现-CLI 核心子命令 | Phase 4 | ✅ 已完成 | P2-21 |
+| P2-23 | 实现-CLI 工具子命令 | Phase 4 | ✅ 已完成 | P2-21 |
+| P2-24 | 编写-CLI 参考文档与测试 | Phase 4 | ✅ 已完成 | P2-22, P2-23 |
+| P2-25 | 搭建-Gradio GUI 基础框架 | Phase 5 | ✅ 已完成 | P2-21 |
+| P2-26 | 实现-GUI 发送端与接收端视图 | Phase 5 | ✅ 已完成 | P2-25 |
+| P2-27 | 实现-GUI 端到端模式与日志 | Phase 5 | ✅ 已完成 | P2-26 |
+| P2-29 | 修复-GUI 已知体验问题 | Phase 6 | ❌ 已取消 | P2-26 |
 
 状态图例: ⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ⏸️ 冻结 | ❌ 已取消 | 🔀 已拆分
 
 ## 已知问题
 
-（执行过程中发现的问题记录在此）
+> ⚠️ 以下问题已迁移至 GitHub Issues（#2~#5），后续在独立分支中修复。
+
+- **GUI Radio 按钮圆点指示器冗余**：描述模式的 Radio 组件选中项已有蓝色背景高亮，圆点指示器（●）视觉上多余。需通过 CSS 隐藏 Gradio Radio 组件的圆点，仅依靠背景颜色区分选中状态。需确认 Gradio 版本对应的正确 CSS 选择器。（发现于 Phase 5 双端 GUI 测试）
+
+- **GUI 接收端输出区重复显示边缘图**：接收端输出区左侧有一个"边缘图（输入）"echo，与上方输入区的边缘图完全相同，视觉冗余。但不能简单移除——去掉后输出区只剩一张还原图，布局会失衡。需重新设计接收端输出区布局（如用其他有价值的信息填充，或调整为单图全宽展示）。（发现于 Phase 5 双端 GUI 测试）
+
+- **GUI 缺少运行记录持久化**（待讨论）：当前日志和结果仅显示在界面上，刷新或重新运行即丢失。对调参对比和多组评估不便。可选方案：(1) 轻量级——自动写本地 JSON/CSV 日志；(2) 中等——增加历史记录 Tab 支持对比；(3) 重度——完整实验管理。需确认当前阶段是否需要以及到什么程度。（发现于 Phase 5 双端 GUI 测试）
+
+- **GUI 端到端质量评估报错**：`pipeline_panel.py:362` 中 `Image.open(restored_img)` 假设输入是文件路径，但 Gradio 传入的是 `numpy.ndarray`，导致 `AttributeError: 'numpy.ndarray' object has no attribute 'seek'`。应改为 `Image.fromarray(restored_img)` 或根据类型分支处理。原始图像（`original_img`）可能也有同样问题。（发现于 Phase 6 端到端 GUI 测试）
+
+- **GUI 接收端 seed=0 被误判为未设置**：`receiver_panel.py:53` 中 `if seed` 对 `0` 求值为 `False`，导致用户输入 `0` 时不会覆盖工作流种子，而是回退到工作流 JSON 中的硬编码默认值（`582911328872996`）。同理，GUI 默认值 `0` 实际上等同于"不设置种子"，每次都使用同一个固定种子，缺乏随机化选项。应改为用 `None` 表示未设置，`0` 视为有效种子值。（发现于 Phase 5 双端 GUI 测试）
 
 ## 决策日志
 
@@ -68,6 +81,8 @@
 | 2026-03-18 | 不做 git revert | P2-01+P2-02 同一 commit 无法单独 revert；P2-02 代码量极少不构成负担，留待 Phase 3 启用；P2-03/P2-04 直接可复用 |
 | 2026-03-18 | P2-02 抽象接口标记为"冻结" | 当前阶段两端都用 ComfyUI API，不需要 Python 层的 VLM/Canny 抽象。接口留待 Phase 3"渐进替换"时启用 |
 | 2026-03-18 | 记录同事技术建议：接收端模型选型与条件特征扩展 | 同事指出：(1) 接收端模型需具备图片编辑或 ControlNet 参考能力，推荐 Z-Image-Turbo 和 FLUX.2-klein-9B；(2) 条件特征不限于 Canny 边缘，深度图也是可选方案。这些影响 Phase 3 的模型替换和条件提取器扩展，当前阶段不影响实现 |
+| 2026-03-29 | 新增 Phase 6：修复与体验优化 | 双端 GUI 测试中发现 seed 判断 bug 等问题，新增宽泛的修复阶段以收集后续测试中发现的问题，首个任务 P2-29 修复 seed 逻辑 |
+| 2026-03-30 | P2-29 取消，已知问题迁移至 GitHub Issues | 分支准备合并，剩余 5 个已知问题迁移至 GitHub Issues（#2~#5）在后续分支中处理。Phase 6 不再有活跃任务 |
 | 2026-03-19 | wait_for_completion 采用轮询 /history 而非 WebSocket | WebSocket 需在 submit 前建连否则有竞态，轮询更简单且 test_comfyui_connection.py 已验证可行 |
 | 2026-03-19 | get_result_images 接受 history_entry 而非 prompt_id | 避免重复请求 /history，wait_for_completion 已返回完整条目 |
 | 2026-03-19 | 自定义异常层级：ComfyUIError → ConnectionError / TimeoutError | P2-08/P2-09 需按异常类型做差异化处理（连接问题 vs 超时 vs 工作流错误） |
@@ -87,6 +102,16 @@
 | 2026-03-24 | **取消 P2-15（脱离-ComfyUI 发送端），Phase 3 更名为"质量优化"** | P2-15 属于 ROADMAP 阶段四（工程化与脱离 ComfyUI）的范畴，放在阶段二工作流的 Phase 3 中越界。脱离 ComfyUI 应在 ROADMAP 阶段四独立规划，当前工作流聚焦原型搭建。Phase 3 仅剩 P2-14（质量评估），去掉"工程精简"后缀 |
 | 2026-03-24 | Phase 2 阶段回顾通过 | 2/2 任务完成，代码层面退出标准满足（TCP 传输 + 独立脚本），实际双机验证需用户在物理环境中确认。100 个测试通过，无回归 |
 | 2026-03-24 | **工作流增量变更：新增文档体系+CLI+GUI 三大方向（P2-17~P2-27）** | 项目协作者包括开发人员、用户和项目负责人，但当前文档偏开发者视角、CLI 未正规化、完全没有 GUI。Phase 3 扩展为"质量评估与文档重构"（P2-14 保留+4 个文档任务），新增 Phase 4"CLI 正规化"（click+semantic-tx 入口）和 Phase 5"GUI 开发"（Gradio 界面）。CLI 使用 click 库，GUI 使用 Gradio 框架 |
+| 2026-03-28 | 质量评估选择独立库（scikit-image + lpips + transformers）而非 torchmetrics | 依赖透明、代码量小（4 函数 <200 行）、预研项目需要可见可控的实现；torchmetrics CLIP Score 函数式 API 每次重加载模型 |
+| 2026-03-28 | LPIPS 使用 normalize=True 而非手动归一化 | 库内置 [0,1]→[-1,1] 转换，减少出错面 |
+| 2026-03-28 | CLIP Score 标准公式 max(100×cos_sim, 0) | 符合 CLIPScore 论文定义（Hessel et al., EMNLP 2021），截断负值 |
+| 2026-03-28 | **新增 P2-28（编写-评估脚本与报告生成）** | P2-14 实现了评估模块但无脚本实际运行指标。评估脚本需复用 LPIPS/CLIP 模型、批量处理测试结果、输出结构化报告，是质量评估闭环的必要环节 |
+| 2026-03-28 | **Phase 3 阶段回顾通过** | 6/6 任务完成（P2-15 已取消不计），退出标准全部满足。变更审计：27 个文件变更共 3670 行新增，全部在任务范围内，无超范围修改。167 个测试通过、ruff 检查通过。下游 Phase 4/5 任务定义无需调整 |
+| 2026-03-28 | **Phase 4 阶段回顾通过** | 4/4 任务完成。变更审计：20 个文件变更共 1631 行新增，全部在任务范围内。审计发现 1 个 🔵 建议项（CLI 与 scripts 代码重复，有意为之）。退出标准全部满足：semantic-tx 入口点注册、5 个子命令可用。180 个测试通过、ruff 通过。下游 Phase 5 任务定义无需调整 |
+| 2026-03-29 | Gradio 6.x theme/css 参数迁移 | Gradio 6.0 将 `theme` 和 `css` 从 `gr.Blocks()` 构造函数移至 `launch()` 方法。`create_app()` 仅构建 UI，`get_launch_kwargs()` 返回 launch 所需的主题参数 |
+| 2026-03-29 | GUI 采用扁平模块结构 | 不创建 `tabs/` 子目录，占位 Tab 内联在 `app.py`。P2-26/P2-27 实现完整 Tab 时按需拆分文件 |
+| 2026-03-29 | GUI 文档分三档更新 | 第一档（CLAUDE.md、cli-reference、development-guide、architecture）在 P2-25 完成后立即更新；第二档（README、user-guide、demo-handbook）等 Phase 5 全部完成后更新；第三档（project-overview、ROADMAP）在阶段回顾时更新 |
+| 2026-03-29 | **Phase 5 阶段回顾通过** | 3/3 任务完成。变更审计：17 个文件变更共 2743 行新增，全部在任务范围内（含 4 个文档同步更新，用户主动要求）。审计发现 0 个 🔴/🟡 问题，1 个 🔵 建议项（`c78de6e` CLI 重命名属于 Phase 4 收尾，不影响 Phase 5）。退出标准全部满足：4 个 Tab 可用。180 个测试通过、ruff 通过。工作流 27/27 任务全部完成 |
 
 ## 交接记录
 
@@ -590,5 +615,472 @@
 - Phase 2 全部 2 个任务已完成，建议先进行 Phase 2 阶段回顾（/task-review）确认退出标准
 - Phase 2 退出标准：两台机器分别运行发送端和接收端，通过网络传输完成还原——需实际双机验证
 - 端到端双机验证需要两台局域网机器各部署 ComfyUI，运行 run_sender.py 和 run_receiver.py
+
+**遗留问题**：无
+
+### P2-14 实现-质量评估模块（2026-03-28）
+
+**完成内容**：
+- 新建 `evaluation` 子包，实现 PSNR、SSIM、LPIPS、CLIP Score 四类质量评估指标
+- 实现图像预处理工具链：to_numpy（类型统一）、align_sizes（尺寸对齐）、to_tensor_normalized（tensor 转换）
+- 编写质量评估体系调研报告 `docs/research/evaluation-metrics.md`，包含指标原理、学术文献综述、库选型决策、实现方案和使用指南
+- 新增依赖：scikit-image>=0.24.0、lpips>=0.1.4
+- 编写 37 个单元测试（utils 16 + pixel 5 + perceptual 6 mock + semantic 5 mock + 5 边界测试）
+
+**修改的文件**（8 个，1 修改 7 新建）：
+- `docs/research/evaluation-metrics.md`（新建：调研报告，含 12 篇参考文献）
+- `pyproject.toml`（修改：添加 scikit-image、lpips 依赖）
+- `src/semantic_transmission/evaluation/__init__.py`（新建：模块导出）
+- `src/semantic_transmission/evaluation/utils.py`（新建：图像预处理工具）
+- `src/semantic_transmission/evaluation/pixel_metrics.py`（新建：PSNR、SSIM）
+- `src/semantic_transmission/evaluation/perceptual_metrics.py`（新建：LPIPS）
+- `src/semantic_transmission/evaluation/semantic_metrics.py`（新建：CLIP Score）
+- `tests/test_evaluation.py`（新建：37 个测试）
+
+**验证结果**：
+- 37 个新测试全部通过 ✅
+- 140 个测试全部通过（含 103 个已有测试），无回归 ✅
+- ruff check 通过 ✅
+- ruff format 通过 ✅
+
+**关键决策**：
+- 选择独立库（scikit-image + lpips + transformers）而非 torchmetrics，理由：依赖透明、代码量小、预研项目控制力优先
+- LPIPS 使用 `normalize=True` 接受 [0,1] 输入，避免手动归一化出错
+- CLIP Score 使用标准公式 `max(100 × cos_sim, 0)` 截断负值
+- 尺寸对齐策略：resize 到较小图尺寸（LANCZOS 插值）
+
+**调研发现（范围外需求）**：
+- 调研发现 DreamSim（中级感知）和 DISTS（结构+纹理）两个指标高度适合语义传输评估，建议后续纳入
+- 当前缺少评估脚本任务——评估模块已实现但无脚本实际运行指标、生成评估报告
+- 需使用 /plan-adjust 补充评估脚本任务
+
+**下一任务及关注点**：
+- 需先通过 /plan-adjust 新增评估脚本任务（P2-28），将评估模块闭环
+- P2-17~P2-20 文档任务无依赖，可按需并行
+- 评估脚本应调用 evaluation 模块的四个函数，批量处理 output/demo/ 下的测试结果
+
+**遗留问题**：
+- 缺少评估脚本（计划通过 /plan-adjust 补充）
+- DreamSim 和 DISTS 指标留待后续迭代
+
+### P2-28 编写-评估脚本与报告生成（2026-03-28）
+
+**完成内容**：
+- 创建 `scripts/evaluate.py`，批量评估还原图像质量，计算 PSNR、SSIM、LPIPS、CLIP Score 四类指标
+- 支持模型复用：LPIPS 和 CLIP 模型仅加载一次，循环评估多个样本
+- 自动降级：缺失 prompt.txt 时跳过 CLIP Score（标记 N/A）；缺失还原图或原图时跳过该样本并打印警告；模型加载失败时跳过对应指标
+- 原图匹配：去掉样本目录的 `NN-`/`NN_` 前缀后在原图目录中 glob 匹配（支持 jpg/jpeg/png/webp 等格式）
+- 输出格式：终端对齐表格 + JSON 结构化报告（含 metadata、per-sample 指标、汇总统计）
+- CLI 参数：`--input-dir`、`--original-dir`、`--output`、`--device`、`--no-lpips`、`--no-clip`
+- 编写 27 个单元测试覆盖纯函数、mock 模型、端到端流程
+
+**修改的文件**（2 个新建）：
+- `scripts/evaluate.py`（新建：批量评估脚本，含模型复用和自动降级）
+- `tests/test_evaluate_script.py`（新建：27 个测试）
+
+**验证结果**：
+- 27 个新测试全部通过 ✅
+- 167 个测试全部通过（含 140 个已有测试），无回归 ✅
+- ruff check 通过 ✅
+- ruff format 通过 ✅
+- `--help` 正常显示 ✅
+
+**关键决策**：
+- LPIPS/CLIP 模型在脚本层面加载一次复用，不修改 evaluation 模块的函数签名（保持模块 API 不变）
+- PSNR/SSIM 直接调用现有 `compute_psnr`/`compute_ssim` 函数（无模型加载问题）
+- 所有样本均无 prompt.txt 时不加载 CLIP 模型（避免无意义的模型下载）
+- JSON 输出使用 `ensure_ascii=False` 保留中文，`indent=2` 便于阅读
+
+**计划变更**：无
+
+**下一任务**：P2-17 重构-README 为文档门户（或 P2-18/P2-19/P2-20，四个文档任务无依赖可按需选择）
+
+**下一任务需关注**：
+- Phase 3 剩余 4 个任务（P2-17~P2-20）全部是文档任务，无代码依赖，可按任意顺序执行
+- P2-17 需审查当前 README.md 结构并重构为面向多受众的导航门户
+- round-03 输出目录缺少 prompt.txt，如需完整评估（含 CLIP Score），需重新运行 demo_e2e.py 生成
+
+**遗留问题**：
+- round-03 输出缺少 prompt.txt（P2-13 添加了保存功能，但 round-03 可能在该功能前生成），重新运行 demo 即可补全
+- DreamSim 和 DISTS 指标留待后续迭代（继承自 P2-14）
+
+### P2-17 重构-README 为文档门户（2026-03-28）
+
+**完成内容**：
+- 重构 `README.md` 为项目门户：保留核心信息（架构图、快速开始），精简模型下载说明，移除详细项目结构和调研成果章节
+- 新增"文档导航"章节，按三类受众（开发者、用户、项目负责人）分别列出入口链接和说明
+- 新建 `docs/README.md` 文档总索引，按 6 个分类（项目规划、环境部署、调研成果、测试报告、协作规范、工作流管理）列出全部文档
+
+**修改的文件**（1 个修改 + 1 个新建）：
+- `README.md`（修改：重构为门户结构，新增文档导航章节，精简正文）
+- `docs/README.md`（新建：文档总索引，列出全部文档的分类索引）
+
+**验证结果**：
+- 19 个内部链接全部可达 ✅
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- README 保留项目阶段和技术栈章节（信息密度高且篇幅短），移除详细项目结构（与代码重复）和调研成果详述（指向 docs/research/）
+- 文档导航使用表格而非列表，每条附简要说明，便于快速定位
+
+**计划变更**：无
+
+**下一任务**：P2-18 编写-开发指南
+
+**下一任务需关注**：
+- 需要新建 `docs/development-guide.md` 和 `docs/architecture.md` 两个文件
+- 架构文档需包含 Mermaid 图（模块关系、数据流）
+- 需阅读源码结构理解模块间关系
+
+**遗留问题**：无
+
+### P2-18 编写-开发指南（2026-03-28）
+
+**完成内容**：
+- 新建 `docs/development-guide.md`：涵盖环境要求、依赖安装、项目结构说明、开发工作流（分支策略+提交前检查）、测试方法、CI 说明、编码规范
+- 新建 `docs/architecture.md`：包含 3 个 Mermaid 图（模块关系图、核心数据流序列图、ComfyUI 客户端调用序列图），以及抽象接口设计表、传输协议说明、扩展点清单
+- 更新 `docs/README.md` 文档总索引，新增"开发"分类
+- 更新根 `README.md` 开发者文档导航，新增开发指南和系统架构入口
+
+**修改的文件**（2 个新建 + 2 个修改）：
+- `docs/architecture.md`（新建：系统架构文档，3 个 Mermaid 图 + 接口设计 + 扩展点）
+- `docs/development-guide.md`（新建：开发指南，环境→结构→测试→CI→规范）
+- `docs/README.md`（修改：新增"开发"分类索引）
+- `README.md`（修改：开发者导航新增两条入口）
+
+**验证结果**：
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- 架构文档独立于开发指南，便于不同受众快速定位（开发指南偏操作，架构文档偏设计理解）
+- Mermaid 图覆盖三个层次：静态模块关系、动态数据流、ComfyUI API 调用细节
+
+**计划变更**：无
+
+**下一任务**：P2-19 编写-使用指南与演示手册
+
+**下一任务需关注**：
+- 需阅读 scripts/demo_e2e.py、run_sender.py、run_receiver.py 的参数定义
+- 双机演示需说明网络配置和环境变量设置
+
+**遗留问题**：无
+
+### P2-19 编写-使用指南与演示手册（2026-03-28）
+
+**完成内容**：
+- 新建 `docs/user-guide.md`：系统要求、前置工具安装、项目克隆、依赖安装、ComfyUI 部署、模型下载、环境验证、基本使用流程
+- 新建 `docs/demo-handbook.md`：单机端到端演示（参数表+操作步骤+质量评估）、双机网络演示（网络拓扑 Mermaid 图+接收端/发送端参数表+操作步骤+防火墙配置）、常见错误排查表
+- 更新 `docs/README.md` 新增"使用"分类
+- 更新根 `README.md` 用户文档导航
+
+**修改的文件**（2 个新建 + 2 个修改）：
+- `docs/user-guide.md`（新建：使用指南）
+- `docs/demo-handbook.md`（新建：演示手册，含 3 个脚本的完整参数表）
+- `docs/README.md`（修改：新增"使用"分类索引）
+- `README.md`（修改：用户导航新增两条入口）
+
+**验证结果**：
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- 使用指南与演示手册分离：使用指南聚焦"安装到可用"，演示手册聚焦"操作步骤与参数"
+- 参数表直接从脚本 argparse 定义提取，确保准确性
+
+**计划变更**：无
+
+**下一任务**：P2-20 编写-项目总览与进度摘要
+
+**下一任务需关注**：
+- 需阅读 ROADMAP.md 并更新完成状态
+- 项目总览需面向负责人，可在 2 分钟内读完
+
+**遗留问题**：无
+
+### P2-20 编写-项目总览与进度摘要（2026-03-28）
+
+**完成内容**：
+- 新建 `docs/project-overview.md`：项目目标、技术路线 Mermaid 图、阶段进展汇总表（含阶段二子阶段明细）、关键成果清单、后续计划（近/中/远期）、风险与挑战
+- 更新 `docs/ROADMAP.md`：阶段二质量评估任务标记完成，交付物列表补充评估模块和文档体系
+- 更新文档索引和 README 导航
+
+**修改的文件**（1 个新建 + 3 个修改）：
+- `docs/project-overview.md`（新建：项目总览，面向负责人的 2 分钟速览）
+- `docs/ROADMAP.md`（修改：更新完成状态和交付物）
+- `docs/README.md`（修改：项目规划分类新增项目总览）
+- `README.md`（修改：项目负责人导航新增项目总览入口）
+
+**验证结果**：
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- 项目总览控制在 6 个章节内，每个章节精简为表格或列表，确保 2 分钟可读完
+- ROADMAP.md 仅更新已完成的标记和交付物，不改变阶段三/四的规划内容
+
+**计划变更**：无
+
+**下一任务**：Phase 3 全部完成，进入阶段检查点
+
+**遗留问题**：无
+
+### P2-21 注册-CLI 入口与基础框架（2026-03-28）
+
+**完成内容**：
+- 在 pyproject.toml 添加 `click>=8.0` 依赖和 `[project.scripts]` 入口点（`semantic-tx`）
+- 创建 `src/semantic_transmission/cli/` 包，实现 click Group 主入口
+- 在 `__init__.py` 中添加 `__version__` 变量供 `--version` 使用
+- `semantic-tx --help` 和 `semantic-tx --version` 均正常工作
+
+**修改的文件**（3 个新建 + 2 个修改）：
+- `pyproject.toml`（修改：添加 click 依赖 + scripts 入口点）
+- `src/semantic_transmission/__init__.py`（修改：添加 __version__ 变量）
+- `src/semantic_transmission/cli/__init__.py`（新建：空包文件）
+- `src/semantic_transmission/cli/main.py`（新建：click Group 主入口，含 --version）
+
+**验证结果**：
+- `uv run semantic-tx --help` 输出正常 ✅
+- `uv run semantic-tx --version` 输出 0.1.0 ✅
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- 版本号从 pyproject.toml 中的 `version = "0.1.0"` 同步到 `__init__.py.__version__`，click 通过 `@click.version_option` 读取
+
+**计划变更**：无
+
+**下一任务**：P2-22 实现-CLI 核心子命令（send/receive/demo）
+
+**下一任务需关注**：
+- 需读取 scripts/demo_e2e.py、run_sender.py、run_receiver.py 的 argparse 参数定义，转为 click 选项
+- 业务逻辑保持不变，仅替换 CLI 入口层
+- 原脚本需添加废弃提示
+
+**遗留问题**：无
+
+### P2-22 实现-CLI 核心子命令 send/receive/demo（2026-03-28）
+
+**完成内容**：
+- 创建 `cli/send.py`：将 run_sender.py 的 argparse 参数转为 click 选项，复用全部业务逻辑
+- 创建 `cli/receive.py`：迁移 run_receiver.py 功能，含连续模式和单次模式
+- 创建 `cli/demo.py`：迁移 demo_e2e.py 端到端演示功能，含对比图生成和传输统计
+- 在 main.py 中注册三个子命令（send/receive/demo）
+- 三个原脚本 `__main__` 中添加 DeprecationWarning 废弃提示
+
+**修改的文件**（3 个新建 + 4 个修改）：
+- `src/semantic_transmission/cli/send.py`（新建：send 子命令，含互斥参数校验）
+- `src/semantic_transmission/cli/receive.py`（新建：receive 子命令，含连续模式）
+- `src/semantic_transmission/cli/demo.py`（新建：demo 子命令，含对比图生成）
+- `src/semantic_transmission/cli/main.py`（修改：注册三个子命令）
+- `scripts/run_sender.py`（修改：添加废弃提示）
+- `scripts/run_receiver.py`（修改：添加废弃提示）
+- `scripts/demo_e2e.py`（修改：添加废弃提示）
+
+**验证结果**：
+- `semantic-tx send --help` 参数与原脚本一致 ✅
+- `semantic-tx receive --help` 参数与原脚本一致 ✅
+- `semantic-tx demo --help` 参数与原脚本一致 ✅
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- click 不原生支持互斥选项组，send/demo 中 `--prompt`/`--auto-prompt` 通过回调手动校验
+- 业务逻辑直接在 CLI 命令中实现（而非调用原脚本 main()），因为原脚本 main() 内部绑定了 argparse
+- 废弃提示使用 `warnings.warn(DeprecationWarning)`，而非 print，遵循 Python 标准警告机制
+
+**计划变更**：无
+
+**下一任务**：P2-23 实现-CLI 工具子命令（check/download）
+
+**下一任务需关注**：
+- check 子命令需合并 test_comfyui_connection.py 和 verify_workflows.py 为 check connection / check workflows
+- download 子命令迁移 download_models.py 参数
+
+**遗留问题**：无
+
+### P2-23 实现-CLI 工具子命令 check/download（2026-03-28）
+
+**完成内容**：
+- 创建 `cli/check.py`：click Group 含 `connection` 和 `workflows` 两个子命令
+  - `connection`：6 步连通性测试（健康检查→上传→提交→WebSocket→历史→下载）
+  - `workflows`：验证发送端/接收端工作流，支持 --sender-only / --receiver-only
+- 创建 `cli/download.py`：迁移 download_models.py 全部功能（ComfyUI 模型 + HF 仓库模型下载）
+- 在 main.py 中注册 check 和 download 子命令
+- 三个原脚本添加 DeprecationWarning 废弃提示
+
+**修改的文件**（2 个新建 + 4 个修改）：
+- `src/semantic_transmission/cli/check.py`（新建：check 子命令组）
+- `src/semantic_transmission/cli/download.py`（新建：download 子命令）
+- `src/semantic_transmission/cli/main.py`（修改：注册 check + download）
+- `scripts/test_comfyui_connection.py`（修改：添加废弃提示）
+- `scripts/verify_workflows.py`（修改：添加废弃提示）
+- `scripts/download_models.py`（修改：添加废弃提示）
+
+**验证结果**：
+- `semantic-tx check connection --help` 参数与原脚本一致 ✅
+- `semantic-tx check workflows --help` 参数与原脚本一致 ✅
+- `semantic-tx download --help` 显示完整参数 ✅
+- ruff check 通过 ✅
+- 167 个测试全部通过，无回归 ✅
+
+**关键决策**：
+- check 子命令中的逻辑直接在 CLI 中实现，而非从 scripts/ 导入（scripts 不是 Python 包）
+- download 子命令中模型定义和下载函数直接在 CLI 中复制，保持与原脚本功能完全等价
+- _step 辅助函数返回 (success, result) 元组，便于 workflows 中判断发送端是否成功
+
+**计划变更**：无
+
+**下一任务**：P2-24 编写-CLI 参考文档与测试
+
+**下一任务需关注**：
+- CLI 参考文档需覆盖全部子命令（send/receive/demo/check/download）
+- 使用 click.testing.CliRunner 编写测试
+- 更新 README.md 文档导航中的 CLI 参考链接
+
+**遗留问题**：无
+
+### P2-24 编写-CLI 参考文档与测试（2026-03-28）
+
+**完成内容**：
+- 编写 `docs/cli-reference.md`：命令总览表、全局选项、6 个子命令各自的参数表格和示例、旧脚本迁移对照表
+- 编写 `tests/test_cli.py`：13 个 CliRunner 测试覆盖入口点、全部子命令 --help、必需参数缺失、命令注册完整性
+- 更新 `README.md` 文档导航，在"面向用户"部分添加 CLI 参考链接
+
+**修改的文件**（2 个新建 + 1 个修改）：
+- `docs/cli-reference.md`（新建：CLI 完整参考文档）
+- `tests/test_cli.py`（新建：13 个 CliRunner 测试）
+- `README.md`（修改：添加 CLI 参考链接）
+
+**验证结果**：
+- 13 个 CLI 测试全部通过 ✅
+- 180 个测试全部通过（167 已有 + 13 新增），无回归 ✅
+- ruff check 通过 ✅
+
+**关键决策**：
+- 测试仅覆盖 --help 和参数解析（不测试实际功能，因为需要 ComfyUI 运行环境）
+- click Group 无参数调用返回 exit_code 2（非 0），测试仅验证输出包含 Usage 信息
+
+**计划变更**：无
+
+**下一任务**：Phase 4 全部完成，进入阶段检查点
+
+**遗留问题**：无
+
+### P2-25 搭建-Gradio GUI 基础框架（2026-03-29）
+
+**完成内容**：
+- 添加 `gradio>=5.0` 依赖（实际安装 6.10.0）
+- 创建 `gui/` 模块：`__init__.py`、`app.py`、`theme.py`、`config_panel.py`
+- 实现配置 Tab：ComfyUI 发送端/接收端连接测试、VLM 模型路径检查、中继传输配置
+- 3 个占位 Tab（发送端、接收端、端到端演示）
+- 实现 `cli/gui.py` Click 子命令，支持 `--host`/`--port`/`--share`
+- 在 `cli/main.py` 注册 `gui` 子命令
+
+**修改的文件**（5 个新建 + 2 个修改）：
+- `pyproject.toml`（修改：添加 gradio 依赖）
+- `src/semantic_transmission/gui/__init__.py`（新建）
+- `src/semantic_transmission/gui/theme.py`（新建：Soft 主题 + Sky/Slate 配色 + 自定义 CSS）
+- `src/semantic_transmission/gui/config_panel.py`（新建：配置 Tab UI + 连接测试事件处理）
+- `src/semantic_transmission/gui/app.py`（新建：Blocks 主应用 + 4 Tab 组装）
+- `src/semantic_transmission/cli/gui.py`（新建：Click gui 子命令）
+- `src/semantic_transmission/cli/main.py`（修改：注册 gui 命令）
+
+**验证结果**：
+- `uv run semantic-tx gui --help` 显示正确帮助信息 ✅
+- `create_app()` 创建成功，`launch()` 启动正常（http://127.0.0.1:7862）✅
+- 180 个已有测试全部通过，无回归 ✅
+- ruff check + format 通过 ✅
+
+**关键决策**：
+- Gradio 6.x 将 `theme`/`css` 从 `Blocks()` 移至 `launch()`，通过 `get_launch_kwargs()` 分离
+- 采用扁平模块结构，不创建 `tabs/` 子目录，占位 Tab 内联在 `app.py`
+- 配置 Tab 默认值复用 `ComfyUIConfig.from_env()` 和 `_default_vlm_path()` 模式
+- 连接测试复用 `ComfyUIClient.check_health()` 方法
+
+**计划变更**：无
+
+**下一任务及关注点**：
+- P2-26（实现-GUI 发送端与接收端视图）已解锁
+- 需要将占位 Tab 替换为完整的发送端/接收端 UI
+- 发送端需调用 `ComfyUISender.process()` 和 `QwenVLSender.describe()`
+- 接收端需调用 `ComfyUIReceiver.process()`
+- 需实现流式日志（generator yield）和 Tab 间数据传递
+- 考虑将 Tab 拆分为独立文件（`sender_panel.py`、`receiver_panel.py`）
+
+**遗留问题**：
+
+以下文档需在后续时机更新（不属于 P2-25 范围）：
+
+1. **Phase 5 全部完成后**（GUI 功能完整时）：
+   - `README.md` — 快速开始中添加 GUI 入口说明
+   - `docs/user-guide.md` — 添加 GUI 使用说明章节
+   - `docs/demo-handbook.md` — 添加 GUI 演示操作步骤
+
+2. **Phase 5 阶段回顾时**（进度数据更新）：
+   - `docs/project-overview.md` — Phase 5 进度从 0/3 更新为实际完成数
+   - `docs/ROADMAP.md` — Phase 5 状态标记
+
+### P2-26 实现-GUI 发送端与接收端视图（2026-03-29）
+
+**完成内容**：
+- 创建 `gui/sender_panel.py`：图片上传、手动/VLM 描述模式切换、边缘图提取、流式日志输出
+- 创建 `gui/receiver_panel.py`：边缘图上传、语义描述输入、随机种子、图像还原、流式日志输出
+- 修改 `gui/app.py`：集成两个新面板替换占位 Tab，绑定"发送到接收端"跨 Tab 数据传递
+
+**修改的文件**（2 个新建 + 1 个修改）：
+- `src/semantic_transmission/gui/sender_panel.py`（新建）
+- `src/semantic_transmission/gui/receiver_panel.py`（新建）
+- `src/semantic_transmission/gui/app.py`（修改：导入面板 + 替换占位 + 跨 Tab 事件绑定）
+
+**验证结果**：
+- ruff check + format 通过 ✅
+- 180 个测试全部通过，无回归 ✅
+- `create_app()` 创建成功，GUI 启动正常 ✅
+
+**关键决策**：
+- 配置共享通过 `config_components` dict 传递组件引用，sender/receiver 的事件 inputs 直接引用配置 Tab 的组件
+- 流式更新使用 generator yield，每步更新 log + 图像
+- VLM 延迟导入：仅在 VLM 模式运行时才 `from ... import QwenVLSender`，避免启动时加载重依赖
+- 跨 Tab 传递使用显式"发送到接收端"按钮 + lambda 传递 edge_output 和 prompt_result
+
+**计划变更**：无
+
+**下一任务及关注点**：
+- P2-27（实现-GUI 端到端模式与日志面板）已解锁
+- 需要创建 `gui/pipeline_panel.py`，串联发送端 + 接收端完整流程
+- 步骤进度展示需要 ✓/◉/○ 符号标记
+- 需实现传输统计面板（压缩比、各步骤耗时）
+- 可选集成质量评估（PSNR/SSIM/LPIPS/CLIP Score）
+
+**遗留问题**：无
+
+### P2-27 实现-GUI 端到端模式与日志面板（2026-03-29）
+
+**完成内容**：
+- 创建 `gui/pipeline_panel.py`：端到端流程 generator，串联连接检查→边缘提取→VLM 描述→图像还原→统计
+- 实现 5 步进度展示（✓/◉/○ 符号标记当前/已完成/待执行步骤）
+- 实现传输统计面板（原始大小、边缘图大小、Prompt 大小、压缩比、各步骤耗时）
+- 实现可选质量评估（PSNR/SSIM/LPIPS，延迟加载模型，Accordion 折叠）
+- 结果对比区：三列等宽展示原图/边缘图/还原图
+- 日志区 Accordion 折叠，默认收起
+
+**修改的文件**（1 个新建 + 1 个修改）：
+- `src/semantic_transmission/gui/pipeline_panel.py`（新建）
+- `src/semantic_transmission/gui/app.py`（修改：导入 pipeline_panel + 替换占位 Tab）
+
+**验证结果**：
+- ruff check + format 通过 ✅
+- 180 个测试全部通过，无回归 ✅
+- `create_app()` 创建成功，GUI 启动正常（http://127.0.0.1:7864）✅
+
+**关键决策**：
+- 质量评估放在 Accordion 折叠区，避免自动运行占用 GPU
+- 质量评估的 CLIP Score 暂不集成（需要图像+文本对，接口与当前评估模块不一致）
+- 边缘图通过 `io.BytesIO` 转为 bytes 传给 `ComfyUIReceiver.process()`
+- 日志区默认折叠（`gr.Accordion(open=False)`），进度区始终可见
+
+**计划变更**：无
+
+**下一任务及关注点**：
+- **Phase 5 全部完成（3/3 任务）**，工作流 27/27 任务全部完成
+- 需进行 Phase 5 阶段回顾
+- 遗留文档更新：README、user-guide、demo-handbook（Phase 5 完成后更新）
+- 遗留文档更新：project-overview、ROADMAP（阶段回顾时更新）
 
 **遗留问题**：无
