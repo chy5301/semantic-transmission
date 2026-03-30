@@ -17,43 +17,40 @@ def _random_seed():
 def _run_receiver(edge_image_path, prompt, seed, receiver_host, receiver_port):
     """运行接收端流程，generator 逐步 yield 更新 UI。"""
     log = ""
-    edge_echo = None
     restored_img = None
 
     if not edge_image_path:
         log = "错误：请先上传边缘图\n"
-        yield edge_echo, restored_img, log
+        yield restored_img, log
         return
 
     if not prompt or not prompt.strip():
         log = "错误：请输入语义描述文本\n"
-        yield edge_echo, restored_img, log
+        yield restored_img, log
         return
-
-    edge_echo = edge_image_path
 
     # [1] 连接检查
     log += "[1/2] 检查 ComfyUI 连接...\n"
-    yield edge_echo, restored_img, log
+    yield restored_img, log
 
     config = ComfyUIConfig(host=receiver_host, port=int(receiver_port))
     client = ComfyUIClient(config)
     try:
         if not client.check_health():
             log += f"  连接失败: {config.base_url} 服务异常\n"
-            yield edge_echo, restored_img, log
+            yield restored_img, log
             return
         log += f"  {config.base_url}: OK\n"
     except Exception as e:
         log += f"  连接失败: {e}\n"
-        yield edge_echo, restored_img, log
+        yield restored_img, log
         return
 
     # [2] 还原图像
     seed_int = int(seed) if seed else None
     seed_info = f", seed={seed_int}" if seed_int is not None else ""
     log += f"[2/2] 接收端还原图像{seed_info}...\n"
-    yield edge_echo, restored_img, log
+    yield restored_img, log
 
     try:
         receiver = ComfyUIReceiver(client)
@@ -66,12 +63,12 @@ def _run_receiver(edge_image_path, prompt, seed, receiver_host, receiver_port):
         )
     except Exception as e:
         log += f"  失败: {e}\n"
-        yield edge_echo, restored_img, log
+        yield restored_img, log
         return
 
     log += "─" * 30 + "\n"
     log += f"接收端完成！还原图 {restored_pil.size[0]}x{restored_pil.size[1]}，耗时 {elapsed:.1f}s\n"
-    yield edge_echo, restored_img, log
+    yield restored_img, log
 
 
 def build_receiver_tab(config_components: dict) -> dict:
@@ -94,9 +91,7 @@ def build_receiver_tab(config_components: dict) -> dict:
 
     # --- 输出区 ---
     gr.Markdown("### 输出")
-    with gr.Row():
-        edge_echo = gr.Image(label="边缘图 (输入)", interactive=False)
-        restored_output = gr.Image(label="还原图像", interactive=False)
+    restored_output = gr.Image(label="还原图像", interactive=False)
 
     log_output = gr.Textbox(
         label="运行日志",
@@ -117,7 +112,7 @@ def build_receiver_tab(config_components: dict) -> dict:
             config_components["receiver_host"],
             config_components["receiver_port"],
         ],
-        outputs=[edge_echo, restored_output, log_output],
+        outputs=[restored_output, log_output],
     )
 
     return {
