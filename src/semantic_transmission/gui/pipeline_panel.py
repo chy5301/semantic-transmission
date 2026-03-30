@@ -351,6 +351,8 @@ def _run_evaluation(original_path, restored_img):
 
     if isinstance(restored_img, Image.Image):
         restored = restored_img.convert("RGB")
+    elif isinstance(restored_img, np.ndarray):
+        restored = Image.fromarray(restored_img).convert("RGB")
     else:
         restored = Image.open(restored_img).convert("RGB")
     restored_np = np.array(restored)
