@@ -15,8 +15,8 @@
 | Phase 3: 质量评估与文档重构 | 6 | 6 | 0 | 0 | 0 |
 | Phase 4: CLI 正规化 | 4 | 4 | 0 | 0 | 0 |
 | Phase 5: GUI 开发 | 3 | 3 | 0 | 0 | 0 |
-| Phase 6: 修复与体验优化 | 1 | 0 | 0 | 0 | 1 |
-| **合计** | **28** | **27** | **0** | **0** | **1** |
+| Phase 6: 修复与体验优化 | 1 | 0 | 0 | 0 | 0 |
+| **合计** | **28** | **27** | **0** | **0** | **0** |
 
 ## 任务状态
 
@@ -50,11 +50,13 @@
 | P2-25 | 搭建-Gradio GUI 基础框架 | Phase 5 | ✅ 已完成 | P2-21 |
 | P2-26 | 实现-GUI 发送端与接收端视图 | Phase 5 | ✅ 已完成 | P2-25 |
 | P2-27 | 实现-GUI 端到端模式与日志 | Phase 5 | ✅ 已完成 | P2-26 |
-| P2-29 | 修复-GUI 已知体验问题 | Phase 6 | ⬜ 待开始 | P2-26 |
+| P2-29 | 修复-GUI 已知体验问题 | Phase 6 | ❌ 已取消 | P2-26 |
 
 状态图例: ⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ⏸️ 冻结 | ❌ 已取消 | 🔀 已拆分
 
 ## 已知问题
+
+> ⚠️ 以下问题已迁移至 GitHub Issues（#2~#5），后续在独立分支中修复。
 
 - **GUI Radio 按钮圆点指示器冗余**：描述模式的 Radio 组件选中项已有蓝色背景高亮，圆点指示器（●）视觉上多余。需通过 CSS 隐藏 Gradio Radio 组件的圆点，仅依靠背景颜色区分选中状态。需确认 Gradio 版本对应的正确 CSS 选择器。（发现于 Phase 5 双端 GUI 测试）
 
@@ -80,6 +82,7 @@
 | 2026-03-18 | P2-02 抽象接口标记为"冻结" | 当前阶段两端都用 ComfyUI API，不需要 Python 层的 VLM/Canny 抽象。接口留待 Phase 3"渐进替换"时启用 |
 | 2026-03-18 | 记录同事技术建议：接收端模型选型与条件特征扩展 | 同事指出：(1) 接收端模型需具备图片编辑或 ControlNet 参考能力，推荐 Z-Image-Turbo 和 FLUX.2-klein-9B；(2) 条件特征不限于 Canny 边缘，深度图也是可选方案。这些影响 Phase 3 的模型替换和条件提取器扩展，当前阶段不影响实现 |
 | 2026-03-29 | 新增 Phase 6：修复与体验优化 | 双端 GUI 测试中发现 seed 判断 bug 等问题，新增宽泛的修复阶段以收集后续测试中发现的问题，首个任务 P2-29 修复 seed 逻辑 |
+| 2026-03-30 | P2-29 取消，已知问题迁移至 GitHub Issues | 分支准备合并，剩余 5 个已知问题迁移至 GitHub Issues（#2~#5）在后续分支中处理。Phase 6 不再有活跃任务 |
 | 2026-03-19 | wait_for_completion 采用轮询 /history 而非 WebSocket | WebSocket 需在 submit 前建连否则有竞态，轮询更简单且 test_comfyui_connection.py 已验证可行 |
 | 2026-03-19 | get_result_images 接受 history_entry 而非 prompt_id | 避免重复请求 /history，wait_for_completion 已返回完整条目 |
 | 2026-03-19 | 自定义异常层级：ComfyUIError → ConnectionError / TimeoutError | P2-08/P2-09 需按异常类型做差异化处理（连接问题 vs 超时 vs 工作流错误） |
