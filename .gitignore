@@ -9,6 +9,10 @@ build/
 .claude/
 .continue/
 .trae/
+.agents/
+skills-lock.json
+.agents/
+skills-lock.json
 
 # Temporary files
 .tmp-*/
