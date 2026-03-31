@@ -265,7 +265,7 @@ def _run_e2e(
         log,
     )
 
-    seed_int = int(seed) if seed else None
+    seed_int = int(seed) if seed is not None and seed != "" else None
     try:
         receiver = ComfyUIReceiver(r_client)
         buf = io.BytesIO()
@@ -413,7 +413,7 @@ def build_pipeline_tab(config_components: dict) -> dict:
                 lines=3,
                 placeholder="输入图像描述文本...",
             )
-            seed_input = gr.Number(label="随机种子（可选）", precision=0)
+            seed_input = gr.Number(label="随机种子（可选）", precision=0, value=None)
 
     run_btn = gr.Button("▶ 运行端到端演示", variant="primary")
 

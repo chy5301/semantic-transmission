@@ -5,18 +5,21 @@
 **Strangler Fig（绞杀者模式）**：保留 ComfyUIReceiver 不动，新建 DiffusersReceiver 并行实现，通过配置切换后端。验证新实现的生成质量对齐后，GUI/CLI 默认使用新实现。
 
 选择理由：
+
 - 风险最低，任何时候可回退到 ComfyUI 方案
 - 便于对比两种实现的生成质量
 - 不阻塞其他开发工作
 
 ## 阶段里程碑
 
-| 阶段 | 名称 | 退出标准 |
-|------|------|----------|
-| Phase 0 | 准备 | 依赖就绪、接口设计完成、seed bug 修复 |
+
+| 阶段      | 名称   | 退出标准                            |
+| ------- | ---- | ------------------------------- |
+| Phase 0 | 准备   | 依赖就绪、接口设计完成、seed bug 修复         |
 | Phase 1 | 核心实施 | DiffusersReceiver 单帧生成可工作，质量可对比 |
-| Phase 2 | 完善 | 批量连续帧、后端切换、GUI/CLI 集成完成 |
-| Phase 3 | 验证 | 全部测试通过，端到端流程可运行 |
+| Phase 2 | 完善   | 批量连续帧、后端切换、GUI/CLI 集成完成         |
+| Phase 3 | 验证   | 全部测试通过，端到端流程可运行                 |
+
 
 ## 任务列表
 
@@ -36,10 +39,10 @@
   2. 修改 `pipeline_panel.py:269` 的 seed 判断逻辑，同上
   3. 新增 seed=0 的测试用例
 - **验收标准**:
-  - [ ] seed=0 时实际传入 seed=0 而非 None
-  - [ ] seed 为空/None 时仍回退到默认值
-  - [ ] `uv run ruff check .` 通过
-  - [ ] 现有测试通过
+  - seed=0 时实际传入 seed=0 而非 None
+  - seed 为空/None 时仍回退到默认值
+  - `uv run ruff check .` 通过
+  - 现有测试通过
 - **自测方法**: `uv run pytest tests/` 全部通过；`uv run ruff check .` 无报错
 - **回滚方案**: `git checkout -- src/semantic_transmission/gui/receiver_panel.py src/semantic_transmission/gui/pipeline_panel.py`
 - **预估工作量**: S
@@ -59,9 +62,9 @@
   3. 为 `DiffusersReceiverConfig` 添加 `from_env` 类方法，支持环境变量覆盖
   4. 运行 `uv sync` 验证依赖安装
 - **验收标准**:
-  - [ ] `uv sync` 成功安装 diffusers
-  - [ ] `DiffusersReceiverConfig` 可正常实例化
-  - [ ] `uv run ruff check .` 通过
+  - `uv sync` 成功安装 diffusers
+  - `DiffusersReceiverConfig` 可正常实例化
+  - `uv run ruff check .` 通过
 - **自测方法**: `uv sync && uv run python -c "from semantic_transmission.common.config import DiffusersReceiverConfig; print(DiffusersReceiverConfig())"`
 - **回滚方案**: `git checkout -- pyproject.toml src/semantic_transmission/common/config.py`
 - **预估工作量**: M
@@ -80,10 +83,10 @@
   2. 在 `receiver/__init__.py` 中实现工厂函数 `create_receiver(backend, **kwargs)`，根据 backend 参数（"comfyui" / "diffusers"）返回对应实例
   3. 确保工厂函数的参数设计支持两种后端的不同初始化需求
 - **验收标准**:
-  - [ ] `BaseReceiver` 接口统一了 `process` 方法签名
-  - [ ] 工厂函数 `create_receiver` 可正确返回 ComfyUIReceiver 实例
-  - [ ] `uv run ruff check .` 通过
-  - [ ] 现有测试通过
+  - `BaseReceiver` 接口统一了 `process` 方法签名
+  - 工厂函数 `create_receiver` 可正确返回 ComfyUIReceiver 实例
+  - `uv run ruff check .` 通过
+  - 现有测试通过
 - **自测方法**: `uv run pytest tests/test_comfyui_receiver.py` 通过
 - **回滚方案**: `git checkout -- src/semantic_transmission/receiver/`
 - **预估工作量**: M
@@ -106,12 +109,12 @@
   4. 实现 `load` / `unload` 方法管理模型加载卸载
   5. 编写单元测试（mock pipeline 调用）
 - **验收标准**:
-  - [ ] DiffusersReceiver 可正确加载模型
-  - [ ] `process` 方法输入边缘图 + prompt 返回有效的 PIL.Image
-  - [ ] seed 参数正确控制随机种子（包括 seed=0）
-  - [ ] `unload` 后释放 GPU 显存
-  - [ ] 单元测试通过
-  - [ ] `uv run ruff check .` 通过
+  - DiffusersReceiver 可正确加载模型
+  - `process` 方法输入边缘图 + prompt 返回有效的 PIL.Image
+  - seed 参数正确控制随机种子（包括 seed=0）
+  - `unload` 后释放 GPU 显存
+  - 单元测试通过
+  - `uv run ruff check .` 通过
 - **自测方法**: `uv run pytest tests/test_diffusers_receiver.py`；手动测试 `uv run python -c "from semantic_transmission.receiver.diffusers_receiver import DiffusersReceiver"` 能正常导入
 - **回滚方案**: 删除新建的两个文件
 - **预估工作量**: L
@@ -128,9 +131,9 @@
   1. 在工厂函数中添加 "diffusers" 分支，创建 DiffusersReceiver
   2. 添加对应的测试用例
 - **验收标准**:
-  - [ ] `create_receiver("diffusers", ...)` 返回 DiffusersReceiver 实例
-  - [ ] `create_receiver("comfyui", ...)` 仍正常工作
-  - [ ] 无效 backend 参数抛出明确错误
+  - `create_receiver("diffusers", ...)` 返回 DiffusersReceiver 实例
+  - `create_receiver("comfyui", ...)` 仍正常工作
+  - 无效 backend 参数抛出明确错误
 - **自测方法**: `uv run pytest tests/`
 - **回滚方案**: `git checkout -- src/semantic_transmission/receiver/__init__.py`
 - **预估工作量**: S
@@ -153,10 +156,10 @@
   3. 确认 metadata 字段已预留扩展位（现有 `dict[str, Any]` 已满足）
   4. 编写批量生成的测试用例
 - **验收标准**:
-  - [ ] `process_batch` 接收 N 帧输入，返回 N 张图像
-  - [ ] 批量处理期间模型只加载一次
-  - [ ] metadata 字段可携带任意扩展数据
-  - [ ] 测试通过
+  - `process_batch` 接收 N 帧输入，返回 N 张图像
+  - 批量处理期间模型只加载一次
+  - metadata 字段可携带任意扩展数据
+  - 测试通过
 - **自测方法**: `uv run pytest tests/test_diffusers_receiver.py`
 - **回滚方案**: `git checkout -- src/semantic_transmission/receiver/`
 - **预估工作量**: M
@@ -177,10 +180,10 @@
   3. 修改 `pipeline_panel.py` 同上
   4. 添加后端切换时的 UI 联动（Diffusers 模式下隐藏 ComfyUI 配置）
 - **验收标准**:
-  - [ ] GUI 可选择 ComfyUI 或 Diffusers 后端
-  - [ ] 选择 Diffusers 后端时能正常运行接收端
-  - [ ] 选择 ComfyUI 后端时行为与之前一致
-  - [ ] `uv run ruff check .` 通过
+  - GUI 可选择 ComfyUI 或 Diffusers 后端
+  - 选择 Diffusers 后端时能正常运行接收端
+  - 选择 ComfyUI 后端时行为与之前一致
+  - `uv run ruff check .` 通过
 - **自测方法**: `uv run semantic-tx gui` 启动后手动验证两种后端切换
 - **回滚方案**: `git checkout -- src/semantic_transmission/gui/`
 - **预估工作量**: M
@@ -200,10 +203,10 @@
   3. 在 `cli/demo.py` 同样添加 `--backend` 选项
   4. Diffusers 模式下跳过 ComfyUI 连接检查
 - **验收标准**:
-  - [ ] `semantic-tx receiver --backend diffusers` 可正常启动
-  - [ ] `semantic-tx demo --backend comfyui` 行为与之前一致
-  - [ ] `semantic-tx receiver --help` 显示 backend 选项
-  - [ ] `uv run ruff check .` 通过
+  - `semantic-tx receiver --backend diffusers` 可正常启动
+  - `semantic-tx demo --backend comfyui` 行为与之前一致
+  - `semantic-tx receiver --help` 显示 backend 选项
+  - `uv run ruff check .` 通过
 - **自测方法**: `uv run semantic-tx receiver --help`；`uv run pytest tests/test_cli.py`
 - **回滚方案**: `git checkout -- src/semantic_transmission/cli/receiver.py src/semantic_transmission/cli/demo.py`
 - **预估工作量**: M
@@ -228,11 +231,12 @@
   5. 使用 evaluation 模块对比 ComfyUI 和 Diffusers 后端的生成质量
   6. 记录测试结果
 - **验收标准**:
-  - [ ] `uv run pytest` 全部通过
-  - [ ] `uv run ruff check .` 和 `uv run ruff format --check .` 通过
-  - [ ] GUI 端到端演示可完整运行
-  - [ ] CLI demo 可完整运行
-  - [ ] 质量对比报告已生成
+  - `uv run pytest` 全部通过
+  - `uv run ruff check .` 和 `uv run ruff format --check .` 通过
+  - GUI 端到端演示可完整运行
+  - CLI demo 可完整运行
+  - 质量对比报告已生成
 - **自测方法**: `uv run pytest && uv run ruff check . && uv run ruff format --check .`
 - **回滚方案**: 不涉及代码修改，仅验证
 - **预估工作量**: L
+

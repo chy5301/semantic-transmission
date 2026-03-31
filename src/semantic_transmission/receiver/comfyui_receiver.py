@@ -3,6 +3,7 @@
 import copy
 import io
 import json
+import random
 from pathlib import Path
 
 from PIL import Image
@@ -70,8 +71,9 @@ class ComfyUIReceiver:
         workflow = copy.deepcopy(self._workflow)
         workflow[_LOAD_IMAGE_NODE]["inputs"]["image"] = server_filename
         workflow[_CLIP_TEXT_NODE]["inputs"]["text"] = prompt_text
-        if seed is not None:
-            workflow[_KSAMPLER_NODE]["inputs"]["seed"] = seed
+        if seed is None:
+            seed = random.randint(0, 2**32 - 1)
+        workflow[_KSAMPLER_NODE]["inputs"]["seed"] = seed
 
         prompt_id = self.client.submit_workflow(workflow)
         entry = self.client.wait_for_completion(prompt_id)

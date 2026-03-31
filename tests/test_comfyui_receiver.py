@@ -98,11 +98,17 @@ class TestWorkflowInjection:
         assert submitted[_CLIP_TEXT_NODE]["inputs"]["text"] == PROMPT_TEXT
         assert submitted[_KSAMPLER_NODE]["inputs"]["seed"] == 42
 
-    def test_seed_optional_uses_default(self, receiver, edge_image_path, mock_client):
-        default_seed = receiver._workflow[_KSAMPLER_NODE]["inputs"]["seed"]
+    def test_seed_none_generates_random(self, receiver, edge_image_path, mock_client):
         receiver.process(edge_image_path, PROMPT_TEXT)
         submitted = mock_client.submit_workflow.call_args[0][0]
-        assert submitted[_KSAMPLER_NODE]["inputs"]["seed"] == default_seed
+        seed = submitted[_KSAMPLER_NODE]["inputs"]["seed"]
+        assert isinstance(seed, int)
+        assert 0 <= seed <= 2**32 - 1
+
+    def test_seed_zero_is_valid(self, receiver, edge_image_path, mock_client):
+        receiver.process(edge_image_path, PROMPT_TEXT, seed=0)
+        submitted = mock_client.submit_workflow.call_args[0][0]
+        assert submitted[_KSAMPLER_NODE]["inputs"]["seed"] == 0
 
     def test_does_not_mutate_original_workflow(
         self, receiver, edge_image_path, mock_client

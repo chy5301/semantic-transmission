@@ -47,7 +47,7 @@ def _run_receiver(edge_image_path, prompt, seed, receiver_host, receiver_port):
         return
 
     # [2] 还原图像
-    seed_int = int(seed) if seed else None
+    seed_int = int(seed) if seed is not None and seed != "" else None
     seed_info = f", seed={seed_int}" if seed_int is not None else ""
     log += f"[2/2] 接收端还原图像{seed_info}...\n"
     yield restored_img, log
@@ -84,7 +84,7 @@ def build_receiver_tab(config_components: dict) -> dict:
                 placeholder="输入图像描述文本...",
             )
             with gr.Row():
-                seed_input = gr.Number(label="随机种子", precision=0)
+                seed_input = gr.Number(label="随机种子", precision=0, value=None)
                 seed_btn = gr.Button("🎲", variant="secondary", size="sm")
 
     run_btn = gr.Button("▶ 运行接收端", variant="primary")
