@@ -6,12 +6,13 @@ import time
 from pathlib import Path
 
 import click
+import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.comfyui_client import ComfyUIClient
 from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
 from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
-from semantic_transmission.sender.comfyui_sender import ComfyUISender
+from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
 def _make_comparison_image(
@@ -55,12 +56,8 @@ def _make_comparison_image(
     default=False,
     help="使用 VLM (Qwen2.5-VL) 自动生成描述",
 )
-@click.option(
-    "--sender-host", default="127.0.0.1", help="发送端 ComfyUI 地址（默认 127.0.0.1）"
-)
-@click.option(
-    "--sender-port", default=8188, type=int, help="发送端 ComfyUI 端口（默认 8188）"
-)
+@click.option("--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）")
+@click.option("--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）")
 @click.option(
     "--receiver-host", default="127.0.0.1", help="接收端 ComfyUI 地址（默认 127.0.0.1）"
 )
@@ -92,8 +89,8 @@ def demo(
     image,
     prompt,
     auto_prompt,
-    sender_host,
-    sender_port,
+    threshold1,
+    threshold2,
     receiver_host,
     receiver_port,
     output_dir,
@@ -101,7 +98,10 @@ def demo(
     vlm_model,
     vlm_model_path,
 ):
-    """端到端演示：图像 → 边缘提取 → 语义还原。"""
+    """端到端演示：图像 → 边缘提取 → 语义还原。
+
+    发送端不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
+    """
     import builtins
     import functools
 
@@ -119,29 +119,20 @@ def demo(
     # 创建输出目录
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 构造配置和客户端
-    sender_config = ComfyUIConfig(host=sender_host, port=sender_port)
+    # 构造配置和客户端（仅接收端需要）
     receiver_config = ComfyUIConfig(host=receiver_host, port=receiver_port)
-    sender_client = ComfyUIClient(sender_config)
     receiver_client = ComfyUIClient(receiver_config)
 
     _print("=" * 60)
-    _print("  语义传输端到端 Demo")
+    _print("  语义传输端到端 Demo（发送端本地 Canny）")
     _print("=" * 60)
     _print(f"  输入图像: {image}")
-    _print(f"  发送端: {sender_config.base_url}")
+    _print(f"  Canny 阈值: {threshold1}, {threshold2}")
     _print(f"  接收端: {receiver_config.base_url}")
     _print(f"  输出目录: {output_dir}")
 
-    # 健康检查
-    _print("\n[1/5] 检查 ComfyUI 连接...")
-    try:
-        sender_client.check_health()
-        _print(f"  发送端 ({sender_config.base_url}): OK")
-    except Exception as e:
-        _print(f"  发送端连接失败: {e}")
-        sys.exit(1)
-
+    # 健康检查（仅接收端）
+    _print("\n[1/4] 检查 ComfyUI 连接（接收端）...")
     try:
         receiver_client.check_health()
         _print(f"  接收端 ({receiver_config.base_url}): OK")
@@ -149,24 +140,25 @@ def demo(
         _print(f"  接收端连接失败: {e}")
         sys.exit(1)
 
-    # 发送端：提取 Canny 边缘图
-    _print("\n[2/5] 发送端：提取 Canny 边缘图...")
-    sender = ComfyUISender(sender_client)
+    # 发送端：本地提取 Canny 边缘图
+    _print("\n[2/4] 本地提取 Canny 边缘图...")
+    original_img = Image.open(image).convert("RGB")
+    image_array = np.array(original_img)
+    extractor = LocalCannyExtractor(threshold1=threshold1, threshold2=threshold2)
     start = time.time()
-    edge_image = sender.process(image)
+    edge_np = extractor.extract(image_array)
+    edge_image = Image.fromarray(edge_np)
     sender_elapsed = time.time() - start
 
     edge_path = output_dir / "edge.png"
     edge_image.save(edge_path)
     _print(f"  边缘图: {edge_path} ({edge_image.size[0]}x{edge_image.size[1]})")
-    _print(f"  耗时: {sender_elapsed:.1f}s")
+    _print(f"  耗时: {sender_elapsed:.3f}s")
 
     # 获取 prompt
     vlm_elapsed = 0.0
-    _print("\n[3/5] 获取语义描述...")
+    _print("\n[3/4] 获取语义描述...")
     if auto_prompt:
-        import numpy as np
-
         from semantic_transmission.sender.qwen_vl_sender import QwenVLSender
 
         _print("  模式: VLM 自动描述 (Qwen2.5-VL)")
@@ -177,8 +169,6 @@ def demo(
             vlm_kwargs["model_path"] = vlm_model_path
         vlm_sender = QwenVLSender(**vlm_kwargs)
         _print("  正在加载 VLM 模型（首次加载可能需要几分钟）...")
-        original_img = Image.open(image).convert("RGB")
-        image_array = np.array(original_img)
         start_vlm = time.time()
         sender_output = vlm_sender.describe(image_array)
         vlm_elapsed = time.time() - start_vlm
@@ -201,7 +191,7 @@ def demo(
     _print(f"  Prompt 已保存: {prompt_path}")
 
     # 接收端：从边缘图 + prompt 还原图像
-    _print("\n[4/5] 接收端：还原图像...")
+    _print("\n[4/4] 接收端：还原图像...")
     receiver = ComfyUIReceiver(receiver_client)
     start = time.time()
     restored_image = receiver.process(edge_path, prompt_text, seed=seed)
@@ -215,10 +205,9 @@ def demo(
     _print(f"  耗时: {receiver_elapsed:.1f}s")
 
     # 生成对比图
-    _print("\n[5/5] 生成对比图...")
+    _print("\n[4/4] 生成对比图...")
     start = time.time()
-    original_image = Image.open(image)
-    comparison = _make_comparison_image(original_image, edge_image, restored_image)
+    comparison = _make_comparison_image(original_img, edge_image, restored_image)
     comparison_path = output_dir / "comparison.png"
     comparison.save(comparison_path)
     comparison_elapsed = time.time() - start
@@ -242,7 +231,7 @@ def demo(
     _print(f"  Prompt 大小:     {prompt_bytes:>10,} bytes")
     _print(f"  传输数据总量:    {total_bytes:>10,} bytes")
     _print(f"  压缩比:          {original_bytes / total_bytes:>10.2f}x")
-    _print(f"  发送端耗时:      {sender_elapsed:>10.1f}s")
+    _print(f"  发送端耗时:      {sender_elapsed:>10.3f}s")
     if auto_prompt:
         _print(f"  VLM 耗时:        {vlm_elapsed:>10.1f}s")
     _print(f"  接收端耗时:      {receiver_elapsed:>10.1f}s")

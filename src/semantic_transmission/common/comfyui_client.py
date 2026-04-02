@@ -93,7 +93,7 @@ class ComfyUIClient:
         timeout: float | None = None,
     ) -> dict:
         """轮询等待工作流完成，返回 history 条目。"""
-        timeout = timeout if timeout is not None else self.config.timeout * 10
+        timeout = timeout if timeout is not None else self.config.timeout * 40
         deadline = time.monotonic() + timeout
 
         while True:
