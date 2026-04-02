@@ -11,8 +11,11 @@ from PIL import Image
 from semantic_transmission.common.comfyui_client import ComfyUIClient
 from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
 from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
-from semantic_transmission.gui import MODE_MANUAL, MODE_VLM_AUTO
 from semantic_transmission.sender.comfyui_sender import ComfyUISender
+
+# Prompt 模式常量
+MODE_MANUAL = "手动输入"
+MODE_VLM_AUTO = "VLM 自动生成"
 
 
 def _format_steps(steps, current_idx):

@@ -3,16 +3,17 @@
 import gradio as gr
 
 from semantic_transmission import __version__
+from semantic_transmission.gui.batch_panel import build_batch_tab
 from semantic_transmission.gui.config_panel import build_config_tab
 from semantic_transmission.gui.pipeline_panel import build_pipeline_tab
 from semantic_transmission.gui.receiver_panel import build_receiver_tab
 from semantic_transmission.gui.sender_panel import build_sender_tab
-from semantic_transmission.gui.theme import CUSTOM_CSS, get_theme
+from semantic_transmission.gui.theme import CUSTOM_CSS
 
 
 def get_launch_kwargs() -> dict:
-    """返回 Gradio launch() 所需的主题和样式参数（Gradio 6.x）。"""
-    return {"theme": get_theme(), "css": CUSTOM_CSS}
+    """返回 Gradio launch() 所需参数。"""
+    return {"css": CUSTOM_CSS}
 
 
 def create_app() -> gr.Blocks:
@@ -36,6 +37,9 @@ def create_app() -> gr.Blocks:
 
             with gr.TabItem("◆ 端到端演示"):
                 build_pipeline_tab(config_components)
+
+            with gr.TabItem("◇ 批量处理"):
+                build_batch_tab(config_components)
 
         # Tab 间传递：发送端 → 接收端
         sender_components["send_to_receiver_btn"].click(

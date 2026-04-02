@@ -65,15 +65,31 @@ class QwenVLSender(BaseSender):
         actual_quantization = self._quantization
 
         if self._quantization == "int4":
+            # 优先尝试 torchao INT4（仅 Linux 推荐）
             try:
                 from torchao.quantization import TorchAoConfig
-
                 quantization_config = TorchAoConfig("int4_weight_only", group_size=128)
             except (ImportError, Exception) as e:
-                print(f"  警告：torchao INT4 不可用（{e}），回退到 float16")
-                actual_quantization = "float16"
+                print(f"  提示：torchao INT4 不可用（{e}），尝试 bitsandbytes 4-bit...")
+                # 回退到 bitsandbytes 4-bit（Windows 友好）
+                try:
+                    from transformers import BitsAndBytesConfig
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_quant_type="nf4",
+                        bnb_4bit_compute_dtype=torch.float16
+                    )
+                    actual_quantization = "bitsandbytes-4bit"
+                except (ImportError, Exception) as e2:
+                    print(f"  警告：bitsandbytes 4-bit 也不可用（{e2}），回退到 float16")
+                    actual_quantization = "float16"
 
-        dtype = torch.bfloat16 if quantization_config else torch.float16
+        dtype = torch.float16
+        if quantization_config is None:
+            dtype = torch.float16
+        elif hasattr(quantization_config, "__class__") and "TorchAoConfig" in str(quantization_config.__class__):
+            dtype = torch.bfloat16
 
         # 优先使用本地路径，其次使用 HuggingFace Hub ID
         model_id = self._model_path or self._model_name
