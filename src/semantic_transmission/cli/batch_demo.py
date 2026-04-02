@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import click
+import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.comfyui_client import ComfyUIClient
@@ -18,7 +19,7 @@ from semantic_transmission.pipeline.batch_processor import (
     make_sample_output_dir,
 )
 from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
-from semantic_transmission.sender.comfyui_sender import ComfyUISender
+from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
 def _make_comparison_image(
@@ -81,10 +82,10 @@ def _make_comparison_image(
     help="跳过失败的图片，继续处理下一张",
 )
 @click.option(
-    "--sender-host", default="127.0.0.1", help="发送端 ComfyUI 地址（默认 127.0.0.1）"
+    "--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）"
 )
 @click.option(
-    "--sender-port", default=8188, type=int, help="发送端 ComfyUI 端口（默认 8188）"
+    "--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）"
 )
 @click.option(
     "--receiver-host", default="127.0.0.1", help="接收端 ComfyUI 地址（默认 127.0.0.1）"
@@ -114,15 +115,18 @@ def batch_demo(
     auto_prompt,
     recursive,
     skip_errors,
-    sender_host,
-    sender_port,
+    threshold1,
+    threshold2,
     receiver_host,
     receiver_port,
     seed,
     vlm_model,
     vlm_model_path,
 ):
-    """端到端批量演示：目录中所有图片 → 边缘提取 → 语义还原。"""
+    """端到端批量演示：目录中所有图片 → 边缘提取 → 语义还原。
+
+    发送端不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
+    """
     import builtins
     import functools
 
@@ -142,15 +146,16 @@ def batch_demo(
 
     # 扫描目录，发现所有图片
     _print("=" * 60)
-    _print("  语义传输批量端到端 Demo")
+    _print("  语义传输批量端到端 Demo（发送端本地 Canny）")
     _print("=" * 60)
     _print(f"  输入目录: {input_dir}")
     _print(f"  输出目录: {output_dir}")
+    _print(f"  Canny 阈值: {threshold1}, {threshold2}")
     _print(f"  递归扫描: {'是' if recursive else '否'}")
     _print(f"  跳过错误: {'是' if skip_errors else '否'}")
     _print()
 
-    _print("[1/5] 扫描目录发现图片...")
+    _print("[1/4] 扫描目录发现图片...")
     discoverer = BatchImageDiscoverer()
     discovery = discoverer.discover(input_dir, recursive=recursive)
 
@@ -164,21 +169,12 @@ def batch_demo(
         _print(f"    {ext}: {count} 张")
     _print()
 
-    # 构造配置和客户端
-    sender_config = ComfyUIConfig(host=sender_host, port=sender_port)
+    # 构造配置和客户端（仅接收端需要）
     receiver_config = ComfyUIConfig(host=receiver_host, port=receiver_port)
-    sender_client = ComfyUIClient(sender_config)
     receiver_client = ComfyUIClient(receiver_config)
 
-    # 健康检查
-    _print("[2/5] 检查 ComfyUI 连接...")
-    try:
-        sender_client.check_health()
-        _print(f"  发送端 ({sender_config.base_url}): OK")
-    except Exception as e:
-        _print(f"  发送端连接失败: {e}")
-        sys.exit(1)
-
+    # 健康检查（仅接收端）
+    _print("[2/4] 检查 ComfyUI 连接（接收端）...")
     try:
         receiver_client.check_health()
         _print(f"  接收端 ({receiver_config.base_url}): OK")
@@ -186,18 +182,16 @@ def batch_demo(
         _print(f"  接收端连接失败: {e}")
         sys.exit(1)
 
-    # 初始化发送端和接收端
-    sender = ComfyUISender(sender_client)
+    # 初始化本地边缘提取器和接收端
+    extractor = LocalCannyExtractor(threshold1=threshold1, threshold2=threshold2)
     receiver = ComfyUIReceiver(receiver_client)
 
     # 如果是 auto-prompt 模式，预先加载 VLM 模型
     vlm_sender = None
     if auto_prompt:
-        import numpy as np
-
         from semantic_transmission.sender.qwen_vl_sender import QwenVLSender
 
-        _print("\n[3/5] 加载 VLM 模型...")
+        _print("\n[3/4] 加载 VLM 模型...")
         vlm_kwargs = {}
         if vlm_model:
             vlm_kwargs["model_name"] = vlm_model
@@ -207,7 +201,7 @@ def batch_demo(
         _print("  VLM 模型加载完成")
 
     # 开始批量处理
-    _print("\n[4/5] 开始批量处理...")
+    _print("\n[4/4] 开始批量处理...")
     _print("-" * 60)
 
     total_start = time.time()
@@ -222,30 +216,33 @@ def batch_demo(
         sample_output_dir = make_sample_output_dir(output_dir, idx, image_name)
 
         try:
-            # 发送端：提取 Canny 边缘图
+            # 读取图像
+            original_img = Image.open(image_path).convert("RGB")
+            image_array = np.array(original_img)
+
+            # 发送端：本地提取 Canny 边缘图
             start = time.time()
-            edge_image = sender.process(image_path)
+            edge_np = extractor.extract(image_array)
+            edge_image = Image.fromarray(edge_np)
             sender_elapsed = time.time() - start
 
             edge_path = sample_output_dir / "edge.png"
             edge_image.save(edge_path)
-            _print(f"  ✓ 边缘提取完成: {edge_path} ({edge_image.size[0]}x{edge_image.size[1]}) "
-                  f"耗时 {sender_elapsed:.1f}s")
+            _print(f"  [OK] 边缘提取完成: {edge_path} ({edge_image.size[0]}x{edge_image.size[1]}) "
+                  f"耗时 {sender_elapsed:.3f}s")
 
             # 获取 prompt
             vlm_elapsed = 0.0
             if auto_prompt and vlm_sender is not None:
-                original_img = Image.open(image_path).convert("RGB")
-                image_array = np.array(original_img)
                 start_vlm = time.time()
                 sender_output = vlm_sender.describe(image_array)
                 vlm_elapsed = time.time() - start_vlm
                 prompt_text = sender_output.text
-                _print(f"  ✓ VLM 生成完成: {len(prompt_text)} 字符 耗时 {vlm_elapsed:.1f}s")
+                _print(f"  [OK] VLM 生成完成: {len(prompt_text)} 字符 耗时 {vlm_elapsed:.1f}s")
                 _print(f"    描述: {prompt_text[:100]}...")
             else:
                 prompt_text = prompt if prompt is not None else ""
-                _print(f"  ✓ 使用手动 prompt: {prompt_text[:60]}...")
+                _print(f"  [OK] 使用手动 prompt: {prompt_text[:60]}...")
 
             # 保存 prompt 文本
             prompt_path = sample_output_dir / "prompt.txt"
@@ -258,17 +255,16 @@ def batch_demo(
 
             restored_path = sample_output_dir / "restored.png"
             restored_image.save(restored_path)
-            _print(f"  ✓ 还原完成: {restored_path} ({restored_image.size[0]}x{restored_image.size[1]}) "
+            _print(f"  [OK] 还原完成: {restored_path} ({restored_image.size[0]}x{restored_image.size[1]}) "
                   f"耗时 {receiver_elapsed:.1f}s")
 
             # 生成对比图
             start = time.time()
-            original_image = Image.open(image_path)
-            comparison = _make_comparison_image(original_image, edge_image, restored_image)
+            comparison = _make_comparison_image(original_img, edge_image, restored_image)
             comparison_path = sample_output_dir / "comparison.png"
             comparison.save(comparison_path)
             comparison_elapsed = time.time() - start
-            _print(f"  ✓ 对比图生成完成: {comparison_path} 耗时 {comparison_elapsed:.1f}s")
+            _print(f"  [OK] 对比图生成完成: {comparison_path} 耗时 {comparison_elapsed:.1f}s")
 
             # 记录结果
             sample_result = SampleResult(
@@ -291,7 +287,7 @@ def batch_demo(
 
         except Exception as e:
             error_msg = str(e)
-            _print(f"  ✗ 处理失败: {error_msg}")
+            _print(f"  [ERR] 处理失败: {error_msg}")
 
             sample_result = SampleResult(
                 name=str(rel_path),

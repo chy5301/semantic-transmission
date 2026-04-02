@@ -4,6 +4,7 @@ import gradio as gr
 
 from semantic_transmission import __version__
 from semantic_transmission.gui.batch_panel import build_batch_tab
+from semantic_transmission.gui.batch_sender_panel import build_batch_sender_tab
 from semantic_transmission.gui.config_panel import build_config_tab
 from semantic_transmission.gui.pipeline_panel import build_pipeline_tab
 from semantic_transmission.gui.receiver_panel import build_receiver_tab
@@ -29,8 +30,11 @@ def create_app() -> gr.Blocks:
             with gr.TabItem("⚙ 配置"):
                 config_components = build_config_tab()
 
-            with gr.TabItem("▲ 发送端"):
+            with gr.TabItem("▲ 单张发送"):
                 sender_components = build_sender_tab(config_components)
+
+            with gr.TabItem("📦 批量发送"):
+                build_batch_sender_tab(config_components)
 
             with gr.TabItem("▼ 接收端"):
                 receiver_components = build_receiver_tab(config_components)
@@ -38,7 +42,7 @@ def create_app() -> gr.Blocks:
             with gr.TabItem("◆ 端到端演示"):
                 build_pipeline_tab(config_components)
 
-            with gr.TabItem("◇ 批量处理"):
+            with gr.TabItem("◇ 批量端到端"):
                 build_batch_tab(config_components)
 
         # Tab 间传递：发送端 → 接收端

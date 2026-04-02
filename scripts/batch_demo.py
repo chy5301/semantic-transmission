@@ -250,7 +250,7 @@ def main():
             batch_result.add_sample(sample_result)
 
             if not args.skip_errors:
-                print(f"\n  遇到错误且 --skip-errors 未启用，中止处理")
+                print("\n  遇到错误且 --skip-errors 未启用，中止处理")
                 break
 
             continue
