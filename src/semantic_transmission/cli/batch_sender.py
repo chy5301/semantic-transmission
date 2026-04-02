@@ -35,7 +35,9 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
     type=click.Path(path_type=Path),
     help="输出目录（保存处理结果，每张图片一个子目录）",
 )
-@click.option("--prompt", default=None, type=str, help="手动指定描述文本（所有图片共用）")
+@click.option(
+    "--prompt", default=None, type=str, help="手动指定描述文本（所有图片共用）"
+)
 @click.option(
     "--auto-prompt",
     is_flag=True,
@@ -54,12 +56,8 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
     default=False,
     help="跳过失败的图片，继续发送",
 )
-@click.option(
-    "--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）"
-)
-@click.option(
-    "--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）"
-)
+@click.option("--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）")
+@click.option("--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）")
 @click.option("--relay-host", required=True, help="接收端机器 IP 地址")
 @click.option(
     "--relay-port", default=9000, type=int, help="接收端监听端口（默认 9000）"
@@ -190,8 +188,10 @@ def batch_sender(
 
             edge_path = sample_output_dir / "edge.png"
             edge_image.save(edge_path)
-            _print(f"  [OK] 边缘提取完成: {edge_path} ({edge_image.size[0]}x{edge_image.size[1]}) "
-                  f"耗时 {sender_elapsed:.3f}s")
+            _print(
+                f"  [OK] 边缘提取完成: {edge_path} ({edge_image.size[0]}x{edge_image.size[1]}) "
+                f"耗时 {sender_elapsed:.3f}s"
+            )
 
             # 获取 prompt
             vlm_elapsed = 0.0
@@ -200,7 +200,9 @@ def batch_sender(
                 sender_output = vlm_sender.describe(image_array)
                 vlm_elapsed = time.time() - start_vlm
                 prompt_text = sender_output.text
-                _print(f"  [OK] VLM 生成完成: {len(prompt_text)} 字符 耗时 {vlm_elapsed:.1f}s")
+                _print(
+                    f"  [OK] VLM 生成完成: {len(prompt_text)} 字符 耗时 {vlm_elapsed:.1f}s"
+                )
                 _print(f"    描述: {prompt_text[:100]}...")
             else:
                 prompt_text = prompt if prompt is not None else ""
@@ -224,18 +226,20 @@ def batch_sender(
                 edge_image=edge_bytes, prompt_text=prompt_text, metadata=metadata
             )
 
-            processed_images.append({
-                "packet": packet,
-                "sample_output_dir": sample_output_dir,
-                "edge_path": edge_path,
-                "edge_image": edge_image,
-                "prompt_text": prompt_text,
-                "sender_elapsed": sender_elapsed,
-                "vlm_elapsed": vlm_elapsed,
-                "rel_path": rel_path,
-                "original_bytes": image_path.stat().st_size,
-                "edge_bytes": edge_bytes,
-            })
+            processed_images.append(
+                {
+                    "packet": packet,
+                    "sample_output_dir": sample_output_dir,
+                    "edge_path": edge_path,
+                    "edge_image": edge_image,
+                    "prompt_text": prompt_text,
+                    "sender_elapsed": sender_elapsed,
+                    "vlm_elapsed": vlm_elapsed,
+                    "rel_path": rel_path,
+                    "original_bytes": image_path.stat().st_size,
+                    "edge_bytes": edge_bytes,
+                }
+            )
 
             # 记录结果
             sample_result = SampleResult(
@@ -250,7 +254,9 @@ def batch_sender(
 
             # 保存元数据
             metadata_dict = sample_result.to_dict()
-            metadata_dict["packet_bytes"] = len(edge_bytes) + len(prompt_text.encode("utf-8"))
+            metadata_dict["packet_bytes"] = len(edge_bytes) + len(
+                prompt_text.encode("utf-8")
+            )
             metadata_path = sample_output_dir / "metadata.json"
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata_dict, f, indent=2, ensure_ascii=False)
@@ -261,7 +267,9 @@ def batch_sender(
             total_bytes = len(edge_bytes) + prompt_bytes
             if original_bytes > 0:
                 ratio = original_bytes / total_bytes
-                _print(f"    压缩比: {ratio:.2f}x  ({original_bytes:,} → {total_bytes:,} bytes)")
+                _print(
+                    f"    压缩比: {ratio:.2f}x  ({original_bytes:,} → {total_bytes:,} bytes)"
+                )
 
         except Exception as e:
             error_msg = str(e)

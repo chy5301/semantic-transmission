@@ -22,10 +22,6 @@ from semantic_transmission.pipeline.batch_processor import (
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 from semantic_transmission.sender.qwen_vl_sender import QwenVLSender
 
-# Prompt 模式常量
-MODE_MANUAL = "手动指定统一描述"
-MODE_AUTO = "VLM 自动生成描述（每张独立）"
-
 
 def build_batch_sender_tab(config_components):
     """构建批量发送 Tab（双机发送端）。"""
@@ -157,10 +153,14 @@ def build_batch_sender_tab(config_components):
 
                 # 预处理数据包
                 import io
+
                 buf = io.BytesIO()
                 edge_image.save(buf, format="PNG")
                 edge_bytes = buf.getvalue()
-                metadata = {"timestamp": time.time(), "image_size": list(edge_image.size)}
+                metadata = {
+                    "timestamp": time.time(),
+                    "image_size": list(edge_image.size),
+                }
                 if seed is not None:
                     metadata["seed"] = seed
                 if image_name:
@@ -170,17 +170,19 @@ def build_batch_sender_tab(config_components):
                     edge_image=edge_bytes, prompt_text=prompt_text, metadata=metadata
                 )
 
-                processed_data.append({
-                    "packet": packet,
-                    "sample_output_dir": sample_output_dir,
-                    "edge_path": edge_path,
-                    "prompt_text": prompt_text,
-                    "sender_elapsed": sender_elapsed,
-                    "vlm_elapsed": vlm_elapsed,
-                    "rel_path": rel_path,
-                    "original_bytes": image_path.stat().st_size,
-                    "edge_bytes": edge_bytes,
-                })
+                processed_data.append(
+                    {
+                        "packet": packet,
+                        "sample_output_dir": sample_output_dir,
+                        "edge_path": edge_path,
+                        "prompt_text": prompt_text,
+                        "sender_elapsed": sender_elapsed,
+                        "vlm_elapsed": vlm_elapsed,
+                        "rel_path": rel_path,
+                        "original_bytes": image_path.stat().st_size,
+                        "edge_bytes": edge_bytes,
+                    }
+                )
 
                 # 记录结果
                 sample_result = SampleResult(
@@ -195,7 +197,9 @@ def build_batch_sender_tab(config_components):
 
                 # 保存元数据
                 metadata_dict = sample_result.to_dict()
-                metadata_dict["packet_bytes"] = len(edge_bytes) + len(prompt_text.encode("utf-8"))
+                metadata_dict["packet_bytes"] = len(edge_bytes) + len(
+                    prompt_text.encode("utf-8")
+                )
                 metadata_path = sample_output_dir / "metadata.json"
                 with open(metadata_path, "w", encoding="utf-8") as f:
                     json.dump(metadata_dict, f, indent=2, ensure_ascii=False)
@@ -252,7 +256,9 @@ def build_batch_sender_tab(config_components):
                 relay.close()
             except Exception as e:
                 log_text += f"  [WARN] 连接或发送失败: {e}\n"
-                log_text += "  但是所有边缘图和 prompt 已经保存到输出目录，可以手动检查!\n"
+                log_text += (
+                    "  但是所有边缘图和 prompt 已经保存到输出目录，可以手动检查!\n"
+                )
                 yield log_text
 
         # 收尾
@@ -290,7 +296,9 @@ def build_batch_sender_tab(config_components):
         return
 
     with gr.Column():
-        gr.Markdown("### 批量发送（双机演示）\n批量处理目录中所有图片，提取边缘后发送到接收端。**发送端不依赖 ComfyUI**。")
+        gr.Markdown(
+            "### 批量发送（双机演示）\n批量处理目录中所有图片，提取边缘后发送到接收端。**发送端不依赖 ComfyUI**。"
+        )
 
         input_dir = gr.Textbox(
             label="输入图片目录",
@@ -364,7 +372,9 @@ def build_batch_sender_tab(config_components):
         def on_prompt_mode_change(mode):
             return gr.update(visible=mode == "manual")
 
-        prompt_mode.change(on_prompt_mode_change, inputs=[prompt_mode], outputs=[manual_prompt])
+        prompt_mode.change(
+            on_prompt_mode_change, inputs=[prompt_mode], outputs=[manual_prompt]
+        )
 
         # 运行处理
         run_btn.click(

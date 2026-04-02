@@ -30,12 +30,8 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
     default=False,
     help="使用 VLM (Qwen2.5-VL) 自动生成描述",
 )
-@click.option(
-    "--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）"
-)
-@click.option(
-    "--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）"
-)
+@click.option("--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）")
+@click.option("--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）")
 @click.option("--vlm-model", default=None, type=str, help="VLM 模型名称")
 @click.option(
     "--vlm-model-path",

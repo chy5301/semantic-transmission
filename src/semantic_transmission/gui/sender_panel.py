@@ -12,17 +12,13 @@ from PIL import Image
 from semantic_transmission.common.config import get_default_vlm_path
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
-# Prompt 模式常量
-MODE_MANUAL = "手动输入"
-MODE_VLM_AUTO = "VLM 自动生成"
-
 # 默认 Canny 阈值
 DEFAULT_THRESHOLD1 = 100
 DEFAULT_THRESHOLD2 = 200
 
 
 def _on_mode_change(mode: str):
-    return gr.update(visible=(mode == MODE_MANUAL))
+    return gr.update(visible=(mode == "manual"))
 
 
 def _run_sender(
@@ -76,7 +72,7 @@ def _run_sender(
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
     # [3] 获取语义描述
-    if mode == MODE_VLM_AUTO:
+    if mode == "auto":
         log += "[3/3] VLM 生成语义描述...\n"
         log += "  正在加载 VLM 模型（首次加载可能需要几分钟）...\n"
         yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
@@ -140,8 +136,8 @@ def build_sender_tab(config_components: dict) -> dict:
         )
 
     mode_radio = gr.Radio(
-        choices=[MODE_MANUAL, MODE_VLM_AUTO],
-        value=MODE_MANUAL,
+        choices=[("手动输入", "manual"), ("VLM 自动生成", "auto")],
+        value="manual",
         label="描述模式",
         elem_classes=["mode-radio"],
     )

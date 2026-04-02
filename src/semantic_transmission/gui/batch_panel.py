@@ -19,10 +19,6 @@ from semantic_transmission.pipeline.batch_processor import (
 from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
 from semantic_transmission.sender.comfyui_sender import ComfyUISender
 
-# Prompt 模式常量
-MODE_MANUAL = "手动指定统一描述"
-MODE_AUTO = "VLM 自动生成描述（每张独立）"
-
 
 def _make_comparison_image(
     original: Image.Image, edge: Image.Image, restored: Image.Image
@@ -102,7 +98,10 @@ def build_batch_tab(config_components):
         output_path.mkdir(parents=True, exist_ok=True)
 
         # 检查连接
-        yield log_text + f"\n检查 ComfyUI 连接 ({comfyui_host}:{comfyui_port})...\n", None
+        yield (
+            log_text + f"\n检查 ComfyUI 连接 ({comfyui_host}:{comfyui_port})...\n",
+            None,
+        )
         time.sleep(0.1)
 
         try:
@@ -202,7 +201,9 @@ def build_batch_tab(config_components):
                 # 生成对比图
                 start = time.time()
                 original_image = Image.open(image_path)
-                comparison = _make_comparison_image(original_image, edge_image, restored_image)
+                comparison = _make_comparison_image(
+                    original_image, edge_image, restored_image
+                )
                 comparison_path = sample_output_dir / "comparison.png"
                 comparison.save(comparison_path)
                 comparison_elapsed = time.time() - start
@@ -344,7 +345,9 @@ def build_batch_tab(config_components):
         def on_prompt_mode_change(mode):
             return gr.update(visible=mode == "manual")
 
-        prompt_mode.change(on_prompt_mode_change, inputs=[prompt_mode], outputs=[manual_prompt])
+        prompt_mode.change(
+            on_prompt_mode_change, inputs=[prompt_mode], outputs=[manual_prompt]
+        )
 
         # 运行处理
         run_btn.click(

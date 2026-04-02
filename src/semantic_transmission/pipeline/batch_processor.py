@@ -82,7 +82,9 @@ class BatchImageDiscoverer:
     def __init__(self, supported_exts: set[str] | None = None):
         self.supported_exts = supported_exts or SUPPORTED_IMAGE_EXTS
 
-    def discover(self, input_dir: Path, recursive: bool = False) -> BatchDiscoveryResult:
+    def discover(
+        self, input_dir: Path, recursive: bool = False
+    ) -> BatchDiscoveryResult:
         """扫描目录，返回所有找到的图片。
 
         Args:

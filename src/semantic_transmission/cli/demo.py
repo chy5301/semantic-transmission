@@ -56,12 +56,8 @@ def _make_comparison_image(
     default=False,
     help="使用 VLM (Qwen2.5-VL) 自动生成描述",
 )
-@click.option(
-    "--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）"
-)
-@click.option(
-    "--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）"
-)
+@click.option("--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）")
+@click.option("--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）")
 @click.option(
     "--receiver-host", default="127.0.0.1", help="接收端 ComfyUI 地址（默认 127.0.0.1）"
 )
@@ -209,7 +205,7 @@ def demo(
     _print(f"  耗时: {receiver_elapsed:.1f}s")
 
     # 生成对比图
-    _print("\n[5/5] 生成对比图...")
+    _print("\n[4/4] 生成对比图...")
     start = time.time()
     comparison = _make_comparison_image(original_img, edge_image, restored_image)
     comparison_path = output_dir / "comparison.png"

@@ -62,7 +62,9 @@ def _make_comparison_image(
     type=click.Path(path_type=Path),
     help="输出根目录（默认 output/batch-demo）",
 )
-@click.option("--prompt", default=None, type=str, help="手动指定描述文本（所有图片共用）")
+@click.option(
+    "--prompt", default=None, type=str, help="手动指定描述文本（所有图片共用）"
+)
 @click.option(
     "--auto-prompt",
     is_flag=True,
@@ -81,12 +83,8 @@ def _make_comparison_image(
     default=False,
     help="跳过失败的图片，继续处理下一张",
 )
-@click.option(
-    "--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）"
-)
-@click.option(
-    "--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）"
-)
+@click.option("--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）")
+@click.option("--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）")
 @click.option(
     "--receiver-host", default="127.0.0.1", help="接收端 ComfyUI 地址（默认 127.0.0.1）"
 )
@@ -228,8 +226,10 @@ def batch_demo(
 
             edge_path = sample_output_dir / "edge.png"
             edge_image.save(edge_path)
-            _print(f"  [OK] 边缘提取完成: {edge_path} ({edge_image.size[0]}x{edge_image.size[1]}) "
-                  f"耗时 {sender_elapsed:.3f}s")
+            _print(
+                f"  [OK] 边缘提取完成: {edge_path} ({edge_image.size[0]}x{edge_image.size[1]}) "
+                f"耗时 {sender_elapsed:.3f}s"
+            )
 
             # 获取 prompt
             vlm_elapsed = 0.0
@@ -238,7 +238,9 @@ def batch_demo(
                 sender_output = vlm_sender.describe(image_array)
                 vlm_elapsed = time.time() - start_vlm
                 prompt_text = sender_output.text
-                _print(f"  [OK] VLM 生成完成: {len(prompt_text)} 字符 耗时 {vlm_elapsed:.1f}s")
+                _print(
+                    f"  [OK] VLM 生成完成: {len(prompt_text)} 字符 耗时 {vlm_elapsed:.1f}s"
+                )
                 _print(f"    描述: {prompt_text[:100]}...")
             else:
                 prompt_text = prompt if prompt is not None else ""
@@ -255,16 +257,22 @@ def batch_demo(
 
             restored_path = sample_output_dir / "restored.png"
             restored_image.save(restored_path)
-            _print(f"  [OK] 还原完成: {restored_path} ({restored_image.size[0]}x{restored_image.size[1]}) "
-                  f"耗时 {receiver_elapsed:.1f}s")
+            _print(
+                f"  [OK] 还原完成: {restored_path} ({restored_image.size[0]}x{restored_image.size[1]}) "
+                f"耗时 {receiver_elapsed:.1f}s"
+            )
 
             # 生成对比图
             start = time.time()
-            comparison = _make_comparison_image(original_img, edge_image, restored_image)
+            comparison = _make_comparison_image(
+                original_img, edge_image, restored_image
+            )
             comparison_path = sample_output_dir / "comparison.png"
             comparison.save(comparison_path)
             comparison_elapsed = time.time() - start
-            _print(f"  [OK] 对比图生成完成: {comparison_path} 耗时 {comparison_elapsed:.1f}s")
+            _print(
+                f"  [OK] 对比图生成完成: {comparison_path} 耗时 {comparison_elapsed:.1f}s"
+            )
 
             # 记录结果
             sample_result = SampleResult(
