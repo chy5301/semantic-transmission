@@ -1,4 +1,7 @@
-"""发送端 Tab：图像上传 → Canny 边缘提取 → VLM 语义描述。"""
+"""发送端 Tab：图像上传 → Canny 边缘提取 → VLM 语义描述。
+
+不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
+"""
 
 import time
 
@@ -6,22 +9,24 @@ import gradio as gr
 import numpy as np
 from PIL import Image
 
-from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
-from semantic_transmission.gui import MODE_MANUAL, MODE_VLM_AUTO
-from semantic_transmission.sender.comfyui_sender import ComfyUISender
+from semantic_transmission.common.config import get_default_vlm_path
+from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
+
+# 默认 Canny 阈值
+DEFAULT_THRESHOLD1 = 100
+DEFAULT_THRESHOLD2 = 200
 
 
 def _on_mode_change(mode: str):
-    return gr.update(visible=(mode == MODE_MANUAL))
+    return gr.update(visible=(mode == "manual"))
 
 
 def _run_sender(
     image_path,
     mode,
     prompt,
-    sender_host,
-    sender_port,
+    threshold1,
+    threshold2,
     vlm_model_name,
     vlm_model_path,
 ):
@@ -36,34 +41,29 @@ def _run_sender(
         yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
         return
 
-    # [1] 连接检查
-    log += "[1/3] 检查 ComfyUI 连接...\n"
+    # [1] 加载图像
+    log += "[1/3] 读取图像...\n"
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
-    config = ComfyUIConfig(host=sender_host, port=int(sender_port))
-    client = ComfyUIClient(config)
-    try:
-        if not client.check_health():
-            log += f"  连接失败: {config.base_url} 服务异常\n"
-            yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
-            return
-        log += f"  {config.base_url}: OK\n"
-    except Exception as e:
-        log += f"  连接失败: {e}\n"
-        yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
-        return
+    original_img = Image.open(image_path).convert("RGB")
+    image_array = np.array(original_img)
+    log += f"  尺寸: {original_img.width}x{original_img.height}\n"
 
-    # [2] 提取边缘图
-    log += "[2/3] 提取 Canny 边缘图...\n"
+    # [2] 提取边缘图（本地 OpenCV）
+    log += "[2/3] 本地提取 Canny 边缘图...\n"
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
     try:
-        sender = ComfyUISender(client)
+        extractor = LocalCannyExtractor(
+            threshold1=int(threshold1),
+            threshold2=int(threshold2),
+        )
         start = time.time()
-        edge_pil = sender.process(image_path)
+        edge_np = extractor.extract(image_array)
         elapsed = time.time() - start
+        edge_pil = Image.fromarray(edge_np)
         edge_img = edge_pil
-        log += f"  完成 ({edge_pil.size[0]}x{edge_pil.size[1]}, {elapsed:.1f}s)\n"
+        log += f"  完成 ({edge_pil.size[0]}x{edge_pil.size[1]}, {elapsed:.3f}s)\n"
     except Exception as e:
         log += f"  失败: {e}\n"
         yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
@@ -72,7 +72,7 @@ def _run_sender(
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
     # [3] 获取语义描述
-    if mode == MODE_VLM_AUTO:
+    if mode == "auto":
         log += "[3/3] VLM 生成语义描述...\n"
         log += "  正在加载 VLM 模型（首次加载可能需要几分钟）...\n"
         yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
@@ -88,8 +88,6 @@ def _run_sender(
                 vlm_kwargs["model_path"] = vlm_path
 
             vlm_sender = QwenVLSender(**vlm_kwargs)
-            original_img = Image.open(image_path).convert("RGB")
-            image_array = np.array(original_img)
             start = time.time()
             sender_output = vlm_sender.describe(image_array)
             elapsed = time.time() - start
@@ -112,7 +110,7 @@ def _run_sender(
 
     send_btn_visible = True
     log += "─" * 30 + "\n"
-    log += "发送端完成！\n"
+    log += "发送端完成！（本地 Canny，不依赖 ComfyUI）\n"
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
 
@@ -125,9 +123,21 @@ def build_sender_tab(config_components: dict) -> dict:
         with gr.Column():
             edge_output = gr.Image(label="边缘图 (Canny)", interactive=False)
 
+    with gr.Row():
+        threshold1 = gr.Number(
+            label="Canny 低阈值",
+            value=DEFAULT_THRESHOLD1,
+            precision=0,
+        )
+        threshold2 = gr.Number(
+            label="Canny 高阈值",
+            value=DEFAULT_THRESHOLD2,
+            precision=0,
+        )
+
     mode_radio = gr.Radio(
-        choices=[MODE_MANUAL, MODE_VLM_AUTO],
-        value=MODE_MANUAL,
+        choices=[("手动输入", "manual"), ("VLM 自动生成", "auto")],
+        value="manual",
         label="描述模式",
         elem_classes=["mode-radio"],
     )
@@ -166,8 +176,8 @@ def build_sender_tab(config_components: dict) -> dict:
             image_input,
             mode_radio,
             prompt_input,
-            config_components["sender_host"],
-            config_components["sender_port"],
+            threshold1,
+            threshold2,
             config_components["vlm_model_name"],
             config_components["vlm_model_path"],
         ],

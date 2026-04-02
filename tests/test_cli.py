@@ -72,7 +72,7 @@ class TestDemoCommand:
         assert "--image" in result.output
         assert "--prompt" in result.output
         assert "--auto-prompt" in result.output
-        assert "--sender-host" in result.output
+        assert "--threshold1" in result.output
         assert "--receiver-host" in result.output
         assert "--output-dir" in result.output
         assert "--seed" in result.output

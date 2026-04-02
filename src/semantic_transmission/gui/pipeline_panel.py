@@ -11,7 +11,6 @@ from PIL import Image
 from semantic_transmission.common.comfyui_client import ComfyUIClient
 from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
 from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
-from semantic_transmission.gui import MODE_MANUAL, MODE_VLM_AUTO
 from semantic_transmission.sender.comfyui_sender import ComfyUISender
 
 
@@ -187,7 +186,7 @@ def _run_e2e(
     # --- [3/5] 获取语义描述 ---
     vlm_elapsed = 0.0
     log += "[3/5] 获取语义描述...\n"
-    if mode == MODE_VLM_AUTO:
+    if mode == "auto":
         log += "  正在加载 VLM 模型...\n"
         yield (
             original_img,
@@ -404,8 +403,8 @@ def build_pipeline_tab(config_components: dict) -> dict:
             image_input = gr.Image(label="原始图像", type="filepath")
         with gr.Column(scale=1):
             mode_radio = gr.Radio(
-                choices=[MODE_MANUAL, MODE_VLM_AUTO],
-                value=MODE_MANUAL,
+                choices=[("手动输入", "manual"), ("VLM 自动生成", "auto")],
+                value="manual",
                 label="描述模式",
                 elem_classes=["mode-radio"],
             )
@@ -472,7 +471,7 @@ def build_pipeline_tab(config_components: dict) -> dict:
 
     # --- 描述模式切换 ---
     mode_radio.change(
-        fn=lambda m: gr.update(visible=(m == MODE_MANUAL)),
+        fn=lambda m: gr.update(visible=(m == "manual")),
         inputs=mode_radio,
         outputs=prompt_input,
     )

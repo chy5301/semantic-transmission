@@ -18,6 +18,7 @@ dependencies = [
     "lpips>=0.1.4",
     "click>=8.0",
     "gradio>=5.0",
+    "bitsandbytes>=0.46.1",
 ]
 
 [project.scripts]
