@@ -47,10 +47,33 @@
 - **回滚方案**: `git checkout -- src/semantic_transmission/gui/receiver_panel.py src/semantic_transmission/gui/pipeline_panel.py`
 - **预估工作量**: S
 
+#### [M-1A] 决策-PR #14 合并后计划调整
+
+- **阶段**: Phase 0 - 准备
+- **依赖**: M-01
+- **目标**: 逐一决策 PR #14 合并带来的 6 个影响点，确认是否需要调整后续任务计划
+- **背景信息**: 2026-04-02 同事 Vickynsx 的 PR #14 已合并到 main，引入了批量处理基础设施（`pipeline/batch_processor.py`）、发送端脱离 ComfyUI（`LocalCannyExtractor`）、新的 GUI 面板和 CLI 命令。这些变更与本工作流的 M-06/M-07/M-08 有交集，需要在继续开发前决策是否调整计划。详细分析见 `docs/workflow/PR14_IMPACT_ANALYSIS.md`。
+- **涉及文件**:
+  - `docs/workflow/PR14_IMPACT_ANALYSIS.md`（只读参考）
+  - `docs/workflow/TASK_PLAN.md`（根据决策结果更新）
+  - `docs/workflow/TASK_STATUS.md`（记录决策日志）
+- **具体步骤**:
+  1. 阅读 `docs/workflow/PR14_IMPACT_ANALYSIS.md` 中的 6 个待决策点
+  2. 逐一与用户确认每个决策点
+  3. 根据决策结果更新 TASK_PLAN.md 中受影响的任务（M-06/M-07/M-08 等）
+  4. 在 TASK_STATUS.md 决策日志中记录决策结果
+- **验收标准**:
+  - 6 个待决策点均已确认
+  - TASK_PLAN.md 已根据决策更新（如有需要）
+  - 决策日志已记录
+- **自测方法**: 检查 TASK_STATUS.md 决策日志是否包含 PR #14 相关决策记录
+- **回滚方案**: `git checkout -- docs/workflow/TASK_PLAN.md docs/workflow/TASK_STATUS.md`
+- **预估工作量**: S
+
 #### [M-02] 添加-diffusers 依赖与模型配置
 
 - **阶段**: Phase 0 - 准备
-- **依赖**: 无
+- **依赖**: M-1A
 - **目标**: 在 pyproject.toml 中添加 diffusers 依赖，新建接收端模型配置类
 - **背景信息**: 项目计划脱离 ComfyUI，改用 diffusers 直接调用 Z-Image-Turbo + ControlNet Union 进行图像生成。需要添加 diffusers 库依赖（可能需要从源码安装以获取 ZImagePipeline 支持），并创建接收端的模型配置类（模型名称/路径、设备、推理步数等），与现有 ComfyUIConfig 并列。
 - **涉及文件**:
