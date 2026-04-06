@@ -74,7 +74,9 @@ class DiffusersReceiver(BaseReceiver):
             还原图像 PIL.Image。
         """
         self.load()
-        assert self._pipeline is not None
+        pipeline = self._pipeline
+        if pipeline is None:
+            raise RuntimeError("模型加载失败，pipeline 为 None")
 
         condition = self._load_condition_image(edge_image)
 
@@ -82,7 +84,7 @@ class DiffusersReceiver(BaseReceiver):
             seed = random.randint(0, 2**32 - 1)
         generator = torch.Generator(device=self.config.device).manual_seed(seed)
 
-        result = self._pipeline(
+        result = pipeline(
             prompt=prompt_text,
             control_image=condition,
             num_inference_steps=self.config.num_inference_steps,

@@ -82,7 +82,15 @@ class DiffusersReceiverConfig:
             env_key = f"DIFFUSERS_{f.name.upper()}"
             val = os.environ.get(env_key)
             if val is not None:
-                kwargs[f.name] = f.type(val) if f.type in (int, float) else val
+                if f.type in (int, float):
+                    try:
+                        kwargs[f.name] = f.type(val)
+                    except (ValueError, TypeError) as e:
+                        raise ValueError(
+                            f"环境变量 {env_key}={val!r} 无法转换为 {f.type.__name__}"
+                        ) from e
+                else:
+                    kwargs[f.name] = val
         return cls(**kwargs)
 
 
