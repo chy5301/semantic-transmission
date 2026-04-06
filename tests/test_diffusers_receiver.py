@@ -124,12 +124,12 @@ class TestProcess:
         assert isinstance(result, Image.Image)
 
     def test_accepts_str_path(self, receiver_with_mock_pipeline, edge_image_path):
-        result = receiver_with_mock_pipeline.process(
-            str(edge_image_path), PROMPT_TEXT
-        )
+        result = receiver_with_mock_pipeline.process(str(edge_image_path), PROMPT_TEXT)
         assert isinstance(result, Image.Image)
 
-    def test_seed_passed_to_generator(self, receiver_with_mock_pipeline, edge_image_path):
+    def test_seed_passed_to_generator(
+        self, receiver_with_mock_pipeline, edge_image_path
+    ):
         receiver_with_mock_pipeline.process(edge_image_path, PROMPT_TEXT, seed=42)
         call_kwargs = receiver_with_mock_pipeline._pipeline.call_args[1]
         assert call_kwargs["prompt"] == PROMPT_TEXT
@@ -144,7 +144,9 @@ class TestProcess:
         generator = call_kwargs["generator"]
         assert isinstance(generator, torch.Generator)
 
-    def test_seed_none_generates_random(self, receiver_with_mock_pipeline, edge_image_path):
+    def test_seed_none_generates_random(
+        self, receiver_with_mock_pipeline, edge_image_path
+    ):
         receiver_with_mock_pipeline.process(edge_image_path, PROMPT_TEXT)
         call_kwargs = receiver_with_mock_pipeline._pipeline.call_args[1]
         assert "generator" in call_kwargs
