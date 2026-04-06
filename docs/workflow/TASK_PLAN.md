@@ -168,7 +168,7 @@
 - **阶段**: Phase 2 - 完善
 - **依赖**: M-04
 - **目标**: 在 DiffusersReceiver 上支持批量连续帧图像生成（输入一组 prompt + 边缘图序列，逐帧生成图像）
-- **背景信息**: 根据 issue #10 讨论结论，当前阶段只做批量图像处理（逐帧生成），不实现视频合成。接收端收到几帧描述就生成几帧图像，帧数量对接收端透明。模型在批量处理期间保持常驻 GPU，避免反复加载。同时在中继数据结构中预留可选的 metadata 扩展字段。
+- **背景信息**: 根据 issue #10 讨论结论，当前阶段只做批量图像处理（逐帧生成），不实现视频合成。接收端收到几帧描述就生成几帧图像，帧数量对接收端透明。模型在批量处理期间保持常驻 GPU，避免反复加载。同时在中继数据结构中预留可选的 metadata 扩展字段。**M-1A 决策**：复用 `pipeline/batch_processor.py` 中的 `BatchResult`/`SampleResult` 做结果统计，不复用 `BatchImageDiscoverer` 和 `make_sample_output_dir`（接收端输入来源不同，场景不匹配）。
 - **涉及文件**:
   - `src/semantic_transmission/receiver/diffusers_receiver.py`
   - `src/semantic_transmission/receiver/base.py`
@@ -176,8 +176,9 @@
 - **具体步骤**:
   1. 在 BaseReceiver 中新增 `process_batch` 方法（接收帧列表，逐帧调用 `process`，返回图像列表）
   2. 在 DiffusersReceiver 中实现/覆写 `process_batch`，确保模型常驻不反复加载
-  3. 确认 metadata 字段已预留扩展位（现有 `dict[str, Any]` 已满足）
-  4. 编写批量生成的测试用例
+  3. 结果统计复用 `BatchResult`/`SampleResult`（从 `pipeline.batch_processor` 导入）
+  4. 确认 metadata 字段已预留扩展位（现有 `dict[str, Any]` 已满足）
+  5. 编写批量生成的测试用例
 - **验收标准**:
   - `process_batch` 接收 N 帧输入，返回 N 张图像
   - 批量处理期间模型只加载一次
@@ -191,17 +192,19 @@
 
 - **阶段**: Phase 2 - 完善
 - **依赖**: M-05
-- **目标**: GUI 接收端面板和端到端面板支持 Diffusers 后端切换
-- **背景信息**: 当前 `gui/receiver_panel.py` 和 `gui/pipeline_panel.py` 中硬编码了 ComfyUIReceiver。需要改为使用工厂函数，并在 GUI 配置面板中添加后端选择（ComfyUI / Diffusers）。当选择 Diffusers 后端时，ComfyUI 相关的 host/port 配置应隐藏或禁用。
+- **目标**: GUI 接收端面板和端到端面板支持 Diffusers 后端切换；修复 `batch_panel.py` 发送端遗漏
+- **背景信息**: 当前 `gui/receiver_panel.py` 和 `gui/pipeline_panel.py` 中硬编码了 ComfyUIReceiver。需要改为使用工厂函数，并在 GUI 配置面板中添加后端选择（ComfyUI / Diffusers）。当选择 Diffusers 后端时，ComfyUI 相关的 host/port 配置应隐藏或禁用。**M-1A 决策**：`gui/batch_panel.py` 也需适配接收端后端切换，同时修复其发送端仍用 `ComfyUISender` 的遗漏（PR #14 中 `batch_sender_panel.py` 已改为 `LocalCannyExtractor`，`batch_panel.py` 遗漏未改）。Radio 组件沿用 `(label, value)` 元组模式。
 - **涉及文件**:
   - `src/semantic_transmission/gui/receiver_panel.py`
   - `src/semantic_transmission/gui/pipeline_panel.py`
   - `src/semantic_transmission/gui/config_panel.py`
+  - `src/semantic_transmission/gui/batch_panel.py`（M-1A 新增）
 - **具体步骤**:
-  1. 在 `config_panel.py` 中添加接收端后端选择组件（Radio: ComfyUI / Diffusers）
+  1. 在 `config_panel.py` 中添加接收端后端选择组件（Radio: `(label, value)` 元组模式）
   2. 修改 `receiver_panel.py` 使用工厂函数创建 receiver，根据后端类型传入对应配置
   3. 修改 `pipeline_panel.py` 同上
-  4. 添加后端切换时的 UI 联动（Diffusers 模式下隐藏 ComfyUI 配置）
+  4. 修改 `batch_panel.py`：接收端改用工厂函数；发送端 `ComfyUISender` → `LocalCannyExtractor`（修复 PR #14 遗漏）
+  5. 添加后端切换时的 UI 联动（Diffusers 模式下隐藏 ComfyUI 配置）
 - **验收标准**:
   - GUI 可选择 ComfyUI 或 Diffusers 后端
   - 选择 Diffusers 后端时能正常运行接收端
@@ -216,15 +219,17 @@
 - **阶段**: Phase 2 - 完善
 - **依赖**: M-05
 - **目标**: CLI receiver 和 demo 子命令支持 Diffusers 后端切换
-- **背景信息**: 当前 `cli/receiver.py` 和 `cli/demo.py` 中硬编码了 ComfyUIReceiver。需要添加 `--backend` 参数（默认 "diffusers"），使用工厂函数创建 receiver。双机演示场景下，接收端也支持直接推理。
+- **背景信息**: 当前 `cli/receiver.py` 和 `cli/demo.py` 中硬编码了 ComfyUIReceiver。需要添加 `--backend` 参数（默认 "diffusers"），使用工厂函数创建 receiver。双机演示场景下，接收端也支持直接推理。**M-1A 决策**：`cli/batch_demo.py` 也包含硬编码的 `ComfyUIReceiver`，需一并适配。CLI 代码重复问题（`batch_demo.py` 与 `batch_sender.py`）不在本任务精简，workflow 完成后单独提 issue。
 - **涉及文件**:
   - `src/semantic_transmission/cli/receiver.py`
   - `src/semantic_transmission/cli/demo.py`
+  - `src/semantic_transmission/cli/batch_demo.py`（M-1A 新增）
 - **具体步骤**:
   1. 在 `cli/receiver.py` 添加 `--backend` 选项（choice: comfyui/diffusers，默认 diffusers）
   2. 根据 backend 使用工厂函数创建 receiver
   3. 在 `cli/demo.py` 同样添加 `--backend` 选项
-  4. Diffusers 模式下跳过 ComfyUI 连接检查
+  4. 在 `cli/batch_demo.py` 同样添加 `--backend` 选项，适配接收端后端切换
+  5. Diffusers 模式下跳过 ComfyUI 连接检查
 - **验收标准**:
   - `semantic-tx receiver --backend diffusers` 可正常启动
   - `semantic-tx demo --backend comfyui` 行为与之前一致
