@@ -9,9 +9,8 @@ import click
 import numpy as np
 from PIL import Image
 
-from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
-from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
+from semantic_transmission.common.config import get_default_vlm_path
+from semantic_transmission.receiver import create_receiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
@@ -59,10 +58,21 @@ def _make_comparison_image(
 @click.option("--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）")
 @click.option("--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）")
 @click.option(
-    "--receiver-host", default="127.0.0.1", help="接收端 ComfyUI 地址（默认 127.0.0.1）"
+    "--backend",
+    default="diffusers",
+    type=click.Choice(["comfyui", "diffusers"]),
+    help="接收端后端（默认 diffusers）",
 )
 @click.option(
-    "--receiver-port", default=8188, type=int, help="接收端 ComfyUI 端口（默认 8188）"
+    "--receiver-host",
+    default="127.0.0.1",
+    help="接收端 ComfyUI 地址（仅 comfyui 后端，默认 127.0.0.1）",
+)
+@click.option(
+    "--receiver-port",
+    default=8188,
+    type=int,
+    help="接收端 ComfyUI 端口（仅 comfyui 后端，默认 8188）",
 )
 @click.option(
     "--output-dir",
@@ -91,6 +101,7 @@ def demo(
     auto_prompt,
     threshold1,
     threshold2,
+    backend,
     receiver_host,
     receiver_port,
     output_dir,
@@ -119,26 +130,30 @@ def demo(
     # 创建输出目录
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 构造配置和客户端（仅接收端需要）
-    receiver_config = ComfyUIConfig(host=receiver_host, port=receiver_port)
-    receiver_client = ComfyUIClient(receiver_config)
-
     _print("=" * 60)
     _print("  语义传输端到端 Demo（发送端本地 Canny）")
     _print("=" * 60)
     _print(f"  输入图像: {image}")
     _print(f"  Canny 阈值: {threshold1}, {threshold2}")
-    _print(f"  接收端: {receiver_config.base_url}")
+    _print(f"  接收端后端: {backend}")
     _print(f"  输出目录: {output_dir}")
 
-    # 健康检查（仅接收端）
-    _print("\n[1/4] 检查 ComfyUI 连接（接收端）...")
-    try:
-        receiver_client.check_health()
-        _print(f"  接收端 ({receiver_config.base_url}): OK")
-    except Exception as e:
-        _print(f"  接收端连接失败: {e}")
-        sys.exit(1)
+    # 健康检查（仅 ComfyUI 后端）
+    if backend == "comfyui":
+        from semantic_transmission.common.comfyui_client import ComfyUIClient
+        from semantic_transmission.common.config import ComfyUIConfig
+
+        receiver_config = ComfyUIConfig(host=receiver_host, port=receiver_port)
+        receiver_client = ComfyUIClient(receiver_config)
+        _print("\n[1/4] 检查 ComfyUI 连接（接收端）...")
+        try:
+            receiver_client.check_health()
+            _print(f"  接收端 ({receiver_config.base_url}): OK")
+        except Exception as e:
+            _print(f"  接收端连接失败: {e}")
+            sys.exit(1)
+    else:
+        _print("\n[1/4] 使用 Diffusers 本地推理，跳过连接检查")
 
     # 发送端：本地提取 Canny 边缘图
     _print("\n[2/4] 本地提取 Canny 边缘图...")
@@ -191,8 +206,8 @@ def demo(
     _print(f"  Prompt 已保存: {prompt_path}")
 
     # 接收端：从边缘图 + prompt 还原图像
-    _print("\n[4/4] 接收端：还原图像...")
-    receiver = ComfyUIReceiver(receiver_client)
+    _print(f"\n[4/4] 接收端：还原图像（{backend}）...")
+    receiver = create_receiver(backend, host=receiver_host, port=receiver_port)
     start = time.time()
     restored_image = receiver.process(edge_path, prompt_text, seed=seed)
     receiver_elapsed = time.time() - start

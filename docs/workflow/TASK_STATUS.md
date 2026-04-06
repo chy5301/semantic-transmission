@@ -10,9 +10,9 @@
 |------|------|------|--------|--------|
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
-| Phase 2: 完善 | 3 | 2 | 0 | 1 |
+| Phase 2: 完善 | 3 | 3 | 0 | 0 |
 | Phase 3: 验证 | 1 | 0 | 0 | 1 |
-| **合计** | **10** | **8** | **0** | **2** |
+| **合计** | **10** | **9** | **0** | **1** |
 
 ## 任务状态
 
@@ -26,7 +26,7 @@
 | M-05 | 更新-工厂函数支持 Diffusers 后端 | Phase 1 | ✅ 已完成 | M-03, M-04 |
 | M-06 | 实现-批量连续帧图像生成 | Phase 2 | ✅ 已完成 | M-04 |
 | M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ✅ 已完成 | M-05 |
-| M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ⬜ 待开始 | M-05 |
+| M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ✅ 已完成 | M-05 |
 | M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⬜ 待开始 | M-06, M-07, M-08 |
 
 状态图例: ⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ⏸️ 暂停 | ❌ 已取消 | 🔀 已拆分
@@ -378,5 +378,38 @@
 - cli/demo.py 添加 --backend 选项
 - cli/batch_demo.py 添加 --backend 选项
 - Diffusers 模式下跳过 ComfyUI 连接检查
+
+**遗留问题**: 无
+
+---
+
+#### [M-08] 集成-CLI 接收端命令适配 — 交接记录
+
+**完成时间**: 2026-04-06
+
+**完成内容**:
+- cli/receiver.py 添加 `--backend` 选项（comfyui/diffusers，默认 diffusers），改用 create_receiver 工厂函数
+- cli/demo.py 添加 `--backend` 选项，改用 create_receiver，Diffusers 时跳过连接检查
+- cli/batch_demo.py 添加 `--backend` 选项，改用 create_receiver，Diffusers 时跳过连接检查
+
+**修改的文件**:
+- `src/semantic_transmission/cli/receiver.py` — 添加 --backend 选项，移除 ComfyUIReceiver 硬编码，改用 create_receiver + 后端分支连接检查
+- `src/semantic_transmission/cli/demo.py` — 添加 --backend 选项，接收端改用 create_receiver，Diffusers 时跳过连接检查
+- `src/semantic_transmission/cli/batch_demo.py` — 添加 --backend 选项，接收端改用 create_receiver，Diffusers 时跳过连接检查
+
+**验证结果**:
+- ruff check: ✅ All checks passed
+- ruff format: ✅ 62 files already formatted
+- 全量测试: ✅ 210 passed
+- --help 输出: ✅ receiver/demo/batch-demo 均显示 --backend 选项
+
+**关键决策**:
+- --backend 默认值统一为 "diffusers"（与 GUI 一致，是本工作流的目标方向）
+- receiver.py 的 _process_packet 函数类型标注从 ComfyUIReceiver 改为 BaseReceiver
+- ComfyUI 相关导入改为条件导入（仅 comfyui 后端时加载）
+
+**计划变更**: 无
+
+**下一任务**: Phase 2 全部完成，进入阶段检查点
 
 **遗留问题**: 无
