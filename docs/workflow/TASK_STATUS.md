@@ -62,6 +62,7 @@
 - 2026-04-06: [M-03] BaseReceiver 统一方法名为 `process`（弃用 `reconstruct`），返回 PIL.Image 而非 ReceiverOutput；ComfyUIReceiver 暂不改继承关系，通过 `# type: ignore` 标注工厂函数返回
 - 2026-04-06: [Phase 0 回顾] 阶段通过。审计 4 任务无阻断/需修正问题。退出标准全部满足。M-05 步骤建议微调（工厂函数分支骨架已在 M-03 建好）
 - 2026-04-06: [Phase 1 回顾] 阶段通过。审计 2 任务（M-04/M-05）无阻断/需修正问题。🔵 建议：M-02/M-03 遗留改动混入 M-04 commit。退出标准全部满足（202 tests passed，ruff 通过）。下游 Phase 2 任务无需调整
+- 2026-04-06: [Phase 2 回顾] 阶段通过。审计 3 任务（M-06/M-07/M-08）无阻断/需修正问题。🔵 建议：pipeline_panel.py 发送端改 LocalCannyExtractor 超出 M-07 显式范围（因 import 清理必须一并修改）。退出标准全部满足（210 tests passed，ruff 通过，GUI/CLI 均适配后端切换）。下游 Phase 3 任务（M-09）无需调整
 
 ## 交接记录
 
