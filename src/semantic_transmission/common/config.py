@@ -16,6 +16,18 @@ def get_default_vlm_path() -> str | None:
     return None
 
 
+def get_default_z_image_path(filename: str) -> str:
+    """获取 Z-Image-Turbo 模型文件默认本地路径。
+
+    基于环境变量 MODEL_CACHE_DIR 拼接路径。
+    未设置 MODEL_CACHE_DIR 时返回文件名本身。
+    """
+    cache_dir = os.environ.get("MODEL_CACHE_DIR")
+    if cache_dir:
+        return os.path.join(cache_dir, "Z-Image-Turbo", filename)
+    return filename
+
+
 @dataclass
 class ComfyUIConfig:
     """ComfyUI 服务连接配置。
@@ -68,11 +80,17 @@ class DiffusersReceiverConfig:
     """
 
     model_name: str = "Tongyi-MAI/Z-Image-Turbo"
-    controlnet_name: str = "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union"
+    controlnet_name: str = ""
     device: str = "cuda"
     num_inference_steps: int = 9
     guidance_scale: float = 1.0
     torch_dtype: str = "bfloat16"
+
+    def __post_init__(self):
+        if not self.controlnet_name:
+            self.controlnet_name = get_default_z_image_path(
+                "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
+            )
 
     @classmethod
     def from_env(cls) -> "DiffusersReceiverConfig":

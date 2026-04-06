@@ -67,7 +67,7 @@ class TestLoadUnload:
         receiver.load()
 
         assert receiver.is_loaded
-        mock_model_cls.from_pretrained.assert_called_once()
+        mock_model_cls.from_single_file.assert_called_once()
         mock_pipe_cls.from_pretrained.assert_called_once()
 
     @patch("diffusers.ZImageControlNetPipeline")

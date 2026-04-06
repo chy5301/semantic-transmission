@@ -40,7 +40,7 @@ class DiffusersReceiver(BaseReceiver):
 
         dtype = _TORCH_DTYPE_MAP.get(self.config.torch_dtype, torch.bfloat16)
 
-        controlnet = ZImageControlNetModel.from_pretrained(
+        controlnet = ZImageControlNetModel.from_single_file(
             self.config.controlnet_name,
             torch_dtype=dtype,
         )
@@ -104,11 +104,15 @@ class DiffusersReceiver(BaseReceiver):
     def _load_condition_image(
         edge_image: Image.Image | bytes | str | Path,
     ) -> Image.Image:
-        """将各种输入格式统一转为 PIL.Image。"""
+        """将各种输入格式统一转为 RGB PIL.Image。"""
         if isinstance(edge_image, Image.Image):
-            return edge_image
-        if isinstance(edge_image, bytes):
+            img = edge_image
+        elif isinstance(edge_image, bytes):
             import io
 
-            return Image.open(io.BytesIO(edge_image))
-        return Image.open(edge_image)
+            img = Image.open(io.BytesIO(edge_image))
+        else:
+            img = Image.open(edge_image)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        return img

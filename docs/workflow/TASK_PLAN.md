@@ -241,10 +241,38 @@
 
 ### Phase 3: 验证
 
+#### [M-09a] 修复-模型加载 GGUF 量化与分组件加载
+
+- **阶段**: Phase 3 - 验证
+- **依赖**: M-04
+- **目标**: 使用 GGUF 量化的 transformer + 分组件加载，使显存占用 < 20 GB，推理速度 < 2 分钟/张
+- **背景信息**: M-09 验证过程中发现，`from_pretrained("Tongyi-MAI/Z-Image-Turbo")` 从 HF 仓库加载 float32 权重（transformer 23 GB），即使指定 `torch_dtype=bfloat16` 也会先读 float32 再转换。所有组件同时驻留 GPU 占满 23.5 GB 显存，推理时激活值无空间，被迫 swap 到系统内存，单张图推理 34 分钟（ComfyUI 约 1 分钟）。此外已修复两个 bug：ControlNet 仓库无 config.json 需用 `from_single_file` 加载；Canny 边缘图单通道需转 RGB。解决方案：使用社区 GGUF 量化版本（unsloth/Z-Image-Turbo-GGUF）的 Q8_0 格式（7 GB，质量 ~99%），通过 `ZImageTransformer2DModel.from_single_file` 加载 GGUF transformer，其余组件从 HF 缓存加载 bf16，ControlNet 用本地 bf16 文件。
+- **涉及文件**:
+  - `pyproject.toml`
+  - `src/semantic_transmission/common/config.py`
+  - `src/semantic_transmission/receiver/diffusers_receiver.py`
+  - `tests/test_diffusers_receiver.py`
+  - `tests/test_receiver_factory.py`
+- **具体步骤**:
+  1. 在 `pyproject.toml` 添加 `gguf>=0.6.0` 依赖
+  2. 下载 GGUF Q8_0 模型文件到 `$MODEL_CACHE_DIR/Z-Image-Turbo/`
+  3. `DiffusersReceiverConfig` 新增 `transformer_path` 字段，默认指向 GGUF 文件（通过 `get_default_z_image_path` 解析）
+  4. `DiffusersReceiver.load()` 改为分组件加载：transformer 用 `ZImageTransformer2DModel.from_single_file` + `GGUFQuantizationConfig` 加载 GGUF；ControlNet 用 `from_single_file` 加载本地 bf16；pipeline 用 `from_pretrained` 传入已加载的 transformer 和 controlnet，其余组件从 HF 缓存以 bf16 加载
+  5. 提交已修复的 bug（ControlNet from_single_file、边缘图 RGB 转换）
+  6. 更新测试
+- **验收标准**:
+  - GPU 显存占用 < 20 GB
+  - 单张图推理时间 < 2 分钟
+  - `uv run pytest` 全部通过
+  - `uv run ruff check .` 通过
+- **自测方法**: `uv run pytest`；`uv run semantic-tx demo --image resources/test_images/canyon_jeep.jpg --prompt "test" --seed 42`（观察显存和耗时）
+- **回滚方案**: `git checkout -- src/semantic_transmission/common/config.py src/semantic_transmission/receiver/diffusers_receiver.py pyproject.toml`
+- **预估工作量**: M
+
 #### [M-09] 验证-端到端测试与质量对比
 
 - **阶段**: Phase 3 - 验证
-- **依赖**: M-06, M-07, M-08
+- **依赖**: M-06, M-07, M-08, M-09a
 - **目标**: 完成端到端测试，验证 Diffusers 后端的生成质量和功能完整性
 - **背景信息**: 所有模块集成完毕后，需要验证：1) 单帧生成功能正确；2) 批量连续帧生成功能正确；3) GUI 和 CLI 两种入口都能正常工作；4) Diffusers 后端与 ComfyUI 后端的生成质量对比（使用现有 evaluation 模块的 PSNR/SSIM/LPIPS 指标）；5) 所有现有测试通过无回归。
 - **涉及文件**:

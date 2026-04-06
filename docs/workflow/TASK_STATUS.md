@@ -11,8 +11,8 @@
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 3 | 0 | 0 |
-| Phase 3: 验证 | 1 | 0 | 0 | 1 |
-| **合计** | **10** | **9** | **0** | **1** |
+| Phase 3: 验证 | 2 | 0 | 0 | 2 |
+| **合计** | **11** | **9** | **0** | **2** |
 
 ## 任务状态
 
@@ -27,13 +27,21 @@
 | M-06 | 实现-批量连续帧图像生成 | Phase 2 | ✅ 已完成 | M-04 |
 | M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ✅ 已完成 | M-05 |
 | M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ✅ 已完成 | M-05 |
-| M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⬜ 待开始 | M-06, M-07, M-08 |
+| M-09a | 修复-模型加载 GGUF 量化与分组件加载 | Phase 3 | ⬜ 待开始 | M-04 |
+| M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⏸️ 暂停 | M-06, M-07, M-08, M-09a |
 
 状态图例: ⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ⏸️ 暂停 | ❌ 已取消 | 🔀 已拆分
 
 ## 已知问题
 
 - 遗留 issue: #16（timeout 倍数需确认）、#17（量化依赖按平台条件安装）
+- [待提 issue] CLI 代码重复：`batch_demo.py` 与 `batch_sender.py` 之间大量重复逻辑，应通过工厂函数精简（M-1A D4 决策延后）
+- [待提 issue] DiffusersReceiver 模型加载缺乏抽象：当前加载逻辑（from_pretrained / from_single_file / 量化加载）直接写死在 `load()` 方法中，更换模型格式或加载方式需同时修改 config.py、diffusers_receiver.py、tests 三处。应重构为策略模式（ModelLoader 抽象），使 Receiver 与具体加载方式解耦
+- [环境变量] Diffusers 接收端运行需要以下环境变量：
+  - `MODEL_CACHE_DIR=D:\Downloads\Models` — 模型根目录（GGUF/ControlNet bf16 文件在 `$MODEL_CACHE_DIR/Z-Image-Turbo/` 下）
+  - `HF_HOME=D:\Downloads\Models\huggingface` — HuggingFace 缓存目录（text_encoder/tokenizer/scheduler 从此缓存加载）
+  - `HF_ENDPOINT=https://hf-mirror.com`（可选）— HuggingFace 镜像站，国内网络加速
+  - `HF_HUB_DISABLE_SYMLINKS_WARNING=1`（可选）— 禁用 Windows symlinks 警告
 
 ## PR #14 合并后待决策事项
 
@@ -63,6 +71,7 @@
 - 2026-04-06: [Phase 0 回顾] 阶段通过。审计 4 任务无阻断/需修正问题。退出标准全部满足。M-05 步骤建议微调（工厂函数分支骨架已在 M-03 建好）
 - 2026-04-06: [Phase 1 回顾] 阶段通过。审计 2 任务（M-04/M-05）无阻断/需修正问题。🔵 建议：M-02/M-03 遗留改动混入 M-04 commit。退出标准全部满足（202 tests passed，ruff 通过）。下游 Phase 2 任务无需调整
 - 2026-04-06: [Phase 2 回顾] 阶段通过。审计 3 任务（M-06/M-07/M-08）无阻断/需修正问题。🔵 建议：pipeline_panel.py 发送端改 LocalCannyExtractor 超出 M-07 显式范围（因 import 清理必须一并修改）。退出标准全部满足（210 tests passed，ruff 通过，GUI/CLI 均适配后端切换）。下游 Phase 3 任务（M-09）无需调整
+- 2026-04-07: [M-09 验证阻断] M-09 执行发现 DiffusersReceiver 不可用：HF 仓库 float32 权重占满 24 GB 显存，推理 34 分钟/张（ComfyUI 约 1 分钟）。根因：①`from_pretrained` 加载 float32 权重后转 bf16 峰值显存翻倍 ②所有组件同时驻留 GPU 无法分时复用。另修复两个 bug：ControlNet 仓库无 config.json 需 from_single_file、Canny 灰度图需转 RGB。决策：新增 M-09a 使用 GGUF Q8_0 量化 transformer（12 GB→7 GB）+ 分组件加载，M-09 阻塞等待 M-09a 完成
 
 ## 交接记录
 
