@@ -64,11 +64,7 @@ class BaseReceiver(ABC):
         batch = BatchResult(total=len(frames))
         images: list[Image.Image | None] = []
         for i, frame in enumerate(frames):
-            name = (
-                frame.metadata.get("name", f"frame_{i:04d}")
-                if frame.metadata
-                else f"frame_{i:04d}"
-            )
+            name = (frame.metadata or {}).get("name", f"frame_{i:04d}")
             sample = SampleResult(name=name, status="success")
             t0 = time.time()
             try:
