@@ -43,6 +43,17 @@ def build_config_tab() -> dict:
     sender_cfg = ComfyUIConfig.from_env(prefix="SENDER")
     receiver_cfg = ComfyUIConfig.from_env(prefix="RECEIVER")
 
+    # --- 接收端后端 ---
+    gr.Markdown("### 接收端后端")
+    receiver_backend = gr.Radio(
+        choices=[
+            ("Diffusers（本地推理）", "diffusers"),
+            ("ComfyUI（远程服务）", "comfyui"),
+        ],
+        value="diffusers",
+        label="接收端后端",
+    )
+
     # --- ComfyUI 连接 ---
     gr.Markdown("### ComfyUI 连接")
     with gr.Row():
@@ -59,7 +70,7 @@ def build_config_tab() -> dict:
             )
 
         with gr.Column():
-            gr.Markdown("**接收端**")
+            gr.Markdown("**接收端（ComfyUI 模式）**")
             receiver_host = gr.Textbox(
                 value=receiver_cfg.host, label="主机地址", placeholder="127.0.0.1"
             )
@@ -113,6 +124,7 @@ def build_config_tab() -> dict:
     )
 
     return {
+        "receiver_backend": receiver_backend,
         "sender_host": sender_host,
         "sender_port": sender_port,
         "receiver_host": receiver_host,

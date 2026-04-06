@@ -10,9 +10,9 @@
 |------|------|------|--------|--------|
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
-| Phase 2: 完善 | 3 | 1 | 0 | 2 |
+| Phase 2: 完善 | 3 | 2 | 0 | 1 |
 | Phase 3: 验证 | 1 | 0 | 0 | 1 |
-| **合计** | **10** | **7** | **0** | **3** |
+| **合计** | **10** | **8** | **0** | **2** |
 
 ## 任务状态
 
@@ -25,7 +25,7 @@
 | M-04 | 实现-DiffusersReceiver 单帧生成 | Phase 1 | ✅ 已完成 | M-02, M-03 |
 | M-05 | 更新-工厂函数支持 Diffusers 后端 | Phase 1 | ✅ 已完成 | M-03, M-04 |
 | M-06 | 实现-批量连续帧图像生成 | Phase 2 | ✅ 已完成 | M-04 |
-| M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ⬜ 待开始 | M-05 |
+| M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ✅ 已完成 | M-05 |
 | M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ⬜ 待开始 | M-05 |
 | M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⬜ 待开始 | M-06, M-07, M-08 |
 
@@ -337,5 +337,46 @@
 - receiver_panel.py、pipeline_panel.py、batch_panel.py 改用 create_receiver 工厂函数
 - batch_panel.py 还需修复发送端 ComfyUISender → LocalCannyExtractor（PR #14 遗漏）
 - Radio 沿用 (label, value) 元组模式
+
+**遗留问题**: 无
+
+---
+
+#### [M-07] 集成-GUI 接收端面板适配 — 交接记录
+
+**完成时间**: 2026-04-06
+
+**完成内容**:
+- config_panel.py 新增接收端后端选择 Radio（Diffusers/ComfyUI），默认 Diffusers
+- receiver_panel.py 改用 create_receiver 工厂函数，Diffusers 时跳过连接检查
+- pipeline_panel.py 接收端改用工厂函数，发送端改用 LocalCannyExtractor（不再依赖 ComfyUI）
+- batch_panel.py 接收端改用工厂函数，发送端 ComfyUISender → LocalCannyExtractor（修复 PR #14 遗漏）
+
+**修改的文件**:
+- `src/semantic_transmission/gui/config_panel.py` — 新增 receiver_backend Radio 组件，返回字典新增 "receiver_backend"
+- `src/semantic_transmission/gui/receiver_panel.py` — 移除 ComfyUI 硬编码，改用 create_receiver + 后端分支连接检查
+- `src/semantic_transmission/gui/pipeline_panel.py` — 接收端改工厂函数，发送端改 LocalCannyExtractor，移除 sender ComfyUI 连接检查
+- `src/semantic_transmission/gui/batch_panel.py` — 接收端改工厂函数，发送端 ComfyUISender → LocalCannyExtractor
+
+**验证结果**:
+- ruff check: ✅ All checks passed
+- ruff format: ✅ 62 files already formatted
+- 全量测试: ✅ 210 passed
+
+**关键决策**:
+- pipeline_panel.py 发送端也改为 LocalCannyExtractor（虽然不在任务显式范围内，但 import 变更导致必须一并修改，且与 sender_panel 保持一致）
+- pipeline_panel.py 移除了 sender_host/sender_port 参数（发送端不再需要 ComfyUI 连接）
+- 后端 Radio 默认值为 "diffusers"，因为这是本工作流的目标方向
+- batch_panel.py 中 receiver 在批量处理开始前创建一次，整个批量共用（模型常驻 GPU）
+
+**计划变更**: 无
+
+**下一任务**: M-08 集成-CLI 接收端命令适配
+
+**下一任务需关注**:
+- cli/receiver.py 添加 --backend 选项
+- cli/demo.py 添加 --backend 选项
+- cli/batch_demo.py 添加 --backend 选项
+- Diffusers 模式下跳过 ComfyUI 连接检查
 
 **遗留问题**: 无

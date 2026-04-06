@@ -6,18 +6,17 @@ from pathlib import Path
 from typing import Iterator
 
 import gradio as gr
+import numpy as np
 from PIL import Image
 
-from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig
 from semantic_transmission.pipeline.batch_processor import (
     BatchImageDiscoverer,
     BatchResult,
     SampleResult,
     make_sample_output_dir,
 )
-from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
-from semantic_transmission.sender.comfyui_sender import ComfyUISender
+from semantic_transmission.receiver import create_receiver
+from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
 def _make_comparison_image(
@@ -58,6 +57,7 @@ def build_batch_tab(config_components):
         recursive: bool,
         skip_errors: bool,
         seed: int | None,
+        receiver_backend: str,
         vlm_model_name: str,
         vlm_model_path: str,
     ) -> Iterator[tuple[str, str | None]]:
@@ -72,10 +72,6 @@ def build_batch_tab(config_components):
         if prompt_mode == "manual" and not manual_prompt:
             yield "请输入手动 prompt 或选择自动模式", None
             return
-
-        # 获取配置
-        comfyui_host = config_components["sender_host"].value
-        comfyui_port = int(config_components["sender_port"].value)
 
         yield f"开始扫描目录: {input_path}\n", None
         time.sleep(0.1)
@@ -97,25 +93,13 @@ def build_batch_tab(config_components):
         # 创建输出目录
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # 检查连接
-        yield (
-            log_text + f"\n检查 ComfyUI 连接 ({comfyui_host}:{comfyui_port})...\n",
-            None,
-        )
+        # 初始化发送端（本地 Canny 提取）和接收端
+        extractor = LocalCannyExtractor()
+        receiver = create_receiver(receiver_backend)
+        log_text += "\n发送端：本地 Canny 提取\n"
+        log_text += f"接收端：{receiver_backend}\n"
+        yield log_text, None
         time.sleep(0.1)
-
-        try:
-            config = ComfyUIConfig(host=comfyui_host, port=comfyui_port)
-            client = ComfyUIClient(config)
-            client.check_health()
-            yield log_text + "✓ ComfyUI 连接正常\n", None
-        except Exception as e:
-            yield log_text + f"✗ ComfyUI 连接失败: {e}\n", None
-            return
-
-        # 初始化发送端和接收端
-        sender = ComfyUISender(client)
-        receiver = ComfyUIReceiver(client)
 
         # 加载 VLM 如果需要
         vlm_sender = None
@@ -152,10 +136,13 @@ def build_batch_tab(config_components):
             sample_output_dir = make_sample_output_dir(output_path, idx, image_name)
 
             try:
-                # 提取边缘图
+                # 提取边缘图（本地 OpenCV）
+                original_image = Image.open(image_path).convert("RGB")
+                image_array = np.array(original_image)
                 start = time.time()
-                edge_image = sender.process(image_path)
+                edge_np = extractor.extract(image_array)
                 sender_elapsed = time.time() - start
+                edge_image = Image.fromarray(edge_np)
 
                 edge_path = sample_output_dir / "edge.png"
                 edge_image.save(edge_path)
@@ -166,10 +153,6 @@ def build_batch_tab(config_components):
                 # 获取 prompt
                 vlm_elapsed = 0.0
                 if prompt_mode == "auto" and vlm_sender is not None:
-                    import numpy as np
-
-                    original_img = Image.open(image_path).convert("RGB")
-                    image_array = np.array(original_img)
                     start_vlm = time.time()
                     sender_output = vlm_sender.describe(image_array)
                     vlm_elapsed = time.time() - start_vlm
@@ -200,7 +183,6 @@ def build_batch_tab(config_components):
 
                 # 生成对比图
                 start = time.time()
-                original_image = Image.open(image_path)
                 comparison = _make_comparison_image(
                     original_image, edge_image, restored_image
                 )
@@ -360,6 +342,7 @@ def build_batch_tab(config_components):
                 recursive,
                 skip_errors,
                 seed,
+                config_components["receiver_backend"],
                 config_components["vlm_model_name"],
                 config_components["vlm_model_path"],
             ],

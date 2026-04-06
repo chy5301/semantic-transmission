@@ -5,16 +5,16 @@ import time
 
 import gradio as gr
 
-from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig
-from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
+from semantic_transmission.receiver import create_receiver
 
 
 def _random_seed():
     return random.randint(0, 2**32 - 1)
 
 
-def _run_receiver(edge_image_path, prompt, seed, receiver_host, receiver_port):
+def _run_receiver(
+    edge_image_path, prompt, seed, receiver_backend, receiver_host, receiver_port
+):
     """运行接收端流程，generator 逐步 yield 更新 UI。"""
     log = ""
     restored_img = None
@@ -29,31 +29,42 @@ def _run_receiver(edge_image_path, prompt, seed, receiver_host, receiver_port):
         yield restored_img, log
         return
 
-    # [1] 连接检查
-    log += "[1/2] 检查 ComfyUI 连接...\n"
-    yield restored_img, log
+    # [1] 连接检查（仅 ComfyUI 后端）
+    if receiver_backend == "comfyui":
+        from semantic_transmission.common.comfyui_client import ComfyUIClient
+        from semantic_transmission.common.config import ComfyUIConfig
 
-    config = ComfyUIConfig(host=receiver_host, port=int(receiver_port))
-    client = ComfyUIClient(config)
-    try:
-        if not client.check_health():
-            log += f"  连接失败: {config.base_url} 服务异常\n"
+        log += "[1/2] 检查 ComfyUI 连接...\n"
+        yield restored_img, log
+
+        config = ComfyUIConfig(host=receiver_host, port=int(receiver_port))
+        client = ComfyUIClient(config)
+        try:
+            if not client.check_health():
+                log += f"  连接失败: {config.base_url} 服务异常\n"
+                yield restored_img, log
+                return
+            log += f"  {config.base_url}: OK\n"
+        except Exception as e:
+            log += f"  连接失败: {e}\n"
             yield restored_img, log
             return
-        log += f"  {config.base_url}: OK\n"
-    except Exception as e:
-        log += f"  连接失败: {e}\n"
+    else:
+        log += "[1/2] 使用 Diffusers 本地推理，跳过连接检查\n"
         yield restored_img, log
-        return
 
     # [2] 还原图像
     seed_int = int(seed) if seed is not None and seed != "" else None
     seed_info = f", seed={seed_int}" if seed_int is not None else ""
-    log += f"[2/2] 接收端还原图像{seed_info}...\n"
+    log += f"[2/2] 接收端还原图像（{receiver_backend}）{seed_info}...\n"
     yield restored_img, log
 
     try:
-        receiver = ComfyUIReceiver(client)
+        receiver = create_receiver(
+            receiver_backend,
+            host=receiver_host,
+            port=int(receiver_port),
+        )
         start = time.time()
         restored_pil = receiver.process(edge_image_path, prompt.strip(), seed=seed_int)
         elapsed = time.time() - start
@@ -109,6 +120,7 @@ def build_receiver_tab(config_components: dict) -> dict:
             edge_input,
             prompt_input,
             seed_input,
+            config_components["receiver_backend"],
             config_components["receiver_host"],
             config_components["receiver_port"],
         ],

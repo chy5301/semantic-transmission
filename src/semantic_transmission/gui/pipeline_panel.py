@@ -8,10 +8,9 @@ import gradio as gr
 import numpy as np
 from PIL import Image
 
-from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
-from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
-from semantic_transmission.sender.comfyui_sender import ComfyUISender
+from semantic_transmission.common.config import get_default_vlm_path
+from semantic_transmission.receiver import create_receiver
+from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
 def _format_steps(steps, current_idx):
@@ -32,8 +31,7 @@ def _run_e2e(
     mode,
     prompt,
     seed,
-    sender_host,
-    sender_port,
+    receiver_backend,
     receiver_host,
     receiver_port,
     vlm_model_name,
@@ -75,43 +73,31 @@ def _run_e2e(
         log,
     )
 
-    s_cfg = ComfyUIConfig(host=sender_host, port=int(sender_port))
-    r_cfg = ComfyUIConfig(host=receiver_host, port=int(receiver_port))
-    s_client = ComfyUIClient(s_cfg)
-    r_client = ComfyUIClient(r_cfg)
-
     log += "[1/5] 连接检查\n"
-    try:
-        if not s_client.check_health():
-            log += f"  发送端连接失败: {s_cfg.base_url}\n"
-            steps[0] = ("[1/5] 连接检查", "失败")
-            yield (
-                original_img,
-                edge_img,
-                restored_img,
-                _format_steps(steps, 5),
-                prompt_result,
-                empty_stats,
-                log,
-            )
-            return
-        log += f"  发送端 ({s_cfg.base_url}): OK\n"
-    except Exception as e:
-        log += f"  发送端连接失败: {e}\n"
-        yield (
-            original_img,
-            edge_img,
-            restored_img,
-            _format_steps(steps, 5),
-            prompt_result,
-            empty_stats,
-            log,
-        )
-        return
+    log += "  发送端：使用本地 Canny 提取，无需连接\n"
 
-    try:
-        if not r_client.check_health():
-            log += f"  接收端连接失败: {r_cfg.base_url}\n"
+    if receiver_backend == "comfyui":
+        from semantic_transmission.common.comfyui_client import ComfyUIClient
+        from semantic_transmission.common.config import ComfyUIConfig
+
+        r_cfg = ComfyUIConfig(host=receiver_host, port=int(receiver_port))
+        r_client = ComfyUIClient(r_cfg)
+        try:
+            if not r_client.check_health():
+                log += f"  接收端连接失败: {r_cfg.base_url}\n"
+                yield (
+                    original_img,
+                    edge_img,
+                    restored_img,
+                    _format_steps(steps, 5),
+                    prompt_result,
+                    empty_stats,
+                    log,
+                )
+                return
+            log += f"  接收端 ({r_cfg.base_url}): OK\n"
+        except Exception as e:
+            log += f"  接收端连接失败: {e}\n"
             yield (
                 original_img,
                 edge_img,
@@ -122,23 +108,12 @@ def _run_e2e(
                 log,
             )
             return
-        log += f"  接收端 ({r_cfg.base_url}): OK\n"
-    except Exception as e:
-        log += f"  接收端连接失败: {e}\n"
-        yield (
-            original_img,
-            edge_img,
-            restored_img,
-            _format_steps(steps, 5),
-            prompt_result,
-            empty_stats,
-            log,
-        )
-        return
+    else:
+        log += "  接收端：使用 Diffusers 本地推理，无需连接\n"
 
     steps[0] = ("[1/5] 连接检查", "OK")
 
-    # --- [2/5] 提取边缘图 ---
+    # --- [2/5] 提取边缘图（本地 OpenCV） ---
     yield (
         original_img,
         edge_img,
@@ -149,12 +124,15 @@ def _run_e2e(
         log,
     )
 
-    log += "[2/5] 提取 Canny 边缘图...\n"
+    log += "[2/5] 本地提取 Canny 边缘图...\n"
     try:
-        sender = ComfyUISender(s_client)
+        img_rgb = original_img.convert("RGB")
+        image_array = np.array(img_rgb)
+        extractor = LocalCannyExtractor()
         t0 = time.time()
-        edge_pil = sender.process(image_path)
+        edge_np = extractor.extract(image_array)
         sender_elapsed = time.time() - t0
+        edge_pil = Image.fromarray(edge_np)
         edge_img = edge_pil
         log += (
             f"  完成 ({edge_pil.size[0]}x{edge_pil.size[1]}, {sender_elapsed:.1f}s)\n"
@@ -254,7 +232,7 @@ def _run_e2e(
     )
 
     # --- [4/5] 还原图像 ---
-    log += "[4/5] 接收端还原图像...\n"
+    log += f"[4/5] 接收端还原图像（{receiver_backend}）...\n"
     yield (
         original_img,
         edge_img,
@@ -267,7 +245,11 @@ def _run_e2e(
 
     seed_int = int(seed) if seed is not None and seed != "" else None
     try:
-        receiver = ComfyUIReceiver(r_client)
+        receiver = create_receiver(
+            receiver_backend,
+            host=receiver_host,
+            port=int(receiver_port),
+        )
         buf = io.BytesIO()
         edge_pil.save(buf, format="PNG")
         edge_bytes = buf.getvalue()
@@ -484,8 +466,7 @@ def build_pipeline_tab(config_components: dict) -> dict:
             mode_radio,
             prompt_input,
             seed_input,
-            config_components["sender_host"],
-            config_components["sender_port"],
+            config_components["receiver_backend"],
             config_components["receiver_host"],
             config_components["receiver_port"],
             config_components["vlm_model_name"],
