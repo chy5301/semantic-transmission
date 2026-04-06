@@ -38,6 +38,10 @@ def create_receiver(
         return ComfyUIReceiver(client, workflow_path=kwargs.get("workflow_path"))  # type: ignore[return-value]
 
     if backend == "diffusers":
-        raise NotImplementedError("Diffusers 后端将在 M-05 中实现")
+        from semantic_transmission.common.config import DiffusersReceiverConfig
+        from semantic_transmission.receiver.diffusers_receiver import DiffusersReceiver
+
+        config = kwargs.get("config") or DiffusersReceiverConfig()
+        return DiffusersReceiver(config)
 
     raise ValueError(f"不支持的接收端后端: {backend!r}，可选: 'comfyui', 'diffusers'")

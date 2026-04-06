@@ -9,10 +9,10 @@
 | 阶段 | 总数 | 完成 | 进行中 | 待开始 |
 |------|------|------|--------|--------|
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
-| Phase 1: 核心实施 | 2 | 1 | 0 | 1 |
+| Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 0 | 0 | 3 |
 | Phase 3: 验证 | 1 | 0 | 0 | 1 |
-| **合计** | **10** | **5** | **0** | **5** |
+| **合计** | **10** | **6** | **0** | **4** |
 
 ## 任务状态
 
@@ -23,7 +23,7 @@
 | M-02 | 添加-diffusers 依赖与模型配置 | Phase 0 | ✅ 已完成 | M-1A |
 | M-03 | 设计-接收端后端切换接口 | Phase 0 | ✅ 已完成 | M-02 |
 | M-04 | 实现-DiffusersReceiver 单帧生成 | Phase 1 | ✅ 已完成 | M-02, M-03 |
-| M-05 | 更新-工厂函数支持 Diffusers 后端 | Phase 1 | ⬜ 待开始 | M-03, M-04 |
+| M-05 | 更新-工厂函数支持 Diffusers 后端 | Phase 1 | ✅ 已完成 | M-03, M-04 |
 | M-06 | 实现-批量连续帧图像生成 | Phase 2 | ⬜ 待开始 | M-04 |
 | M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ⬜ 待开始 | M-05 |
 | M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ⬜ 待开始 | M-05 |
@@ -263,5 +263,35 @@
 - M-03 交接记录提到"M-05 步骤建议微调（工厂函数分支骨架已在 M-03 建好）"
 - 只需将 `create_receiver` 中 "diffusers" 分支的 NotImplementedError 替换为实际创建 DiffusersReceiver
 - 从 kwargs 提取 config 参数传入 DiffusersReceiver
+
+**遗留问题**: 无
+
+---
+
+#### [M-05] 更新-工厂函数支持 Diffusers 后端 — 交接记录
+
+**完成时间**: 2026-04-06
+
+**完成内容**:
+- 在 `create_receiver` 工厂函数中实现 "diffusers" 分支，替换 NotImplementedError
+- 支持通过 `config` kwarg 传入自定义 DiffusersReceiverConfig，未传入时使用默认配置
+- 新增 5 项工厂函数单元测试
+
+**修改的文件**:
+- `src/semantic_transmission/receiver/__init__.py` — "diffusers" 分支创建 DiffusersReceiver 实例
+- `tests/test_receiver_factory.py`（新建）— 5 项测试：diffusers 后端（默认/自���义 config）、comfyui 后端、无效 backend
+
+**验证结果**:
+- ruff check: ✅ All checks passed
+- 新增测试: ✅ 5 passed
+- 全量测试: ✅ 202 passed
+- 功能: ✅ 三项验收标准全部满足
+
+**关键决策**:
+- config 参数通过 kwargs.get("config") 获取，未传入时自动创建���认 DiffusersReceiverConfig（与 comfyui 分支的参数���取风格一致）
+
+**计划变更**: 无
+
+**下一任务**: Phase 1 全部完成，进入阶段检查点
 
 **遗留问题**: 无
