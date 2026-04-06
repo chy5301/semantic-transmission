@@ -3,6 +3,8 @@
 from typing import Any, Literal
 
 from semantic_transmission.receiver.base import BaseReceiver
+from semantic_transmission.receiver.base import BatchOutput as BatchOutput
+from semantic_transmission.receiver.base import FrameInput as FrameInput
 
 
 def create_receiver(

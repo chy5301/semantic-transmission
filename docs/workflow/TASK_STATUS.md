@@ -10,9 +10,9 @@
 |------|------|------|--------|--------|
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
-| Phase 2: 完善 | 3 | 0 | 0 | 3 |
+| Phase 2: 完善 | 3 | 1 | 0 | 2 |
 | Phase 3: 验证 | 1 | 0 | 0 | 1 |
-| **合计** | **10** | **6** | **0** | **4** |
+| **合计** | **10** | **7** | **0** | **3** |
 
 ## 任务状态
 
@@ -24,7 +24,7 @@
 | M-03 | 设计-接收端后端切换接口 | Phase 0 | ✅ 已完成 | M-02 |
 | M-04 | 实现-DiffusersReceiver 单帧生成 | Phase 1 | ✅ 已完成 | M-02, M-03 |
 | M-05 | 更新-工厂函数支持 Diffusers 后端 | Phase 1 | ✅ 已完成 | M-03, M-04 |
-| M-06 | 实现-批量连续帧图像生成 | Phase 2 | ⬜ 待开始 | M-04 |
+| M-06 | 实现-批量连续帧图像生成 | Phase 2 | ✅ 已完成 | M-04 |
 | M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ⬜ 待开始 | M-05 |
 | M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ⬜ 待开始 | M-05 |
 | M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⬜ 待开始 | M-06, M-07, M-08 |
@@ -294,5 +294,48 @@
 **计划变更**: 无
 
 **下一任务**: Phase 1 全部完成，进入阶段检查点
+
+**遗留问题**: 无
+
+---
+
+#### [M-06] 实现-批量连续帧图像生成 — 交接记录
+
+**完成时间**: 2026-04-06
+
+**完成内容**:
+- 在 BaseReceiver 中新增 `process_batch(frames)` 方法，逐帧调用 `process` 并收集结果
+- 新增 `FrameInput` dataclass（边缘图 + prompt + seed + metadata）和 `BatchOutput` dataclass（图像列表 + 统计）
+- DiffusersReceiver 覆写 `process_batch`，先 load() 确保模型常驻 GPU 再调 super
+- 复用 `pipeline.batch_processor` 中的 `BatchResult`/`SampleResult` 做结果统计
+- 新增 8 项批量处理测试
+
+**修改的文件**:
+- `src/semantic_transmission/receiver/base.py` — 新增 FrameInput、BatchOutput dataclass + process_batch 默认实现
+- `src/semantic_transmission/receiver/diffusers_receiver.py` — 覆写 process_batch（先 load 再调 super）
+- `src/semantic_transmission/receiver/__init__.py` — 导出 FrameInput、BatchOutput
+- `tests/test_diffusers_receiver.py` — 新增 TestProcessBatch 8 项测试
+
+**验证结果**:
+- ruff check: ✅ All checks passed
+- ruff format: ✅ 62 files already formatted
+- 新增测试: ✅ 8 passed
+- 全量测试: ✅ 210 passed（原 202 + 新增 8）
+
+**关键决策**:
+- process_batch 返回 BatchOutput（images + stats），而非仅返回图像列表，因为下游 GUI/CLI 需要统计信息
+- BaseReceiver 提供默认 process_batch 实现（逐帧调 process），子类可覆写优化
+- FrameInput.metadata 使用 dict[str, Any] | None，满足扩展需求且保持简洁
+- 失败帧在 images 中对应 None，不中断批量处理（tracked in BatchResult）
+
+**计划变更**: 无
+
+**下一任务**: M-07 集成-GUI 接收端面板适配
+
+**下一任务需关注**:
+- config_panel.py 需添加接收端后端选择 Radio 组件
+- receiver_panel.py、pipeline_panel.py、batch_panel.py 改用 create_receiver 工厂函数
+- batch_panel.py 还需修复发送端 ComfyUISender → LocalCannyExtractor（PR #14 遗漏）
+- Radio 沿用 (label, value) 元组模式
 
 **遗留问题**: 无

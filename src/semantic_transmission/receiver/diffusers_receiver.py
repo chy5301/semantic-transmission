@@ -1,5 +1,7 @@
 """Diffusers 接收端：使用 diffusers 库直接推理生成图像。"""
 
+from __future__ import annotations
+
 import gc
 import random
 from pathlib import Path
@@ -8,7 +10,7 @@ import torch
 from PIL import Image
 
 from semantic_transmission.common.config import DiffusersReceiverConfig
-from semantic_transmission.receiver.base import BaseReceiver
+from semantic_transmission.receiver.base import BaseReceiver, BatchOutput, FrameInput
 
 _TORCH_DTYPE_MAP = {
     "float16": torch.float16,
@@ -92,6 +94,11 @@ class DiffusersReceiver(BaseReceiver):
             generator=generator,
         )
         return result.images[0]
+
+    def process_batch(self, frames: list[FrameInput]) -> BatchOutput:
+        """批量处理帧序列，模型常驻 GPU 不反复加载。"""
+        self.load()
+        return super().process_batch(frames)
 
     @staticmethod
     def _load_condition_image(

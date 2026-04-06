@@ -9,6 +9,7 @@ import torch
 from PIL import Image
 
 from semantic_transmission.common.config import DiffusersReceiverConfig
+from semantic_transmission.receiver.base import BatchOutput, FrameInput
 from semantic_transmission.receiver.diffusers_receiver import (
     DiffusersReceiver,
     _TORCH_DTYPE_MAP,
@@ -170,6 +171,105 @@ class TestProcess:
 
         assert isinstance(result, Image.Image)
         assert receiver.is_loaded
+
+
+class TestProcessBatch:
+    @pytest.fixture
+    def receiver_with_mock_pipeline(self):
+        receiver = DiffusersReceiver()
+        receiver._pipeline = _make_mock_pipeline()
+        return receiver
+
+    def test_returns_batch_output(self, receiver_with_mock_pipeline):
+        frames = [
+            FrameInput(edge_image=_make_pil_image(), prompt_text="frame 0"),
+            FrameInput(edge_image=_make_pil_image(), prompt_text="frame 1"),
+        ]
+        result = receiver_with_mock_pipeline.process_batch(frames)
+        assert isinstance(result, BatchOutput)
+        assert len(result.images) == 2
+        assert result.stats.total == 2
+        assert result.stats.success == 2
+
+    def test_empty_frames(self, receiver_with_mock_pipeline):
+        result = receiver_with_mock_pipeline.process_batch([])
+        assert len(result.images) == 0
+        assert result.stats.total == 0
+
+    def test_model_loaded_once(self):
+        """process_batch 先 load，批量期间模型只加载一次。"""
+        receiver = DiffusersReceiver()
+        mock_pipe = _make_mock_pipeline()
+
+        with (
+            patch("diffusers.ZImageControlNetPipeline") as mock_pipe_cls,
+            patch("diffusers.ZImageControlNetModel"),
+        ):
+            mock_pipe_cls.from_pretrained.return_value = mock_pipe
+            frames = [
+                FrameInput(edge_image=_make_pil_image(), prompt_text=f"frame {i}")
+                for i in range(3)
+            ]
+            receiver.process_batch(frames)
+
+        mock_pipe_cls.from_pretrained.assert_called_once()
+
+    def test_seed_per_frame(self, receiver_with_mock_pipeline):
+        frames = [
+            FrameInput(edge_image=_make_pil_image(), prompt_text="a", seed=10),
+            FrameInput(edge_image=_make_pil_image(), prompt_text="b", seed=20),
+        ]
+        result = receiver_with_mock_pipeline.process_batch(frames)
+        assert all(isinstance(img, Image.Image) for img in result.images)
+
+    def test_metadata_name_in_stats(self, receiver_with_mock_pipeline):
+        frames = [
+            FrameInput(
+                edge_image=_make_pil_image(),
+                prompt_text="test",
+                metadata={"name": "custom_name"},
+            ),
+        ]
+        result = receiver_with_mock_pipeline.process_batch(frames)
+        assert result.stats.samples[0].name == "custom_name"
+
+    def test_default_frame_name(self, receiver_with_mock_pipeline):
+        frames = [FrameInput(edge_image=_make_pil_image(), prompt_text="test")]
+        result = receiver_with_mock_pipeline.process_batch(frames)
+        assert result.stats.samples[0].name == "frame_0000"
+
+    def test_failed_frame_tracked(self, receiver_with_mock_pipeline):
+        """单帧失败不影响其他帧处理。"""
+        pipe = receiver_with_mock_pipeline._pipeline
+        call_count = 0
+
+        def side_effect(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise RuntimeError("GPU OOM")
+            result = MagicMock()
+            result.images = [_make_pil_image()]
+            return result
+
+        pipe.side_effect = side_effect
+        frames = [
+            FrameInput(edge_image=_make_pil_image(), prompt_text=f"frame {i}")
+            for i in range(3)
+        ]
+        result = receiver_with_mock_pipeline.process_batch(frames)
+        assert result.stats.total == 3
+        assert result.stats.success == 2
+        assert result.stats.failed == 1
+        assert result.images[0] is not None
+        assert result.images[1] is None  # failed frame
+        assert result.images[2] is not None
+
+    def test_timings_recorded(self, receiver_with_mock_pipeline):
+        frames = [FrameInput(edge_image=_make_pil_image(), prompt_text="test")]
+        result = receiver_with_mock_pipeline.process_batch(frames)
+        assert "process" in result.stats.samples[0].timings
+        assert result.stats.total_time >= 0
 
 
 class TestTorchDtypeMap:
