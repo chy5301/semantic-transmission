@@ -8,11 +8,11 @@
 
 | 阶段 | 总数 | 完成 | 进行中 | 待开始 |
 |------|------|------|--------|--------|
-| Phase 0: 准备 | 4 | 2 | 0 | 2 |
+| Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 0 | 0 | 2 |
 | Phase 2: 完善 | 3 | 0 | 0 | 3 |
 | Phase 3: 验证 | 1 | 0 | 0 | 1 |
-| **合计** | **10** | **2** | **0** | **8** |
+| **合计** | **10** | **4** | **0** | **6** |
 
 ## 任务状态
 
@@ -20,8 +20,8 @@
 |------|------|------|------|------|
 | M-01 | 修复-seed=0 误判 bug | Phase 0 | ✅ 已完成 | 无 |
 | M-1A | 决策-PR #14 合并后计划调整 | Phase 0 | ✅ 已完成 | M-01 |
-| M-02 | 添加-diffusers 依赖与模型配置 | Phase 0 | ⬜ 待开始 | M-1A |
-| M-03 | 设计-接收端后端切换接口 | Phase 0 | ⬜ 待开始 | M-02 |
+| M-02 | 添加-diffusers 依赖与模型配置 | Phase 0 | ✅ 已完成 | M-1A |
+| M-03 | 设计-接收端后端切换接口 | Phase 0 | ✅ 已完成 | M-02 |
 | M-04 | 实现-DiffusersReceiver 单帧生成 | Phase 1 | ⬜ 待开始 | M-02, M-03 |
 | M-05 | 更新-工厂函数支持 Diffusers 后端 | Phase 1 | ⬜ 待开始 | M-03, M-04 |
 | M-06 | 实现-批量连续帧图像生成 | Phase 2 | ⬜ 待开始 | M-04 |
@@ -58,6 +58,9 @@
   - D4: CLI 代码重复不在 M-08 精简，workflow 完成后单独提 issue
   - D5: Radio 沿用 (label, value) 元组模式
   - D6: LocalCannyExtractor 模式验证了 M-04 设计方向，无需调整
+- 2026-04-06: [M-02] diffusers 0.37.1 稳定版已包��� ZImageControlNetPipeline，无需源码安装
+- 2026-04-06: [M-03] BaseReceiver 统一方法名为 `process`（弃用 `reconstruct`），返回 PIL.Image 而非 ReceiverOutput；ComfyUIReceiver 暂不改继承关系，通过 `# type: ignore` 标注工厂函数返回
+- 2026-04-06: [Phase 0 回顾] 阶段通过。审计 4 任务无阻断/需修正问题。退出标准全部满足。M-05 步骤建议微调（工厂函数分支骨架已在 M-03 建好）
 
 ## 交接记录
 
@@ -137,3 +140,87 @@
 
 **遗留问题**:
 - CLI 代码重复（batch_demo.py 与 batch_sender.py），workflow 完成后单独提 issue
+
+---
+
+#### [M-02] 添加-diffusers 依赖与模型配置 — 交接记录
+
+**完成时间**: 2026-04-06
+
+**完成内容**:
+- 在 pyproject.toml 添加 `diffusers>=0.33.0` 依赖（实际安装 0.37.1）
+- 在 config.py 新建 `DiffusersReceiverConfig` dataclass，包含模型路径、设备、推理参数等配置
+- 验证 `ZImageControlNetPipeline` 在 diffusers 稳定版中可用，无需源码安装
+
+**修改的文件**:
+- `pyproject.toml` — dependencies 新增 diffusers
+- `src/semantic_transmission/common/config.py` — 新增 DiffusersReceiverConfig dataclass + from_env()
+
+**验证结果**:
+- uv sync: ✅ diffusers 0.37.1 安装成功
+- ZImageControlNetPipeline 导入: ✅ 稳定版可用
+- DiffusersReceiverConfig 实例化: ✅
+- ruff check: ✅ All checks passed
+- pytest: ✅ 181 passed
+
+**关键决策**:
+- diffusers 版本约束设为 `>=0.33.0`（ZImageControlNetPipeline 最低可用版本待确认，但 0.37.1 已验证可用）
+- DiffusersReceiverConfig 不包含 seed 字段（seed 是运行时参数，与 ComfyUIConfig 保持一致）
+- torch_dtype 使用字符串 "bfloat16" 存储，由 DiffusersReceiver 在运行时转换为 torch.bfloat16
+- num_inference_steps 默认 9（对齐 ComfyUI 工作流 KSampler 配置）
+- guidance_scale 默认 1.0（对齐 ComfyUI 工作流 cfg=1）
+
+**计划变更**: 无
+
+**下一任务**: M-03 设计-接收端后端切换接口
+
+**下一任务需关注**:
+- BaseReceiver 的 `reconstruct()` 方法签名需与 ComfyUIReceiver 的 `process()` 统一
+- ComfyUIReceiver 当前未继承 BaseReceiver，需确认接口对齐策略
+- 工厂函数 `create_receiver(backend, **kwargs)` 需支持两种后端的不同初始化参数
+
+**遗留问题**:
+- diffusers `>=0.33.0` 下限可能偏低，实际最低支持 ZImageControlNetPipeline 的版本未验证（当前 0.37.1 可用）
+
+---
+
+#### [M-03] 设计-接收端后端切换接口 — 交接记录
+
+**完成时间**: 2026-04-06
+
+**完成内容**:
+- 重新设计 BaseReceiver 抽象基类：`reconstruct()` → `process()`，参数签名对齐 ComfyUIReceiver
+- 在 `receiver/__init__.py` 实现 `create_receiver(backend, **kwargs)` 工厂函数
+- 工厂函数支持 "comfyui" 后端（创建 ComfyUIClient + ComfyUIReceiver），"diffusers" 占位 NotImplementedError
+
+**修改的文件**:
+- `src/semantic_transmission/receiver/base.py` — BaseReceiver.process() 新签名：`(edge_image: Image.Image | bytes | str | Path, prompt_text: str, seed: int | None) -> Image.Image`
+- `src/semantic_transmission/receiver/__init__.py` — create_receiver 工厂函数 + BaseReceiver 导出
+
+**验证结果**:
+- ruff check: ✅ All checks passed
+- receiver 测试: ✅ 12 passed
+- 全量测试: ✅ 181 passed
+- 工厂函数导入: ✅
+
+**关键决策**:
+- 方法名统一为 `process`（弃用从未使用过的 `reconstruct`），因为 ComfyUIReceiver 和 GUI/CLI 中已广泛使用 `process`
+- 返回类型从 `ReceiverOutput`（numpy 数组包装）改为 `PIL.Image`（实际使用类型）
+- `ReceiverOutput` 类型保留不删（在 types.py 中，可能有其他用途）
+- ComfyUIReceiver 暂不修改继承关系（不继承 BaseReceiver），工厂函数返回值用 `# type: ignore` 标注
+- 工厂函数 comfyui 后端从 kwargs 提取 host/port/timeout/workflow_path，自动创建 ComfyUIClient
+
+**计划变更**: 无
+
+**下一任务**: M-04 实现-DiffusersReceiver 单帧生成
+
+**下一任务需关注**:
+- DiffusersReceiver 需继承 BaseReceiver 并实现 `process()` 方法
+- process 签名：`(edge_image: Image.Image | bytes | str | Path, prompt_text: str, seed: int | None) -> Image.Image`
+- seed=None 时随机生成（与 M-01/ComfyUIReceiver 保持一致）
+- 模型配置使用 M-02 的 DiffusersReceiverConfig
+- diffusers 使用 ZImageControlNetPipeline + ZImageControlNetModel
+- torch_dtype 字符串需在运行时转换为 torch.bfloat16
+
+**遗留问题**:
+- ComfyUIReceiver 未继承 BaseReceiver（duck typing 可用但类型检查不完美），可在后续任务中视情况调整

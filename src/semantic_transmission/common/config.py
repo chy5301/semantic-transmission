@@ -61,6 +61,40 @@ class ComfyUIConfig:
 
 
 @dataclass
+class DiffusersReceiverConfig:
+    """Diffusers 接收端模型配置。
+
+    支持通过环境变量 DIFFUSERS_MODEL_NAME / DIFFUSERS_CONTROLNET_NAME 等覆盖默认值。
+    """
+
+    model_name: str = "Tongyi-MAI/Z-Image-Turbo"
+    controlnet_name: str = "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union"
+    device: str = "cuda"
+    num_inference_steps: int = 9
+    guidance_scale: float = 1.0
+    torch_dtype: str = "bfloat16"
+
+    @classmethod
+    def from_env(cls) -> "DiffusersReceiverConfig":
+        """从环境变量构造配置实例。"""
+
+        def _get(key: str, default: str) -> str:
+            return os.environ.get(f"DIFFUSERS_{key}", default)
+
+        return cls(
+            model_name=_get("MODEL_NAME", "Tongyi-MAI/Z-Image-Turbo"),
+            controlnet_name=_get(
+                "CONTROLNET_NAME",
+                "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union",
+            ),
+            device=_get("DEVICE", "cuda"),
+            num_inference_steps=int(_get("NUM_INFERENCE_STEPS", "9")),
+            guidance_scale=float(_get("GUIDANCE_SCALE", "1.0")),
+            torch_dtype=_get("TORCH_DTYPE", "bfloat16"),
+        )
+
+
+@dataclass
 class SemanticTransmissionConfig:
     """语义传输整体配置，包含发送端和接收端的 ComfyUI 连接配置。"""
 
