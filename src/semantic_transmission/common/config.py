@@ -1,7 +1,7 @@
 """ComfyUI 连接配置与公共路径工具。"""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 
 def get_default_vlm_path() -> str | None:
@@ -77,21 +77,13 @@ class DiffusersReceiverConfig:
     @classmethod
     def from_env(cls) -> "DiffusersReceiverConfig":
         """从环境变量构造配置实例。"""
-
-        def _get(key: str, default: str) -> str:
-            return os.environ.get(f"DIFFUSERS_{key}", default)
-
-        return cls(
-            model_name=_get("MODEL_NAME", "Tongyi-MAI/Z-Image-Turbo"),
-            controlnet_name=_get(
-                "CONTROLNET_NAME",
-                "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union",
-            ),
-            device=_get("DEVICE", "cuda"),
-            num_inference_steps=int(_get("NUM_INFERENCE_STEPS", "9")),
-            guidance_scale=float(_get("GUIDANCE_SCALE", "1.0")),
-            torch_dtype=_get("TORCH_DTYPE", "bfloat16"),
-        )
+        kwargs = {}
+        for f in fields(cls):
+            env_key = f"DIFFUSERS_{f.name.upper()}"
+            val = os.environ.get(env_key)
+            if val is not None:
+                kwargs[f.name] = f.type(val) if f.type in (int, float) else val
+        return cls(**kwargs)
 
 
 @dataclass

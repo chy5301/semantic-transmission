@@ -9,10 +9,10 @@
 | 阶段 | 总数 | 完成 | 进行中 | 待开始 |
 |------|------|------|--------|--------|
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
-| Phase 1: 核心实施 | 2 | 0 | 0 | 2 |
+| Phase 1: 核心实施 | 2 | 1 | 0 | 1 |
 | Phase 2: 完善 | 3 | 0 | 0 | 3 |
 | Phase 3: 验证 | 1 | 0 | 0 | 1 |
-| **合计** | **10** | **4** | **0** | **6** |
+| **合计** | **10** | **5** | **0** | **5** |
 
 ## 任务状态
 
@@ -22,7 +22,7 @@
 | M-1A | 决策-PR #14 合并后计划调整 | Phase 0 | ✅ 已完成 | M-01 |
 | M-02 | 添加-diffusers 依赖与模型配置 | Phase 0 | ✅ 已完成 | M-1A |
 | M-03 | 设计-接收端后端切换接口 | Phase 0 | ✅ 已完成 | M-02 |
-| M-04 | 实现-DiffusersReceiver 单帧生成 | Phase 1 | ⬜ 待开始 | M-02, M-03 |
+| M-04 | 实现-DiffusersReceiver 单帧生成 | Phase 1 | ✅ 已完成 | M-02, M-03 |
 | M-05 | 更新-工厂函数支持 Diffusers 后端 | Phase 1 | ⬜ 待开始 | M-03, M-04 |
 | M-06 | 实现-批量连续帧图像生成 | Phase 2 | ⬜ 待开始 | M-04 |
 | M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ⬜ 待开始 | M-05 |
@@ -224,3 +224,44 @@
 
 **遗留问题**:
 - ComfyUIReceiver 未继承 BaseReceiver（duck typing 可用但类型检查不完美），可在后续任务中视情况调整
+
+---
+
+#### [M-04] 实现-DiffusersReceiver 单帧生成 — 交接记录
+
+**完成时间**: 2026-04-06
+
+**完成内容**:
+- 新建 `DiffusersReceiver` 类，继承 `BaseReceiver`，实现 `process()` 方法
+- 使用 `ZImageControlNetPipeline` + `ZImageControlNetModel` 进行图像生成
+- 支持 lazy load（首次 process 时自动加载模型）和 unload（释放 GPU 显存）
+- edge_image 支持 PIL.Image、bytes、str、Path 四种输入格式
+- seed=None 时随机生成，seed=0 有效
+- 16 项单元测试全部通过（mock pipeline）
+
+**修改的文件**:
+- `src/semantic_transmission/receiver/diffusers_receiver.py`（新建）— DiffusersReceiver 实现，含 load/unload/process 方法
+- `tests/test_diffusers_receiver.py`（新建）— 16 项单元测试（初始化、加载卸载、process 各输入格式、seed 行为）
+
+**验证结果**:
+- ruff check: ✅ All checks passed
+- 新增测试: ✅ 16 passed
+- 全量测试: ✅ 197 passed（原 181 + 新增 16）
+- 导入验证: ✅ `from semantic_transmission.receiver.diffusers_receiver import DiffusersReceiver`
+
+**关键决策**:
+- 采用 lazy load 模式：构造时不加载模型，首次 process 调用时自动触发 load()，避免不必要的 GPU 占用
+- edge_image 比 BaseReceiver 签名多支持 PIL.Image 类型（ComfyUIReceiver 不支持），因为 diffusers pipeline 直接接受 PIL Image
+- torch.Generator 在 config.device 上创建，确保与 pipeline 设备一致
+- _TORCH_DTYPE_MAP 将字符串映射到 torch dtype，未知类型回退到 bfloat16
+
+**计划变更**: 无
+
+**下一任务**: M-05 更新-工厂函数支持 Diffusers 后端
+
+**下一任务需关注**:
+- M-03 交接记录提到"M-05 步骤建议微调（工厂函数分支骨架已在 M-03 建好）"
+- 只需将 `create_receiver` 中 "diffusers" 分支的 NotImplementedError 替换为实际创建 DiffusersReceiver
+- 从 kwargs 提取 config 参数传入 DiffusersReceiver
+
+**遗留问题**: 无

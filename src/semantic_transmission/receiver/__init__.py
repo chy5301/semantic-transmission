@@ -1,11 +1,13 @@
 """接收端模块：提供后端切换工厂函数。"""
 
-from typing import Any
+from typing import Any, Literal
 
 from semantic_transmission.receiver.base import BaseReceiver
 
 
-def create_receiver(backend: str, **kwargs: Any) -> BaseReceiver:
+def create_receiver(
+    backend: Literal["comfyui", "diffusers"], **kwargs: Any
+) -> BaseReceiver:
     """根据后端类型创建接收端实例。
 
     Args:
@@ -30,11 +32,8 @@ def create_receiver(backend: str, **kwargs: Any) -> BaseReceiver:
         from semantic_transmission.common.config import ComfyUIConfig
         from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
 
-        config = ComfyUIConfig(
-            host=kwargs.get("host", "127.0.0.1"),
-            port=kwargs.get("port", 8188),
-            timeout=kwargs.get("timeout", 30),
-        )
+        cfg_kwargs = {k: kwargs[k] for k in ("host", "port", "timeout") if k in kwargs}
+        config = ComfyUIConfig(**cfg_kwargs)
         client = ComfyUIClient(config)
         return ComfyUIReceiver(client, workflow_path=kwargs.get("workflow_path"))  # type: ignore[return-value]
 
