@@ -81,12 +81,15 @@ class DiffusersReceiverConfig:
 
     model_name: str = "Tongyi-MAI/Z-Image-Turbo"
     controlnet_name: str = ""
+    transformer_path: str = ""
     device: str = "cuda"
     num_inference_steps: int = 9
     guidance_scale: float = 1.0
     torch_dtype: str = "bfloat16"
 
     def __post_init__(self):
+        if not self.transformer_path:
+            self.transformer_path = get_default_z_image_path("z-image-turbo-Q8_0.gguf")
         if not self.controlnet_name:
             self.controlnet_name = get_default_z_image_path(
                 "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"

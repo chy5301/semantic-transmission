@@ -57,9 +57,13 @@ class TestInit:
 
 
 class TestLoadUnload:
+    @patch("diffusers.GGUFQuantizationConfig")
     @patch("diffusers.ZImageControlNetPipeline")
     @patch("diffusers.ZImageControlNetModel")
-    def test_load_creates_pipeline(self, mock_model_cls, mock_pipe_cls):
+    @patch("diffusers.ZImageTransformer2DModel")
+    def test_load_creates_pipeline(
+        self, mock_xformer_cls, mock_cnet_cls, mock_pipe_cls, mock_quant_cls
+    ):
         mock_pipe = _make_mock_pipeline()
         mock_pipe_cls.from_pretrained.return_value = mock_pipe
 
@@ -67,12 +71,20 @@ class TestLoadUnload:
         receiver.load()
 
         assert receiver.is_loaded
-        mock_model_cls.from_single_file.assert_called_once()
+        mock_xformer_cls.from_single_file.assert_called_once()
+        mock_cnet_cls.from_single_file.assert_called_once()
         mock_pipe_cls.from_pretrained.assert_called_once()
+        call_kwargs = mock_pipe_cls.from_pretrained.call_args.kwargs
+        assert "transformer" in call_kwargs
+        assert "controlnet" in call_kwargs
 
+    @patch("diffusers.GGUFQuantizationConfig")
     @patch("diffusers.ZImageControlNetPipeline")
     @patch("diffusers.ZImageControlNetModel")
-    def test_load_skips_if_already_loaded(self, mock_model_cls, mock_pipe_cls):
+    @patch("diffusers.ZImageTransformer2DModel")
+    def test_load_skips_if_already_loaded(
+        self, mock_xformer_cls, mock_cnet_cls, mock_pipe_cls, mock_quant_cls
+    ):
         mock_pipe = _make_mock_pipeline()
         mock_pipe_cls.from_pretrained.return_value = mock_pipe
 
@@ -80,6 +92,7 @@ class TestLoadUnload:
         receiver.load()
         receiver.load()  # 第二次调用应跳过
 
+        mock_xformer_cls.from_single_file.assert_called_once()
         mock_pipe_cls.from_pretrained.assert_called_once()
 
     def test_unload_releases_pipeline(self):
@@ -165,6 +178,8 @@ class TestProcess:
         with (
             patch("diffusers.ZImageControlNetPipeline") as mock_pipe_cls,
             patch("diffusers.ZImageControlNetModel"),
+            patch("diffusers.ZImageTransformer2DModel"),
+            patch("diffusers.GGUFQuantizationConfig"),
         ):
             mock_pipe_cls.from_pretrained.return_value = mock_pipe
             result = receiver.process(edge_image_path, PROMPT_TEXT)
@@ -204,6 +219,8 @@ class TestProcessBatch:
         with (
             patch("diffusers.ZImageControlNetPipeline") as mock_pipe_cls,
             patch("diffusers.ZImageControlNetModel"),
+            patch("diffusers.ZImageTransformer2DModel"),
+            patch("diffusers.GGUFQuantizationConfig"),
         ):
             mock_pipe_cls.from_pretrained.return_value = mock_pipe
             frames = [

@@ -32,20 +32,38 @@ class DiffusersReceiver(BaseReceiver):
         return self._pipeline is not None
 
     def load(self) -> None:
-        """加载模型到 GPU。如已加载则跳过。"""
+        """加载模型到 GPU。如已加载则跳过。
+
+        分组件加载策略：
+        1. transformer 用 GGUF 量化（Q8_0，~7.2 GB），避免 HF float32→bf16 峰值
+        2. ControlNet 用本地 bf16 文件
+        3. Pipeline 从 HF 缓存加载其余组件（text_encoder/tokenizer/scheduler/vae），
+           传入已加载的 transformer 和 controlnet 跳过子目录加载
+        """
         if self._pipeline is not None:
             return
 
-        from diffusers import ZImageControlNetModel, ZImageControlNetPipeline
+        from diffusers import (
+            GGUFQuantizationConfig,
+            ZImageControlNetModel,
+            ZImageControlNetPipeline,
+            ZImageTransformer2DModel,
+        )
 
         dtype = _TORCH_DTYPE_MAP.get(self.config.torch_dtype, torch.bfloat16)
 
+        transformer = ZImageTransformer2DModel.from_single_file(
+            self.config.transformer_path,
+            quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
+            torch_dtype=dtype,
+        )
         controlnet = ZImageControlNetModel.from_single_file(
             self.config.controlnet_name,
             torch_dtype=dtype,
         )
         self._pipeline = ZImageControlNetPipeline.from_pretrained(
             self.config.model_name,
+            transformer=transformer,
             controlnet=controlnet,
             torch_dtype=dtype,
         ).to(self.config.device)

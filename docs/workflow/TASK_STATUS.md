@@ -11,8 +11,8 @@
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 3 | 0 | 0 |
-| Phase 3: 验证 | 2 | 0 | 0 | 2 |
-| **合计** | **11** | **9** | **0** | **2** |
+| Phase 3: 验证 | 2 | 1 | 0 | 1 |
+| **合计** | **11** | **10** | **0** | **1** |
 
 ## 任务状态
 
@@ -27,8 +27,8 @@
 | M-06 | 实现-批量连续帧图像生成 | Phase 2 | ✅ 已完成 | M-04 |
 | M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ✅ 已完成 | M-05 |
 | M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ✅ 已完成 | M-05 |
-| M-09a | 修复-模型加载 GGUF 量化与分组件加载 | Phase 3 | ⬜ 待开始 | M-04 |
-| M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⏸️ 暂停 | M-06, M-07, M-08, M-09a |
+| M-09a | 修复-模型加载 GGUF 量化与分组件加载 | Phase 3 | ✅ 已完成 | M-04 |
+| M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⬜ 待开始 | M-06, M-07, M-08, M-09a |
 
 状态图例: ⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ⏸️ 暂停 | ❌ 已取消 | 🔀 已拆分
 
@@ -72,6 +72,7 @@
 - 2026-04-06: [Phase 1 回顾] 阶段通过。审计 2 任务（M-04/M-05）无阻断/需修正问题。🔵 建议：M-02/M-03 遗留改动混入 M-04 commit。退出标准全部满足（202 tests passed，ruff 通过）。下游 Phase 2 任务无需调整
 - 2026-04-06: [Phase 2 回顾] 阶段通过。审计 3 任务（M-06/M-07/M-08）无阻断/需修正问题。🔵 建议：pipeline_panel.py 发送端改 LocalCannyExtractor 超出 M-07 显式范围（因 import 清理必须一并修改）。退出标准全部满足（210 tests passed，ruff 通过，GUI/CLI 均适配后端切换）。下游 Phase 3 任务（M-09）无需调整
 - 2026-04-07: [M-09 验证阻断] M-09 执行发现 DiffusersReceiver 不可用：HF 仓库 float32 权重占满 24 GB 显存，推理 34 分钟/张（ComfyUI 约 1 分钟）。根因：①`from_pretrained` 加载 float32 权重后转 bf16 峰值显存翻倍 ②所有组件同时驻留 GPU 无法分时复用。另修复两个 bug：ControlNet 仓库无 config.json 需 from_single_file、Canny 灰度图需转 RGB。决策：新增 M-09a 使用 GGUF Q8_0 量化 transformer（12 GB→7 GB）+ 分组件加载，M-09 阻塞等待 M-09a 完成
+- 2026-04-07: [M-09a] GGUF 分组件加载方案落地。技术验证：diffusers 0.37.1 `from_pretrained(..., transformer=tf, controlnet=cn)` 在源码层面通过 `passed_class_obj` 跳过 `load_sub_model` 并把对应子目录加入 `ignore_patterns`，确认不会重复下载/加载已传入的组件。实施：transformer 用 `ZImageTransformer2DModel.from_single_file` + `GGUFQuantizationConfig(compute_dtype=bf16)` 加载本地 Q8_0 文件；ControlNet 用 `from_single_file` 加载本地 bf16；Pipeline 从 HF 缓存加载剩余组件。实测：单张 9 步推理 63.7s（之前 34 分钟，提速 ~32 倍），每步约 3s 平稳无 swap，达成 < 2 分钟目标。GGUF 包安装 `gguf==0.18.0`
 
 ## 交接记录
 
@@ -423,3 +424,56 @@
 **下一任务**: Phase 2 全部完成，进入阶段检查点
 
 **遗留问题**: 无
+
+---
+
+#### [M-09a] 修复-模型加载 GGUF 量化与分组件加载 — 交接记录
+
+**完成时间**: 2026-04-07
+
+**完成内容**:
+- 在 `pyproject.toml` 添加 `gguf>=0.10.0` 依赖（实际安装 `gguf==0.18.0`）
+- `DiffusersReceiverConfig` 新增 `transformer_path: str = ""` 字段，`__post_init__` 默认指向 `$MODEL_CACHE_DIR/Z-Image-Turbo/z-image-turbo-Q8_0.gguf`
+- `DiffusersReceiver.load()` 重写为分组件加载：
+  1. transformer：`ZImageTransformer2DModel.from_single_file(gguf_path, quantization_config=GGUFQuantizationConfig(compute_dtype=bf16), torch_dtype=bf16)`
+  2. ControlNet：`ZImageControlNetModel.from_single_file` 加载本地 bf16
+  3. Pipeline：`ZImageControlNetPipeline.from_pretrained(model_name, transformer=..., controlnet=..., torch_dtype=bf16)` 跳过这两个子目录加载，剩余 text_encoder/tokenizer/scheduler/vae 从 HF 缓存以 bf16 加载
+- 4 个 load 相关测试（`test_load_creates_pipeline`、`test_load_skips_if_already_loaded`、`test_auto_loads_if_not_loaded`、`test_model_loaded_once`）补充 `ZImageTransformer2DModel` 和 `GGUFQuantizationConfig` mock
+- `test_receiver_factory.py` 新增 `test_default_transformer_path` 验证默认 GGUF 路径
+
+**修改的文件**:
+- `pyproject.toml` — 新增 gguf 依赖
+- `src/semantic_transmission/common/config.py` — DiffusersReceiverConfig 新增 transformer_path
+- `src/semantic_transmission/receiver/diffusers_receiver.py` — load() 改为分组件加载
+- `tests/test_diffusers_receiver.py` — 4 个 load 测试补充 transformer mock
+- `tests/test_receiver_factory.py` — 新增 transformer_path 默认值测试
+
+**验证结果**:
+- ruff check: ✅ All checks passed
+- ruff format --check: ✅ 62 files already formatted
+- 全量测试: ✅ 211 passed（原 210 + 新增 1）
+- 实际推理验证（`semantic-tx demo --image canyon_jeep.jpg --prompt "..." --seed 42 --backend diffusers`）：
+  - 接收端耗时: **63.7s**（vs 此前 34 分钟，提速 ~32 倍）
+  - 9 步推理每步约 **3.0s**（平稳无 swap）
+  - 总耗时: **1m 8s**（远低于 < 2 分钟目标）
+  - GPU 推理结束后回落至 517 MiB，模型卸载正常
+- VRAM 间接证据：每步耗时稳定（如 swap 会导致每步 4 分钟级），证明 Q8_0 + 分组件加载策略达成 VRAM < 20 GB 目标
+
+**关键决策**:
+- gguf 版本下限选 `>=0.10.0`（diffusers GGUFQuantizationConfig 稳定 API），实际 uv 解析为 0.18.0
+- transformer_path 字段插入 `controlnet_name` 之后保持分组，所有字段均有默认值，不破坏 dataclass 位置参数兼容性
+- 不在 `__post_init__` 中做 `os.path.exists` 检查，构造时无副作用，文件不存在时由 `load()` 阶段抛 FileNotFoundError
+- 测试中保留 `mock_quant_cls` / `mock_cnet_cls` 等未直接断言的参数，因 `@patch` 装饰器要求参数位置与底→顶顺序一致
+
+**计划变更**: 无（按原 TASK_PLAN 中 M-09a 定义执行，未新增/删除子任务）
+
+**下一任务**: M-09 验证-端到端测试与质量对比（依赖 M-09a 已就绪，可解除阻塞）
+
+**下一任务需关注**:
+- M-09 需运行全量回归测试 + GUI/CLI 手动验证 + Diffusers vs ComfyUI 后端的 PSNR/SSIM/LPIPS 对比
+- 实际推理已验证可工作，可重点关注图像质量（M-09a 修复了性能但未对齐 ComfyUI 的 AuraFlow shift=3、res_multistep sampler 等采样器配置，可能存在质量差异）
+- 环境变量 `MODEL_CACHE_DIR` 和 `HF_HOME` 必须导出后再运行 demo，否则 GGUF 文件路径无法解析
+
+**遗留问题**:
+- ComfyUI 特有采样器配置（AuraFlow shift=3、res_multistep）未在 diffusers 端对齐，可能影响生成质量，留给 M-09 评估或后续优化
+- DiffusersReceiver 模型加载缺乏抽象的问题（已记录为待提 issue），本任务进一步证实：transformer/controlnet/pipeline 三段加载逻辑写死在 `load()` 中

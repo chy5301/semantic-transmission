@@ -26,6 +26,10 @@ class TestCreateReceiverDiffusers:
         receiver = create_receiver("diffusers", config=config)
         assert receiver.config.num_inference_steps == 4
 
+    def test_default_transformer_path(self):
+        receiver = create_receiver("diffusers")
+        assert receiver.config.transformer_path.endswith("z-image-turbo-Q8_0.gguf")
+
 
 class TestCreateReceiverComfyUI:
     @patch("semantic_transmission.receiver.comfyui_receiver.ComfyUIReceiver")
