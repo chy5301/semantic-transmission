@@ -11,8 +11,9 @@
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 3 | 0 | 0 |
+| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 0 | 0 | 7 |
 | Phase 3: 验证 | 2 | 1 | 0 | 1 |
-| **合计** | **11** | **10** | **0** | **1** |
+| **合计** | **18** | **10** | **0** | **8** |
 
 ## 任务状态
 
@@ -27,8 +28,15 @@
 | M-06 | 实现-批量连续帧图像生成 | Phase 2 | ✅ 已完成 | M-04 |
 | M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ✅ 已完成 | M-05 |
 | M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ✅ 已完成 | M-05 |
+| M-10 | 清除-ComfyUI 底层运行时代码 | Phase 2.5 | ⬜ 待开始 | M-09a |
+| M-11 | 清理-CLI 层 ComfyUI 分支 + check 子命令改写 | Phase 2.5 | ⬜ 待开始 | M-10 |
+| M-12 | 清理-GUI 层 ComfyUI 分支 + config_panel 重构 | Phase 2.5 | ⬜ 待开始 | M-10 |
+| M-13 | 重构-接收端 Tab 统一队列模式 | Phase 2.5 | ⬜ 待开始 | M-12 |
+| M-14 | 打磨-UI 圆点 + 描述 + Prompt Mode 默认值 | Phase 2.5 | ⬜ 待开始 | 无 |
+| M-15 | 增强-批量端到端 Accordion 展示 + 每组质量评估 | Phase 2.5 | ⬜ 待开始 | M-12 |
+| M-16 | 归档-文档更新 + ComfyUI 历史归档 | Phase 2.5 | ⬜ 待开始 | M-10, M-11, M-12, M-13, M-14, M-15 |
 | M-09a | 修复-模型加载 GGUF 量化与分组件加载 | Phase 3 | ✅ 已完成 | M-04 |
-| M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⬜ 待开始 | M-06, M-07, M-08, M-09a |
+| M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⬜ 待开始 | M-09a, M-10, M-11, M-12, M-13, M-14, M-15, M-16 |
 
 状态图例: ⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ⏸️ 暂停 | ❌ 已取消 | 🔀 已拆分
 
@@ -73,6 +81,32 @@
 - 2026-04-06: [Phase 2 回顾] 阶段通过。审计 3 任务（M-06/M-07/M-08）无阻断/需修正问题。🔵 建议：pipeline_panel.py 发送端改 LocalCannyExtractor 超出 M-07 显式范围（因 import 清理必须一并修改）。退出标准全部满足（210 tests passed，ruff 通过，GUI/CLI 均适配后端切换）。下游 Phase 3 任务（M-09）无需调整
 - 2026-04-07: [M-09 验证阻断] M-09 执行发现 DiffusersReceiver 不可用：HF 仓库 float32 权重占满 24 GB 显存，推理 34 分钟/张（ComfyUI 约 1 分钟）。根因：①`from_pretrained` 加载 float32 权重后转 bf16 峰值显存翻倍 ②所有组件同时驻留 GPU 无法分时复用。另修复两个 bug：ControlNet 仓库无 config.json 需 from_single_file、Canny 灰度图需转 RGB。决策：新增 M-09a 使用 GGUF Q8_0 量化 transformer（12 GB→7 GB）+ 分组件加载，M-09 阻塞等待 M-09a 完成
 - 2026-04-07: [M-09a] GGUF 分组件加载方案落地。技术验证：diffusers 0.37.1 `from_pretrained(..., transformer=tf, controlnet=cn)` 在源码层面通过 `passed_class_obj` 跳过 `load_sub_model` 并把对应子目录加入 `ignore_patterns`，确认不会重复下载/加载已传入的组件。实施：transformer 用 `ZImageTransformer2DModel.from_single_file` + `GGUFQuantizationConfig(compute_dtype=bf16)` 加载本地 Q8_0 文件；ControlNet 用 `from_single_file` 加载本地 bf16；Pipeline 从 HF 缓存加载剩余组件。实测：单张 9 步推理 63.7s（之前 34 分钟，提速 ~32 倍），每步约 3s 平稳无 swap，达成 < 2 分钟目标。GGUF 包安装 `gguf==0.18.0`
+- 2026-04-08: [Plan Adjust] M-09 收尾 brainstorming 发现 GUI 多处调整点 + ComfyUI 运行时遗留尾巴。决策：在 Phase 2 和 Phase 3 之间插入 **Phase 2.5: GUI 完善与 ComfyUI 清除**，新增 7 个任务（M-10~M-16）。M-09 依赖从 `M-06, M-07, M-08, M-09a` 改为 `M-09a + M-10..M-16`。
+  - **D1: 反转 M-03 Strangler Fig 策略** — M-09a 已证实 Diffusers 路径稳定，ComfyUI fallback 不再必要。决定全面清除运行时 ComfyUI 代码（底层 + CLI + GUI 分支 + 相关测试），保留 `docs/comfyui-setup.md` 和 `resources/comfyui/` 归档到 `docs/archive/comfyui-prototype/`。
+  - **D2: CLI check 子命令重写为三个独立角色** — `check vlm`（发送端用）/ `check diffusers`（接收端用）/ `check relay --host X --port Y`（双机对端 TCP 可达性）。理由：双机部署下每端只运行自己角色的检查，避免全检产生的误报；与 sender/receiver CLI 角色对称风格一致。
+  - **D3: GUI 中继配置从 config_panel 移到 batch_sender_panel 内部** — GUI 唯一使用 SocketRelay 的 Tab 是 `📦 批量发送`，把中继配置挪到 Tab 内部更贴合"谁用谁管"原则。顺便修复隐性 bug：config_panel 原 `relay_host`/`relay_port` 字段 label 是"监听地址"但实际被 batch_sender_panel 当作对端地址使用。label 改为"接收端 IP / 端口"，默认值从 `0.0.0.0` 改为空字符串，加"测试对端连接"按钮。
+  - **D4: 接收端 Tab 统一为队列模式** — 废除单张即时触发的 UI，单张场景作为"队列含 1 项"的特例。顺便解决现有 bug：每次点击都 `create_receiver()` 重载 ~18 GB 模型、不显式 `unload()`。底层 `DiffusersReceiver.process_batch()` 已支持"模型加载一次循环处理"，只差 UI 层队列。
+  - **D5: 批量端到端展示改为 Accordion 每组折叠块 + 可选每组 + 总体质量评估** — 当前只显示"最后一张对比图"的设计信息密度太低。每组 Accordion 内含原图 / 边缘 / 还原 / VLM prompt，勾选"运行质量评估"时附加 PSNR/SSIM/LPIPS，最后给总体平均。
+  - **D6: 四处 Prompt Mode 统一 VLM 在前 + 默认 auto，Radio 圆点恢复** — sender/pipeline/batch_sender/batch_panel 四处 Prompt Mode 当前都是"手动在前 + 默认 manual"，与 demo 实际默认流程不符。同时删除 `theme.py` 的 `.mode-radio { display: none }` CSS，让所有 Radio 圆点统一显示。
+  - **D7: 发送端 VLM 实例持久化不做** — 批量发送 Tab 已经是"循环外加载 + 循环内 describe + 循环外 unload"的正确模式。单张发送 Tab 每次点击重载 VLM 可接受。
+  - **D8: "统一 socket 通信架构"登记为新 issue 不做** — 用户提出的"单机双机都走 SocketRelay"思路架构上正确，但工作量等同于重开一次 workflow（改后台线程 / 双向通信协议 / UI 状态同步 / 重写多个 Tab 内部循环）。决定本 workflow 不做，作为新 issue 补充给 HANDOFF.md 已有 14 个 issue 清单，下次 workflow 时与 "Phase-Separated Batch"（HANDOFF.md 第 5 节原提议）合并讨论。
+  - **D9: 任务拆分方案 X-lean v3** — 7 个新任务（M-10 ~ M-16），每个严格遵守 `maxFilesPerTask=8` 和 `maxHoursPerTask=3` 约束。依赖序：M-10 → M-11/M-12 → M-13/M-15；M-14 独立并行；M-16 最后做（依赖前 6 个）。M-09 最终依赖 `M-09a + M-10..M-16`。
+  - **D10: Phase 归属选择方案 β** — 新建 Phase 2.5 "GUI 完善与 ComfyUI 清除"。不破坏 Phase 0/1/2 已通过的 phase-review 记录，语义清晰（完善 ≠ 验证）。M-09 仍在 Phase 3。
+  - **D11: 新 issue 清单** — 除 HANDOFF.md 原 14 个 issue 外，本次 brainstorming 新发现补充 4 个：① 统一 socket 通信架构 + 批量 VRAM 临界 + 双端演示能力综合问题（高优先级，描述问题本身不预设解决方案）② `SocketRelaySender` 不支持指定源端口（低）③ `SocketRelayReceiver` 不做来源白名单过滤（低）④ GUI 缺少独立"接收端监听" Tab（中，与 ① 相关）。D3 提到的 config_panel relay 字段 bug 由 M-12 顺手修复，不单独提 issue（M-12 步骤已显式引用本条决策）。原 HANDOFF 清单的 #12（ComfyUIReceiver 不继承 BaseReceiver）在 M-10 后已自然消失，不再提，实际有效原 issue 为 13 个。总计提交 17 个 issue 由 M-16 负责。
+- 2026-04-08: [Plan Audit 修正] 针对 2026-04-08 Plan Adjust 后的审计发现，对计划做如下修正：
+  - **修正 1 (P1) — M-09 重写**：原 M-09 定义里"Diffusers vs ComfyUI 质量对比"在 M-10 后物理上无法执行（ComfyUIReceiver 已删）。M-09 重写为"Phase 2.5 产物验收 + 全量回归 + `output/demo/*` 4 个产物入库 commit"，涉及文件清单去掉 test_comfyui_receiver.py，步骤 4 具体化为 6 个 Tab 的可勾选 GUI 测试 checklist（覆盖 M-12/M-13/M-14/M-15 全部新产物）
+  - **修正 2 (P2) — HANDOFF.md 已过时，以 TASK_PLAN 为准**：HANDOFF.md 整体基于 10/11 状态写就，第 2 节 7 步收尾清单的第 1 步是"直接跑 M-09"，完全跳过了本次插入的 M-10~M-16。决定在 HANDOFF.md 顶部加"已过时"banner，并重写第 1/2/4/5 节以对齐当前 TASK_PLAN。HANDOFF.md 从"下次会话指引"降级为"历史参考"。下次会话第一步改为 `读取 TASK_STATUS.md 当前进度 + TASK_PLAN.md 任务定义`，不再按 HANDOFF 清单走
+  - **修正 3 (M3) — `common/model_check.py` 抽取由 M-10 负责**：原 M-11 的 check 子命令说"复用 config_panel._check_vlm_model 或抽到 common 层"，存在"CLI 从 GUI import"的依赖方向反转风险。决定在 M-10 顺便新建 `src/semantic_transmission/common/model_check.py` 作为纯函数检查模块，M-11 和 M-12 都从这里 import，避免方向错误。M-10 涉及文件从 7 增加到 8（刚好达到 maxFilesPerTask 约束边界）
+  - **修正 4 (M4) — 18 个 issue 批量提交动作归属 M-16**：HANDOFF.md 原设计是 M-09 commit 后在 PR 步骤前批量提 14 个 issue。新增 4 个后变成 18 个，去掉已失效的 #12 为 17 个。Phase 2.5 插入后 HANDOFF.md 过时，issue 提交动作没有归属。决定归入 M-16（archive 性质匹配），M-16 从 S 升级为 M
+  - **修正 5 (M5 + O2) — M-12 显式引用 D11 "新-2 bug 顺手修复"决策**：M-12 背景信息和步骤 5 都显式标注"修复 relay 字段语义错位 bug"，避免下次 review 时漏掉这是"顺手修 bug"而非"新增功能"
+  - **修正 6 (L6) — M-16 `docs/cli-reference.md` 细化**：原"更新 check 参数文档"改为明确列出 check vlm / check diffusers / check relay 三个子命令各自补充完整文档
+  - **修正 7 (O4 + O5 已合并进 P1 修正 1)**：M-09 验证 Phase 2.5 产物的要求 + `output/demo/*` 4 个 untracked 文件作为 M-09 commit 的一部分
+- 2026-04-08: [下次 workflow 方向修正] 原 HANDOFF.md 第 5 节把"Phase-Separated Batch"作为下次 workflow 预定种子并包含具体设计选择（β4 目录即队列、γ3 batch_summary.json、CLI 策略 β 等）。本次 brainstorming 发现：
+  - Phase-Separated Batch 只是解决"单机 VRAM 临界 + 批量模型生命周期"的**候选方案之一**
+  - 用户新提出的"统一 socket 通信架构"是另一个候选方案，且与 GUI 双端传输 / 接收端监听 Tab 问题有强交叉
+  - ModelStore/ModelLoader 抽象是第三个候选（独立路线 S）
+  - 这些候选各有优劣，不应预设方案
+  - **决策**：把下次 workflow 方向从"预定 Phase-Separated Batch"降级为"开放 issue 集合"。新-1 issue 描述问题本身（VRAM 临界 + 双机演示能力 + 批量模型生命周期），**明确不预设解决方案**。候选解法只在 issue 正文里列为"可参考的先前讨论"，不作为决定。下次 workflow 启动时必须**重新 brainstorm**，不复用本次或 HANDOFF 原种子结论
 
 ## 交接记录
 

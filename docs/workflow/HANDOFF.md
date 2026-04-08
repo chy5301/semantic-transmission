@@ -1,25 +1,39 @@
 # 会话交接简报 — receiver-decouple-comfyui workflow 收尾
 
-> **创建时间**：2026-04-07
-> **来源**：M-09a 完成后的 brainstorming 会话（已中止，未产出 spec）
-> **生命周期**：临时文件，archive 步骤会随 workflow 文档一起归档/删除
-> **下次会话第一步**：读完此文件 → 按第 2 节执行清单依次操作
+> ## ⚠️ 本文件已过时（2026-04-08）
+>
+> 本文档写于 2026-04-07，基于 `10/11` 状态 + Strangler Fig 保留 ComfyUI 策略。**2026-04-08 brainstorming 已反转这些前提**：
+> - 插入了 **Phase 2.5**（7 个新任务 M-10~M-16，全面清除 ComfyUI 运行时 + GUI 完善）
+> - workflow 进度从 10/11 扩大到 **10/18**
+> - 第 2 节 7 步收尾清单**不再有效**（第 1 步直接跳 M-09，跳过了 Phase 2.5）
+> - 第 4 节 14 项 issue 清单扩展为 **17 项**（13 原 + 4 新，去除失效的 #12）
+> - 第 5 节"下次 workflow 种子 = Phase-Separated Batch"**已降级**为开放 issue（新-1），下次 workflow 必须重新 brainstorm 不复用本种子
+>
+> **下次会话第一步改为**：
+> 1. 读 `docs/workflow/TASK_STATUS.md` 了解当前进度（看任务状态表和最新决策日志）
+> 2. 读 `docs/workflow/TASK_PLAN.md` 了解任务定义
+> 3. 从当前第一个 ⬜ 待开始任务开始执行（首个是 **M-10**）
+>
+> **本文件留作历史参考**，特别是第 3 节（关键背景）和第 4 节（原 issue 清单）仍有参考价值。但**不要**按第 2 节的 7 步清单执行。
+> 详细修正记录见 `TASK_STATUS.md` 决策日志 2026-04-08 条目。
 
 ---
 
-## 0. TL;DR
+## 0. TL;DR（已过时）
 
-当前 `receiver-decouple-comfyui` workflow 已完成 10/11 任务（M-01 ~ M-09a 全部 ✅），剩 M-09 端到端验证待执行。下次会话**不要再 brainstorm 新设计**，按第 2 节 7 步清单走完即可收尾、提 PR、merge。下次 workflow 的方向已经形成种子（第 5 节），但完整 spec 留到下下次会话启动新 workflow 时再 brainstorm。
+~~当前 `receiver-decouple-comfyui` workflow 已完成 10/11 任务（M-01 ~ M-09a 全部 ✅），剩 M-09 端到端验证待执行。下次会话**不要再 brainstorm 新设计**，按第 2 节 7 步清单走完即可收尾、提 PR、merge。~~
+
+**当前实际状态**（2026-04-08 之后）：workflow 已扩大到 18 个任务。完成 10（M-01~M-08, M-09a），待开始 8（M-10~M-16 + M-09）。收尾路径变长：M-10 → M-11 → M-12 → M-13 → M-14 → M-15 → M-16 → `phase-review`（Phase 2.5）→ M-09 → `phase-review`（Phase 3）→ archive → PR → merge。
 
 ---
 
-## 1. 当前状态快照
+## 1. 当前状态快照（已更新至 2026-04-08）
 
 - **分支**：`feature/receiver-decouple-comfyui`
-- **最近提交**：`48a34ba feat(receiver): GGUF 量化与分组件加载优化模型加载（M-09a）`
-- **workflow 进度**：10/11（M-09 ⬜ 待开始）
-- **未提交文件**：`output/demo/{comparison,edge,prompt,restored}.{png,txt}` 4 个 untracked（M-09a 实测产物，应在 M-09 验证 commit 中一并提交，`.gitignore` 已配 `!output/demo/` 例外允许入库）
-- **运行环境变量**（跑 M-09 实测前必须 export）：
+- **最近提交**：（以 `git log` 为准，本文档不再自动更新 commit hash）
+- **workflow 进度**：10/18（原 M-01~M-08, M-09a 已完成；新增 M-10~M-16 待开始；M-09 依赖全部新任务）
+- **未提交文件**：`output/demo/{comparison,edge,prompt,restored}.{png,txt}` 4 个 untracked（M-09a 实测产物，**归属变更**：按本次 Plan Audit 修正，这 4 个文件在 M-09 任务内作为 commit 的一部分提交，不再单独处理）
+- **运行环境变量**（跑 Phase 2.5 和 M-09 时需要）：
   ```bash
   export HF_HOME=D:/Downloads/Models/huggingface
   export MODEL_CACHE_DIR=D:/Downloads/Models
@@ -27,7 +41,11 @@
 
 ---
 
-## 2. 7 步收尾执行清单
+## 2. 7 步收尾执行清单（已过时，保留作历史参考）
+
+> ⚠️ **本节清单已失效**。下次会话不要按这个清单执行。新的执行路径：按 TASK_PLAN.md 顺序执行 M-10 → M-11 → M-12 → M-13 → M-14 → M-15 → M-16 → phase-review（Phase 2.5）→ M-09 → phase-review（Phase 3）→ archive → PR → merge。
+>
+> 原 7 步清单（下面这些）仅用于理解 2026-04-07 时点的计划意图，**不要实际执行**。
 
 ### 步骤 1：跑 M-09 验证
 
@@ -130,9 +148,18 @@ gh pr merge <number> --squash --delete-branch --admin
 
 ---
 
-## 4. 14 项待提交 issue 清单
+## 4. 14 项待提交 issue 清单（2026-04-08 更新为 17 项）
 
-> 编号 #6 已删除（原"sender 缺少 batch 模式"描述错误，并入 #1），编号保留避免混淆。实际有效 issue 数 = 14。
+> **2026-04-08 更新**：本清单仍然有效作为 M-16 批量提 issue 的参考，但有调整：
+> - 原 14 项中的 **#12 "ComfyUIReceiver 不继承 BaseReceiver"** 在 M-10 后自然消失（ComfyUIReceiver 已删），**不再提交**。实际有效为 13 项
+> - **新增 4 项** issue 来自 2026-04-08 brainstorming：
+>   - **新-1**：统一 socket 通信架构 + 批量 VRAM 临界 + 双端演示能力综合问题（**高优先级**，描述问题本身不预设解决方案，是下次 workflow 的开放议题）
+>   - **新-3**：`SocketRelaySender` 不支持指定源端口（低）
+>   - **新-4**：`SocketRelayReceiver` 不做来源白名单过滤（低）
+>   - **新-5**：GUI 缺少独立"接收端监听" Tab（中，与新-1 相关但可独立讨论）
+> - **合计 17 项**由 M-16 批量提交（而非原计划的 14 项）
+>
+> 编号 #6 已删除（原"sender 缺少 batch 模式"描述错误，并入 #1），编号保留避免混淆。
 
 ### 概览
 
@@ -345,7 +372,24 @@ gh issue create --title "LocalRelay 是 dead code，无业务调用方" \
 
 ---
 
-## 5. 下次 workflow 的种子（核心方向）
+## 5. 下次 workflow 的种子（已降级为开放 issue，2026-04-08）
+
+> ## ⚠️ 本节已被 2026-04-08 决策覆盖
+>
+> 原本节把 "模型加载架构与 Phase-Separated Batch" 作为下次 workflow 的**预定方向**，并包含了具体的设计选择（β4 目录即队列、γ3 batch_summary.json、CLI 策略 β 等）。
+>
+> **2026-04-08 brainstorming 中发现**：
+> 1. Phase-Separated Batch 只是解决"单机 VRAM 临界 + 批量模型生命周期"的**候选方案之一**
+> 2. 用户新提出的"**统一 socket 通信架构**"是另一个候选方案（单机 / 双机都走 SocketRelay 本地回环 / 对端地址），且和 GUI 双端传输、接收端监听 Tab 问题有**强交叉**
+> 3. **ModelStore / ModelLoader 抽象** 是第三个候选方案（独立路线 S）
+> 4. 这些候选方案各有优劣，不应预设方向
+>
+> **新决策**：
+> - 本节原种子（Phase-Separated Batch + 目录即队列 + γ3 状态跟踪）**降级**为"可参考的先前讨论记录"，不作为下次 workflow 的预定方向
+> - 这些问题全部归并到**新-1 issue**（"统一 socket 通信架构 + 批量 VRAM 临界 + 双端演示能力综合问题"），issue 正文描述**问题本身**，不预设解决方案
+> - 下次 workflow 启动时**必须重新 brainstorm**，不直接复用本节结论
+>
+> 本节内容保留为历史参考（见下文原始内容），但**不是行动指引**。
 
 ### 标题候选
 

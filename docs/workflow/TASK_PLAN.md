@@ -13,12 +13,13 @@
 ## 阶段里程碑
 
 
-| 阶段      | 名称   | 退出标准                            |
-| ------- | ---- | ------------------------------- |
-| Phase 0 | 准备   | 依赖就绪、接口设计完成、seed bug 修复         |
-| Phase 1 | 核心实施 | DiffusersReceiver 单帧生成可工作，质量可对比 |
-| Phase 2 | 完善   | 批量连续帧、后端切换、GUI/CLI 集成完成         |
-| Phase 3 | 验证   | 全部测试通过，端到端流程可运行                 |
+| 阶段        | 名称                 | 退出标准                                                                                     |
+| --------- | ------------------ | ---------------------------------------------------------------------------------------- |
+| Phase 0   | 准备                 | 依赖就绪、接口设计完成、seed bug 修复                                                                  |
+| Phase 1   | 核心实施               | DiffusersReceiver 单帧生成可工作，质量可对比                                                          |
+| Phase 2   | 完善                 | 批量连续帧、后端切换、GUI/CLI 集成完成                                                                  |
+| Phase 2.5 | GUI 完善与 ComfyUI 清除 | ComfyUI 运行时代码完全移除，GUI 可测试（接收端队列化、批量端到端完整展示、Diffusers 模型检测就绪），文档完成归档 |
+| Phase 3   | 验证                 | 全部测试通过，端到端流程可运行                                                                          |
 
 
 ## 任务列表
@@ -239,6 +240,273 @@
 - **回滚方案**: `git checkout -- src/semantic_transmission/cli/receiver.py src/semantic_transmission/cli/demo.py`
 - **预估工作量**: M
 
+### Phase 2.5: GUI 完善与 ComfyUI 清除
+
+> **背景**：M-09 收尾阶段（2026-04-08 brainstorming）发现 GUI 多处调整点 + ComfyUI 运行时遗留尾巴。本阶段在 M-09 最终验证前插入，用于完成 GUI 完善、接收端解耦收尾、ComfyUI 全面清除。详见决策日志 2026-04-08 条目。
+
+#### [M-10] 清除-ComfyUI 底层运行时代码 + 抽取模型检测模块
+
+- **阶段**: Phase 2.5 - GUI 完善与 ComfyUI 清除
+- **依赖**: M-09a
+- **目标**: 删除 ComfyUI 运行时代码路径，简化 receiver 工厂和 common/config；同时新建 `common/model_check.py` 作为 CLI 和 GUI 共享的模型就绪检测单一数据源
+- **背景信息**: receiver-decouple-comfyui workflow 的核心目标是接收端脱离 ComfyUI。M-03 时采用 Strangler Fig 模式保留 ComfyUIReceiver 作为 fallback，但 M-09a 已验证 Diffusers 路径稳定，fallback 不再必要。全面清除 ComfyUI 运行时代码（保留 docs 和 resources 作为历史材料，由 M-16 处理）。本任务聚焦底层：common/comfyui_client.py、receiver/comfyui_receiver.py、对应测试、receiver 工厂和 common/config。同时为避免 M-11 和 M-12 重复实现模型检测逻辑（CLI 从 GUI 模块 import 会造成依赖方向错误），本任务顺便新建 `common/model_check.py` 作为 VLM / Diffusers 模型检测的单一数据源，CLI 和 GUI 都从这里 import。CLI 和 GUI 层的清理分别由 M-11/M-12 接续。
+- **涉及文件**（8）:
+  - `src/semantic_transmission/common/comfyui_client.py`（删除）
+  - `src/semantic_transmission/receiver/comfyui_receiver.py`（删除）
+  - `tests/test_comfyui_client.py`（删除）
+  - `tests/test_comfyui_receiver.py`（删除）
+  - `src/semantic_transmission/receiver/__init__.py`（简化 `create_receiver`）
+  - `src/semantic_transmission/common/config.py`（移除 `ComfyUIConfig`）
+  - `src/semantic_transmission/common/model_check.py`（**新建**：`check_vlm_model` / `check_diffusers_receiver_model` 纯函数）
+  - `tests/test_receiver_factory.py`（移除 backend 切换用例）
+- **具体步骤**:
+  1. grep 确认 `common/comfyui_client.py` 在 CLI/GUI 之外无其他引用
+  2. 删除 `common/comfyui_client.py` 和 `receiver/comfyui_receiver.py`
+  3. 删除对应的 `tests/test_comfyui_client.py` 和 `tests/test_comfyui_receiver.py`
+  4. 简化 `receiver/__init__.py` 的 `create_receiver`：不再接受 `backend` 参数，直接返回 `DiffusersReceiver`
+  5. 移除 `common/config.py` 的 `ComfyUIConfig` 类
+  6. **新建** `common/model_check.py`：
+     - `check_vlm_model(model_path: str) -> tuple[bool, str]`：检查路径存在 + `config.json` 存在，返回 `(ok, 人类可读消息)`
+     - `check_diffusers_receiver_model(config: DiffusersReceiverConfig) -> tuple[bool, str]`：检查 GGUF transformer 文件、ControlNet bf16 文件、HF cache pipeline base 三处路径
+     - 纯函数，不依赖 Gradio 或 click（让 CLI 和 GUI 都能 import，避免依赖方向错误）
+  7. 更新 `tests/test_receiver_factory.py`，移除 backend 切换测试用例
+  8. 运行 `uv run pytest`（此时 CLI/GUI 相关测试可能报 import 错误，由 M-11/M-12 接续修复）
+- **验收标准**:
+  - `common/comfyui_client.py` 和 `receiver/comfyui_receiver.py` 不存在
+  - `from semantic_transmission.receiver import ComfyUIReceiver` 报 ImportError
+  - `create_receiver()` 签名已简化（无 backend 参数）
+  - `common/model_check.py` 存在且可 `from semantic_transmission.common.model_check import check_vlm_model, check_diffusers_receiver_model`
+  - `uv run ruff check .` 和 `uv run ruff format --check .` 通过
+  - receiver 和 common 层相关测试通过（CLI/GUI 测试可能留待 M-11/M-12 修复）
+- **自测方法**: `uv run pytest tests/test_receiver_factory.py tests/test_diffusers_receiver.py`
+- **回滚方案**: `git revert` 本任务提交
+- **预估工作量**: M
+
+#### [M-11] 清理-CLI 层 ComfyUI 分支 + check 子命令改写
+
+- **阶段**: Phase 2.5 - GUI 完善与 ComfyUI 清除
+- **依赖**: M-10
+- **目标**: 移除 CLI 的 `--backend` 选项，将 `check` 子命令重写为模型 / 中继对端三个独立子命令
+- **背景信息**: M-08 为 `cli/demo.py`、`cli/batch_demo.py`、`cli/receiver.py` 添加了 `--backend` 选项以支持后端切换。M-10 移除底层 ComfyUIReceiver 后该选项失去意义。同时 `cli/check.py` 的 `check connection` 和 `check workflows` 两个子命令都是 ComfyUI 专用，需要重写为：`check vlm`（发送端用）/ `check diffusers`（接收端用）/ `check relay --host X --port Y`（双机对端 TCP 可达性测试）三个独立子命令。
+- **涉及文件**:
+  - `src/semantic_transmission/cli/demo.py`（移除 `--backend`）
+  - `src/semantic_transmission/cli/batch_demo.py`（移除 `--backend`）
+  - `src/semantic_transmission/cli/receiver.py`（移除 `--backend`，保留 relay 参数）
+  - `src/semantic_transmission/cli/check.py`（重写为三个子命令）
+  - `tests/test_cli.py`（删除 backend 用例，新增 check 子命令用例）
+- **具体步骤**:
+  1. `cli/demo.py`、`cli/batch_demo.py`、`cli/receiver.py` 移除 `--backend` click option 及相关分支逻辑，直接实例化 DiffusersReceiver
+  2. `cli/check.py` 完全重写：
+     - 移除 `check connection` 和 `check workflows`
+     - 新增 `check vlm`：从 `common.model_check` 导入 `check_vlm_model` 并调用（M-10 已建立单一数据源）
+     - 新增 `check diffusers`：从 `common.model_check` 导入 `check_diffusers_receiver_model` 并调用
+     - 新增 `check relay --host X --port Y`：通过 `SocketRelaySender.connect()` + 立即 close 测试 TCP 可达性（SocketRelaySender 从 `pipeline.relay` 导入）
+  3. 更新 `tests/test_cli.py`：删除 backend 相关用例，为三个新 check 子命令添加基础测试（mock `common.model_check` 和 `SocketRelaySender`）
+- **验收标准**:
+  - `uv run semantic-tx demo --help` / `batch-demo --help` / `receiver --help` 不再显示 `--backend`
+  - `uv run semantic-tx check --help` 显示三个子命令（vlm / diffusers / relay）
+  - 三个新 check 子命令能正常执行（即使模型不存在也给出合理错误提示）
+  - `uv run pytest tests/test_cli.py` 通过
+  - `uv run ruff check .` 和 `uv run ruff format --check .` 通过
+- **自测方法**: `uv run semantic-tx check vlm`、`uv run semantic-tx check diffusers`、`uv run semantic-tx check relay --host 127.0.0.1 --port 9000`
+- **回滚方案**: `git revert` 本任务提交
+- **预估工作量**: M
+
+#### [M-12] 清理-GUI 层 ComfyUI 分支 + config_panel 重构
+
+- **阶段**: Phase 2.5 - GUI 完善与 ComfyUI 清除
+- **依赖**: M-10
+- **目标**: GUI 层清除所有 ComfyUI 分支，重构 config_panel 为"模型就绪检测 + 全局设置"，修复中继字段隐性 bug
+- **背景信息**: 本次 brainstorming 发现 GUI config_panel 的"ComfyUI 连接"区块（两列 host/port + 测试连接按钮）已经半过时：发送端列完全是 dead code（发送端已脱离 ComfyUI），接收端列仅 ComfyUI 模式下有意义。同时 `relay_host`/`relay_port` 字段 label 是"监听地址"但实际被 `batch_sender_panel` 当作对端地址使用，属于**隐性 bug**（详见 TASK_STATUS.md 决策日志 2026-04-08 D11：新-2 issue 在本任务顺手修复，不单独提 issue）。M-10 删除底层后各 panel 的 `if backend == "comfyui"` 分支也会 import 错误。本任务统一清理：移除 config_panel 的 ComfyUI 连接区（加 Diffusers 模型检测取代，检测函数从 M-10 新建的 `common.model_check` 导入），移除 pipeline/receiver/batch panel 的 ComfyUI 分支，中继配置从 config_panel 挪到 batch_sender_panel 内部（**同时修复上述 relay 字段语义错位 bug**）并添加对端连接测试按钮。
+- **涉及文件**:
+  - `src/semantic_transmission/gui/config_panel.py`（大改：移除 receiver_backend Radio、ComfyUI 连接区、中继配置；新增 Diffusers 模型检测区）
+  - `src/semantic_transmission/gui/pipeline_panel.py`（移除 `[1/5] 连接检查` 分支 + backend 参数）
+  - `src/semantic_transmission/gui/receiver_panel.py`（最小删除：移除 `[1/2] 检查 ComfyUI 连接` 分支 + backend 参数，M-13 会重写该文件）
+  - `src/semantic_transmission/gui/batch_panel.py`（移除 ComfyUI 分支 + backend 参数）
+  - `src/semantic_transmission/gui/batch_sender_panel.py`（承接中继配置：内部添加 relay_host/relay_port 字段 + 测试对端连接按钮 + `_test_relay_connection` 函数）
+  - `src/semantic_transmission/gui/app.py`（更新 config_components 传递）
+- **具体步骤**:
+  1. `config_panel.py` 重写：
+     - 移除 `receiver_backend` Radio 和"ComfyUI 连接"整个区块（`sender_host` / `sender_port` / `sender_test_btn` / `sender_status` / `receiver_host` / `receiver_port` / `receiver_test_btn` / `receiver_status` / `_test_comfyui_connection` 全部删除）
+     - **删除原 `relay_host` / `relay_port` 字段**（隐性 bug：label 是"监听地址"但被 batch_sender_panel 当对端地址用，字段挪到 M-12 步骤 5 的 batch_sender_panel 里并修正语义）
+     - 新增"Diffusers 模型"区块：显示检查按钮和状态 Markdown，点击时调用 `from semantic_transmission.common.model_check import check_diffusers_receiver_model`（M-10 已建立）
+     - 保留 VLM 模型检查区，但内部实现改为调用 `from semantic_transmission.common.model_check import check_vlm_model`（替代原 `_check_vlm_model`，避免重复代码）
+  2. `pipeline_panel.py` 移除 `[1/5] 连接检查` 的 `if receiver_backend == "comfyui"` 分支和 backend 参数传递
+  3. `receiver_panel.py` 最小删除（M-13 会彻底重写）：删除 `if receiver_backend == "comfyui"` 分支
+  4. `batch_panel.py` 移除 ComfyUI 分支和 backend 参数
+  5. `batch_sender_panel.py` 内部添加中继配置（**同时修复隐性 bug**）：
+     - 新增 `relay_host` / `relay_port` 输入字段，label 明确为"接收端 IP 地址"/"接收端端口"（**纠正原 config_panel 里 label "监听地址" 的错误语义**）
+     - 默认值从 `0.0.0.0` 改为空字符串（发送端视角下 `0.0.0.0` 完全无意义）
+     - 添加"测试对端连接"按钮和状态显示
+     - 实现 `_test_relay_connection(host, port)` 函数：`SocketRelaySender(host, port).connect()` 成功立即 close，返回 OK + 延迟；失败返回具体错误（ConnectionRefusedError / TimeoutError 等）
+     - 更新 `run_batch_sender` 内部从 `config_components["relay_host"]` 读取的地方改为从本 Tab 新字段读取
+  6. `app.py` 更新 `config_components` 字段集合：移除 `relay_host` / `relay_port`（不再是全局配置）+ 移除 ComfyUI 连接相关字段
+  7. `uv run semantic-tx gui` 人工抽查所有 Tab 能正常打开
+  8. `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+- **验收标准**:
+  - config_panel 只有"VLM 模型"区和"Diffusers 模型"区（和其他全局设置如有）
+  - 所有 panel 代码里无 `if backend == "comfyui"` 残留
+  - `📦 批量发送` Tab 能独立配置中继 + 测试对端连接
+  - GUI 启动无 import 错误，所有 Tab 可打开
+  - `uv run pytest` 通过
+  - `uv run ruff check .` 和 `uv run ruff format --check .` 通过
+- **自测方法**: `uv run semantic-tx gui` 手动验证 + `uv run pytest tests/`
+- **回滚方案**: `git revert` 本任务提交
+- **预估工作量**: M
+
+#### [M-13] 重构-接收端 Tab 统一队列模式
+
+- **阶段**: Phase 2.5 - GUI 完善与 ComfyUI 清除
+- **依赖**: M-12
+- **目标**: 将接收端 Tab 从"单张单次触发"重写为"队列模式"，顺便修复每次点击都重载模型的隐性 bug
+- **背景信息**: 当前 `receiver_panel.py` 每次点击"运行接收端"都 `create_receiver(...)` 创建新实例并 `load()` 加载 ~18 GB 模型，且没有显式 `unload()`。多次点击会导致反复加载或显存累积。底层 `DiffusersReceiver.process_batch()` 已实现"模型加载一次、循环处理多帧"的能力（M-06 留下），只差 GUI 层队列 UI。本次 brainstorming 确认：接收端 Tab 统一为队列模式，单张场景作为"队列中只有 1 项"的特例。同时发送端 Tab 的"→ 发送到接收端"按钮改为"→ 加入接收端队列"，通过 gr.State 实现跨 Tab 队列 append。
+- **涉及文件**:
+  - `src/semantic_transmission/gui/receiver_panel.py`（大改：改为队列模式）
+  - `src/semantic_transmission/gui/sender_panel.py`（修改 `send_to_receiver_btn` 的 handler：append 而非 replace）
+  - `src/semantic_transmission/gui/app.py`（更新 Tab 间传递绑定逻辑）
+  - `tests/test_receiver_panel.py` 或 `tests/test_gui.py`（新增或更新队列行为测试）
+- **具体步骤**:
+  1. `receiver_panel.py` 重写：
+     - 引入 `gr.State` 维护队列 `List[dict]`（edge_path / prompt / seed）
+     - UI 组件：当前输入区（edge + prompt + seed）→ "加入队列" 按钮 → 队列展示区（Dataframe 或 List，显示序号和 prompt 摘要）→ "运行队列" 按钮 → "清空队列" 按钮 → "卸载模型" 按钮
+     - `_run_receiver_queue`：`create_receiver()` 一次 → 遍历队列调 `receiver.process_batch()` 或 `receiver.process()` 循环 → 结束后显式 `unload()` → 保存每张还原图到输出目录
+     - 运行过程中 yield 逐条更新 UI
+  2. `sender_panel.py` 修改 `send_to_receiver_btn`：
+     - handler 从 `lambda edge, prompt: (edge, prompt)` 改为"append 到接收端 gr.State 队列"
+     - 按钮文本改为"→ 加入接收端队列"
+  3. `app.py` 更新 Tab 间传递绑定：
+     - `send_to_receiver_btn.click()` 的 outputs 目标从 receiver 的单字段改为 receiver 的 gr.State
+  4. 写测试：空队列不运行、单项运行、多项运行、清空队列、运行后显存释放
+  5. `uv run semantic-tx gui` 人工验证：发送端 VLM auto 生成 → 加入接收端队列 → 多张后点运行 → 观察显存曲线
+  6. `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+- **验收标准**:
+  - 接收端 Tab 支持"加入队列"和"运行队列"两步操作
+  - 一次"运行队列"内只加载模型一次，结束后显存释放（显式 unload）
+  - 单张场景通过"加入 1 项后运行"工作流程完成，不需要额外 UI
+  - 发送端 Tab 的"→ 加入接收端队列"按钮能正确 append 而不是 replace
+  - 相关测试通过
+  - `uv run ruff check .` 和 `uv run ruff format --check .` 通过
+- **自测方法**: `uv run semantic-tx gui` 手动测试队列流程（3 张图）+ `uv run pytest`
+- **回滚方案**: `git revert` 本任务提交
+- **预估工作量**: M
+
+#### [M-14] 打磨-UI 圆点 + 描述 + Prompt Mode 默认值
+
+- **阶段**: Phase 2.5 - GUI 完善与 ComfyUI 清除
+- **依赖**: 无（可与 M-10~M-13 并行）
+- **目标**: 统一 Radio 圆点视觉、统一 Prompt Mode 默认值（VLM 在前 + 默认 auto）、为所有 Tab 补上简短描述
+- **背景信息**: 本次 brainstorming 发现：① PR #9 的 `.mode-radio { display: none }` CSS 隐藏了 sender_panel 和 pipeline_panel 的 Radio 圆点，但 batch_sender_panel 和 batch_panel 没加这个 class，视觉不统一；② 四处 prompt_mode Radio 全部是"手动在前 + 默认 manual"，与 demo 实际默认流程（VLM auto）不符；③ 批量发送 Tab 描述"(双机演示) ... 发送端不依赖 ComfyUI"属于过时强调，其他 Tab 没有描述，整体不一致。
+- **涉及文件**:
+  - `src/semantic_transmission/gui/theme.py`（删除 `.mode-radio` CSS 规则）
+  - `src/semantic_transmission/gui/sender_panel.py`（移除 elem_classes + 改 Prompt Mode 顺序默认 + 加描述）
+  - `src/semantic_transmission/gui/pipeline_panel.py`（移除 elem_classes + 改 Prompt Mode 顺序默认 + 加描述）
+  - `src/semantic_transmission/gui/batch_sender_panel.py`（改描述 + 改 Prompt Mode 顺序默认）
+  - `src/semantic_transmission/gui/batch_panel.py`（改 Prompt Mode 顺序默认 + 加描述）
+  - `src/semantic_transmission/gui/receiver_panel.py` / `config_panel.py`（如 M-12/M-13 没加简短描述，这里补）
+- **具体步骤**:
+  1. `theme.py` 删除 `.mode-radio input[type="radio"] { display: none !important; }` 这段 CSS
+  2. 统一四处 Prompt Mode Radio：
+     - `sender_panel.py`:139-140：`choices=[("VLM 自动生成","auto"),("手动输入","manual")], value="auto"` + 移除 `elem_classes=["mode-radio"]`
+     - `pipeline_panel.py`:387-391：同上
+     - `batch_sender_panel.py`:315-322：`choices=[("VLM 自动生成描述（每张独立）","auto"),("手动指定统一描述","manual")], value="auto"`
+     - `batch_panel.py`:278-285：同 batch_sender_panel
+  3. 调整各面板的 `on_prompt_mode_change` 显示逻辑：默认 auto 时手动 prompt 输入框隐藏
+  4. 批量发送描述简化：`"### 批量发送\n批量提取目录下所有图片的边缘图与语义描述，发送到对端接收端。"`
+  5. 为所有 6 个 Tab 补充一行简短 markdown 描述（与批量发送的风格统一）
+  6. `uv run semantic-tx gui` 人工抽查视觉效果
+  7. `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+- **验收标准**:
+  - 所有 4 个涉及发送的面板 Prompt Mode 默认为 "VLM 自动生成"，Radio 圆点显示且统一
+  - 所有 6 个 Tab 都有一行简短描述
+  - `uv run pytest` 通过
+  - `uv run ruff check .` 和 `uv run ruff format --check .` 通过
+- **自测方法**: `uv run semantic-tx gui` 人工抽查 6 个 Tab
+- **回滚方案**: `git revert` 本任务提交
+- **预估工作量**: S
+
+#### [M-15] 增强-批量端到端 Accordion 展示 + 每组质量评估
+
+- **阶段**: Phase 2.5 - GUI 完善与 ComfyUI 清除
+- **依赖**: M-12
+- **目标**: 批量端到端 Tab 改造展示层，支持每组独立折叠展示和可选的批量质量评估
+- **背景信息**: 当前 `batch_panel.py:320-325` 只显示"最后一张对比图"，多张结果丢失。`pipeline_panel.py:432-443` 有质量评估 Accordion（PSNR/SSIM/LPIPS），但 `batch_panel.py` 没有。本任务改造批量端到端 Tab：每组一个 Accordion 折叠块展示原图/边缘/还原/prompt；可选勾选"运行质量评估"，每组独立计算 + 最后给总体平均汇总。
+- **涉及文件**:
+  - `src/semantic_transmission/gui/batch_panel.py`（大改：结果展示区 + 评估勾选）
+  - `src/semantic_transmission/pipeline/batch_processor.py`（如需扩展 BatchResult/SampleResult 存储 metrics）
+  - `src/semantic_transmission/evaluation/__init__.py` 或新增工具函数（如需封装批量评估 helper）
+  - `tests/test_batch_panel.py` 或 `tests/test_evaluation.py`（新增/更新）
+- **具体步骤**:
+  1. 设计 Accordion 动态生成策略：运行前按 `BatchImageDiscoverer` 发现的图片数量预生成 N 个隐藏 Accordion，运行中逐一 update 展开可见
+  2. `batch_panel._run_batch_process` 返回值结构扩展：每组结果包含 `original_path`/`edge_path`/`restored_path`/`prompt`/`metrics`
+  3. 新增"运行质量评估（会额外耗时）"复选框，勾选时每组处理完后立即调用 `evaluation` 模块计算 PSNR/SSIM/LPIPS
+  4. 结束后汇总平均值展示在"总体评估" Dataframe
+  5. 如果 `BatchResult` / `SampleResult` 数据结构需要扩展支持 metrics，更新 `batch_processor.py`
+  6. 更新相关测试
+  7. `uv run semantic-tx gui` 人工测试批量端到端流程（3 张图）
+  8. `uv run pytest && uv run ruff check . && uv run ruff format --check .`
+- **验收标准**:
+  - 批量端到端 Tab 能逐组展示所有样本（Accordion 每组一个）
+  - 每组 Accordion 展开后显示原图 / 边缘图 / 还原图 / VLM prompt 文本
+  - 勾选"运行质量评估"后每组有 PSNR/SSIM/LPIPS，最后有总体平均表
+  - 不勾选时不跑评估，保持原有速度
+  - `uv run pytest` 通过
+  - `uv run ruff check .` 和 `uv run ruff format --check .` 通过
+- **自测方法**: `uv run semantic-tx gui` 手动测试 + `uv run pytest`
+- **回滚方案**: `git revert` 本任务提交
+- **预估工作量**: M
+
+#### [M-16] 归档-文档更新 + ComfyUI 历史归档 + 批量提 issue
+
+- **阶段**: Phase 2.5 - GUI 完善与 ComfyUI 清除
+- **依赖**: M-10, M-11, M-12, M-13, M-14, M-15
+- **目标**: 更新项目文档以反映 ComfyUI 完全清除，把 ComfyUI 原型阶段的历史材料归档到 archive 子目录，并批量提交 17 个 GitHub issue（13 个原 HANDOFF 清单有效项 + 4 个本次 brainstorming 新发现）
+- **背景信息**: M-10~M-15 完成后代码层面已无 ComfyUI 痕迹，但文档和资源里仍有大量 ComfyUI 引用。`docs/comfyui-setup.md` 和 `resources/comfyui/` 目录是 PR #6 ComfyUI 原型阶段的产物，当前已过时但有历史参考价值。本次 brainstorming 决定（2-b 方案）：归档到 `docs/archive/comfyui-prototype/` 子目录并加 README 说明。同时更新 demo-handbook、architecture、ROADMAP、cli-reference 等文档移除 ComfyUI 后端相关内容。**此外**：HANDOFF.md 第 4 节原有 14 个待提 issue + 本次 brainstorming 新发现 4 个 issue，原计划是 M-09 完成后在 PR 步骤中批量提交，但 HANDOFF.md 已因本次插入 Phase 2.5 而过时，issue 提交动作归属到本任务（archive 性质匹配）。注意原 HANDOFF 清单的 #12（ComfyUIReceiver 不继承 BaseReceiver）在 M-10 后已失效，不再提交，实际有效为 13 个。
+- **涉及文件**:
+  - `docs/comfyui-setup.md` → 移动到 `docs/archive/comfyui-prototype/comfyui-setup.md`
+  - `resources/comfyui/` → 移动到 `docs/archive/comfyui-prototype/workflows/`
+  - `docs/archive/comfyui-prototype/README.md`（新建）
+  - `docs/demo-handbook.md`（移除 ComfyUI 后端路径描述）
+  - `docs/architecture.md`（更新架构图 + 模块描述）
+  - `docs/ROADMAP.md`（更新 Phase 2 状态追加 ComfyUI 完全退出说明）
+  - `docs/cli-reference.md`（更新 demo / batch-demo / receiver 参数 + 重写 check 子命令为 vlm / diffusers / relay 三个独立子命令的完整参数文档）
+  - `CLAUDE.md`（更新项目阶段表、源码结构、环境前置条件、常用命令、技术栈五处 ComfyUI 相关内容）
+- **具体步骤**:
+  1. `git mv docs/comfyui-setup.md docs/archive/comfyui-prototype/comfyui-setup.md`
+  2. `git mv resources/comfyui docs/archive/comfyui-prototype/workflows`
+  3. 新建 `docs/archive/comfyui-prototype/README.md`：说明"Phase 2 ComfyUI 原型阶段的产物，当前代码已完全脱离 ComfyUI，此目录仅作历史参考"
+  4. 批量更新 docs 和 CLAUDE.md（`grep -r "ComfyUI" docs/ CLAUDE.md` 逐个处理）：
+     - `CLAUDE.md` 需要改动 5 处：
+       1. 常用命令部分：删除 `uv run python scripts/demo_e2e.py  # 运行端到端 demo（需 ComfyUI 服务运行中）` 中的"需 ComfyUI 服务运行中"
+       2. 常用命令部分：删除 `uv run semantic-tx check connection  # 检查 ComfyUI 连通性` 一行，或改为列出 `check vlm` / `check diffusers` / `check relay` 三个新命令
+       3. 项目阶段表 Phase 2 状态从"进行中"改为"已完成"，追加"接收端已完全脱离 ComfyUI"说明
+       4. 源码结构部分 common 模块描述从"ComfyUI 客户端、配置、类型定义"改为"配置、类型定义、模型检测"
+       5. 环境前置条件删除"ComfyUI 服务需在本地运行"一行；技术栈删除"ComfyUI API 模式"条目；`resources/comfyui/` 路径引用改为 `docs/archive/comfyui-prototype/workflows/`
+     - `docs/demo-handbook.md`：删除所有 ComfyUI 后端相关章节，只保留 Diffusers 路径
+     - `docs/architecture.md`：更新架构图（Mermaid），移除 ComfyUI 分支
+     - `docs/ROADMAP.md`：Phase 2 状态更新，补充 ComfyUI 完全退出说明
+     - `docs/cli-reference.md`：为 `check vlm` / `check diffusers` / `check relay --host X --port Y` 三个新子命令分别补充参数说明、输出格式示例、使用场景说明
+  5. 确认 `grep -r "ComfyUI" docs/ src/ CLAUDE.md --include="*.py" --include="*.md"` 只在 `docs/archive/` 和历史日志类文档（如 decision log、HANDOFF archive 等）中命中
+  6. **批量提交 17 个 GitHub issue**（使用 `gh issue create`）：
+     - **HANDOFF.md 原 14 个清单中有效的 13 个**（详见 HANDOFF.md archive 版第 4 节，排除 #12 "ComfyUIReceiver 不继承 BaseReceiver"，该项在 M-10 后已自然消失）：#1/#2/#3/#4/#5/#7/#8/#9/#10/#11/#13/#14/#15
+     - **本次 brainstorming 新发现的 4 个**（详见 TASK_STATUS.md 决策日志 2026-04-08 D11）：
+       - 新-1：**统一 socket 通信架构 & 批量 VRAM 临界 & 双端演示能力综合问题**（高优先级）—— 这个 issue 描述**问题本身**（单机 VLM+Diffusers 同时驻留会 OOM / GUI 无法作为完整双机演示工具 / 批量模型生命周期耦合），**明确不预设解决方案**。候选解法（Phase-Separated Batch / 统一 socket 架构 / 独立接收端监听 Tab / ModelStore 抽象）可参考 HANDOFF.md archive 版第 5 节 + 本次 brainstorming 记录，但下次 workflow 启动时**必须重新 brainstorm**，不直接复用本次或 HANDOFF 原种子结论
+       - 新-3：`SocketRelaySender` 不支持指定源端口（低，防火墙场景可能需要）
+       - 新-4：`SocketRelayReceiver` 不做来源白名单过滤（低）
+       - 新-5：GUI 缺少独立"接收端监听" Tab（中，与新-1 相关但可独立讨论）
+     - 每个 issue 需要 label（refactor / bug / architecture / vram / network / config / cleanup / priority-low/medium/high）
+     - 提交后把 issue 编号记录到 TASK_STATUS.md 的 M-16 交接记录
+- **验收标准**:
+  - `docs/archive/comfyui-prototype/` 目录存在且包含 README + comfyui-setup.md + workflows/
+  - `grep -r "ComfyUI" src/` 无命中
+  - `docs/demo-handbook.md` / `docs/architecture.md` / `docs/cli-reference.md` 已更新
+  - `docs/ROADMAP.md` Phase 2 状态已更新
+  - `CLAUDE.md` 5 处改动全部完成
+  - `docs/cli-reference.md` 包含 check vlm / check diffusers / check relay 三个子命令的完整参数文档
+  - 17 个 GitHub issue 已提交，编号记录在交接记录中
+- **自测方法**: `grep -r "ComfyUI" docs/ src/ CLAUDE.md --include="*.py" --include="*.md"` 只在 archive 目录和历史决策日志命中；`gh issue list --state open --limit 30` 显示 17 个新 issue
+- **回滚方案**: `git revert` 本任务提交；如 issue 已提交错误，`gh issue close <number>` 批量关闭
+- **预估工作量**: M（原估 S，加入 issue 批量提交后升级）
+
 ### Phase 3: 验证
 
 #### [M-09a] 修复-模型加载 GGUF 量化与分组件加载
@@ -269,30 +537,71 @@
 - **回滚方案**: `git checkout -- src/semantic_transmission/common/config.py src/semantic_transmission/receiver/diffusers_receiver.py pyproject.toml`
 - **预估工作量**: M
 
-#### [M-09] 验证-端到端测试与质量对比
+#### [M-09] 验证-端到端测试与 Phase 2.5 产物验收
 
 - **阶段**: Phase 3 - 验证
-- **依赖**: M-06, M-07, M-08, M-09a
-- **目标**: 完成端到端测试，验证 Diffusers 后端的生成质量和功能完整性
-- **背景信息**: 所有模块集成完毕后，需要验证：1) 单帧生成功能正确；2) 批量连续帧生成功能正确；3) GUI 和 CLI 两种入口都能正常工作；4) Diffusers 后端与 ComfyUI 后端的生成质量对比（使用现有 evaluation 模块的 PSNR/SSIM/LPIPS 指标）；5) 所有现有测试通过无回归。
-- **涉及文件**:
-  - `tests/test_diffusers_receiver.py`
-  - `tests/test_comfyui_receiver.py`
-  - `tests/test_cli.py`
+- **依赖**: M-09a, M-10, M-11, M-12, M-13, M-14, M-15, M-16
+- **目标**: 完成端到端最终验证，覆盖 Phase 2.5 所有新产物的功能工作性 + 全量回归测试，作为本 workflow 的最后一道关。
+- **背景信息**: 本任务是 receiver-decouple-comfyui workflow 的收尾验证。由于 Phase 2.5 已完全清除 ComfyUI 运行时代码（M-10~M-12），原定义里"Diffusers vs ComfyUI 质量对比"已**物理上无法执行** — ComfyUIReceiver 和 test_comfyui_receiver.py 都已被删除。本任务重新聚焦：① 全量回归（pytest + ruff）② CLI 实测（manual prompt + Diffusers，复用 M-09a 已有产物）③ GUI 手测覆盖 Phase 2.5 所有新产物（Diffusers 模型检测 / 接收端队列化 / 批量端到端 Accordion / VLM 优先默认 / 对端连接测试）④ 提交 M-09a 实测产物（`output/demo/*` 4 个 untracked 文件）⑤ 归纳最终测试结果作为 phase-review 的证据。跨后端 PSNR/SSIM/LPIPS 对比已经不适用（没有对照组），相关需求降级为 issue #8（采样器对齐）。
+- **涉及文件**（非代码修改，仅验证动作 + commit 4 个现有产物）:
+  - `tests/test_diffusers_receiver.py`（回归测试，不改动）
+  - `tests/test_cli.py`（回归测试，不改动）
+  - `tests/test_gui.py` 或 `tests/test_receiver_panel.py`（回归测试，不改动）
+  - `output/demo/comparison.png`（M-09a 产物，本任务 commit 入库）
+  - `output/demo/edge.png`（M-09a 产物，本任务 commit 入库）
+  - `output/demo/restored.png`（M-09a 产物，本任务 commit 入库）
+  - `output/demo/prompt.txt`（M-09a 产物，本任务 commit 入库）
+- **前置**: 环境变量必须已导出（`HF_HOME=D:/Downloads/Models/huggingface`、`MODEL_CACHE_DIR=D:/Downloads/Models`）
 - **具体步骤**:
-  1. 运行全量测试 `uv run pytest`，确认无回归
-  2. 运行 `uv run ruff check .` 和 `uv run ruff format --check .` 确认 CI 通过
-  3. 手动测试 GUI 端到端流程（Diffusers 后端）
-  4. 手动测试 CLI demo（Diffusers 后端）
-  5. 使用 evaluation 模块对比 ComfyUI 和 Diffusers 后端的生成质量
-  6. 记录测试结果
+  1. **全量回归测试**：`uv run pytest`，确认所有测试通过（Phase 2.5 可能新增了测试，总数应 >= 211 + Phase 2.5 新增数）
+  2. **代码检查**：`uv run ruff check .` 和 `uv run ruff format --check .` 通过
+  3. **CLI 实测**（验证 M-11 的产物）：
+     - `uv run semantic-tx check vlm` 应报告 VLM 模型就绪
+     - `uv run semantic-tx check diffusers` 应报告 Diffusers 三件套就绪
+     - `uv run semantic-tx check relay --host 127.0.0.1 --port 9000` 应按预期报"连接拒绝"（本地无接收端在监听是正常的）
+     - `uv run semantic-tx demo --image resources/test_images/canyon_jeep.jpg --prompt "A jeep driving through a desert canyon" --seed 42` 应成功生成（~64s），`output/demo/` 下产物齐备（可复用 M-09a 产物无需重跑）
+  4. **GUI 手测**（验证 M-12 ~ M-15 的产物，按以下 checklist 逐项验证）：
+     - [ ] `uv run semantic-tx gui` 启动无 import 错误
+     - [ ] **⚙ 配置** Tab：
+       - [ ] 无"接收端后端"Radio（M-12 移除）
+       - [ ] 无"ComfyUI 连接"区块（M-12 移除）
+       - [ ] 无"中继传输"区块（M-12 挪到批量发送 Tab）
+       - [ ] "VLM 模型"区能点击检查，状态正确
+       - [ ] "Diffusers 模型"区能点击检查，状态正确（M-12 新增）
+     - [ ] **▲ 单张发送** Tab：
+       - [ ] Prompt Mode Radio 默认 "VLM 自动生成"，Radio 圆点可见（M-14）
+       - [ ] 有简短描述（M-14）
+       - [ ] VLM auto 流程能完成：Canny + VLM describe + VLM unload
+       - [ ] 点击"→ 加入接收端队列"按钮（M-13 改造）能把 edge + prompt append 到接收端队列
+     - [ ] **📦 批量发送** Tab：
+       - [ ] 描述已简化（M-14）
+       - [ ] Prompt Mode Radio 默认 "VLM 自动生成"（M-14）
+       - [ ] "接收端 IP 地址"/"接收端端口"字段（M-12，原 config_panel 中继配置挪过来）
+       - [ ] "测试对端连接"按钮能工作（测 127.0.0.1:9000 应报连接拒绝）
+     - [ ] **▼ 接收端** Tab（M-13 队列化）：
+       - [ ] UI 显示"队列 + 加入 + 运行 + 清空 + 卸载"按钮组
+       - [ ] 队列空时点"运行队列"给出合理提示
+       - [ ] 加入 1 项后运行队列 → 模型加载一次 → 完成 → 显式 unload（可通过 nvidia-smi 旁观验证显存回落）
+       - [ ] 加入 2-3 项后一键运行能循环完成
+     - [ ] **◆ 端到端演示** Tab：
+       - [ ] Prompt Mode 默认 VLM auto（M-14）
+       - [ ] 单机一站式流程正常工作
+     - [ ] **◇ 批量端到端** Tab（M-15 Accordion）：
+       - [ ] Prompt Mode 默认 VLM auto（M-14）
+       - [ ] 运行后每组显示为一个 Accordion 折叠块
+       - [ ] 展开 Accordion 可见原图/边缘/还原/prompt
+       - [ ] 勾选"运行质量评估"后每组显示 PSNR/SSIM/LPIPS
+       - [ ] 总体平均指标表显示正常
+  5. **提交 M-09a 实测产物**：把 `output/demo/{comparison,edge,restored}.png` + `prompt.txt` 4 个 untracked 文件纳入 M-09 的 commit（配合 `.gitignore` 的 `!output/demo/` 例外规则）
+  6. **记录测试结果**：把上述 checklist 的逐项结果写入 TASK_STATUS.md 的 M-09 交接记录
 - **验收标准**:
   - `uv run pytest` 全部通过
   - `uv run ruff check .` 和 `uv run ruff format --check .` 通过
-  - GUI 端到端演示可完整运行
-  - CLI demo 可完整运行
-  - 质量对比报告已生成
-- **自测方法**: `uv run pytest && uv run ruff check . && uv run ruff format --check .`
-- **回滚方案**: 不涉及代码修改，仅验证
+  - CLI 三个 check 子命令都能运行并返回合理结果
+  - CLI `demo` 命令产物齐备（复用 M-09a 产物即可）
+  - GUI 手测 checklist 全部打勾（6 个 Tab 均验证）
+  - `output/demo/*` 4 个产物已在本任务 commit 入库
+- **自测方法**: `uv run pytest && uv run ruff check . && uv run ruff format --check .`；随后 `uv run semantic-tx gui` 逐项走 checklist
+- **回滚方案**: 本任务不修改源码，仅验证 + commit 4 个产物。如 commit 需要回滚：`git restore --staged output/demo/ && git checkout -- output/demo/`
 - **预估工作量**: L
 

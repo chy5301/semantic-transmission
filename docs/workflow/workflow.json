@@ -29,6 +29,10 @@
       "exitCriteria": "批量连续帧、后端切换、GUI/CLI 集成完成"
     },
     {
+      "name": "Phase 2.5: GUI 完善与 ComfyUI 清除",
+      "exitCriteria": "ComfyUI 运行时代码完全移除，GUI 可测试（接收端队列化、批量端到端完整展示、Diffusers 模型检测就绪），文档完成归档"
+    },
+    {
       "name": "Phase 3: 验证",
       "exitCriteria": "全部测试通过，端到端流程可运行"
     }
