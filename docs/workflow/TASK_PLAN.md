@@ -250,16 +250,19 @@
 - **依赖**: M-09a
 - **目标**: 删除 ComfyUI 运行时代码路径，简化 receiver 工厂和 common/config；同时新建 `common/model_check.py` 作为 CLI 和 GUI 共享的模型就绪检测单一数据源
 - **背景信息**: receiver-decouple-comfyui workflow 的核心目标是接收端脱离 ComfyUI。M-03 时采用 Strangler Fig 模式保留 ComfyUIReceiver 作为 fallback，但 M-09a 已验证 Diffusers 路径稳定，fallback 不再必要。全面清除 ComfyUI 运行时代码（保留 docs 和 resources 作为历史材料，由 M-16 处理）。本任务聚焦底层：common/comfyui_client.py、receiver/comfyui_receiver.py、对应测试、receiver 工厂、common/config 和 common 包的 re-export。同时为避免 M-11 和 M-12 重复实现模型检测逻辑（CLI 从 GUI 模块 import 会造成依赖方向错误），本任务顺便新建 `common/model_check.py` 作为 VLM / Diffusers 模型检测的单一数据源，CLI 和 GUI 都从这里 import。CLI 和 GUI 层的清理分别由 M-11/M-12 接续。**`SemanticTransmissionConfig`** 类型签名持有两个 `ComfyUIConfig`（sender/receiver），是 ComfyUI 场景专用的顶层配置，本任务一并删除（影响 `test_config.py` 的 `TestSemanticTransmissionConfig` 测试类）。
-- **涉及文件**（10 — 超出 `maxFilesPerTask=8` 约束 2 个，原因见任务末尾"约束例外说明"）:
+- **涉及文件**（13 — 超出 `maxFilesPerTask=8` 约束 5 个，原因见任务末尾"约束例外说明"）:
   - `src/semantic_transmission/common/comfyui_client.py`（删除）
   - `src/semantic_transmission/receiver/comfyui_receiver.py`（删除）
+  - `src/semantic_transmission/sender/comfyui_sender.py`（**删除** — 2026-04-09 Plan Audit 修正追加：连锁依赖 `common.comfyui_client.ComfyUIClient`，且被 `sender/__init__.py` re-export，不删会导致 `import semantic_transmission.sender` ImportError）
   - `tests/test_comfyui_client.py`（删除）
   - `tests/test_comfyui_receiver.py`（删除）
-  - `src/semantic_transmission/common/__init__.py`（清理 re-export：移除 `ComfyUIClient` / `ComfyUIConfig` / `ComfyUIConnectionError` / `ComfyUIError` / `ComfyUITimeoutError` / `SemanticTransmissionConfig` 六项；视情况 re-export `check_vlm_model` / `check_diffusers_receiver_model`）
+  - `tests/test_comfyui_sender.py`（**删除** — 同 `sender/comfyui_sender.py` 连锁关系）
+  - `src/semantic_transmission/common/__init__.py`（清理 re-export：移除 `ComfyUIClient` / `ComfyUIConfig` / `ComfyUIConnectionError` / `ComfyUIError` / `ComfyUITimeoutError` / `SemanticTransmissionConfig` 六项；re-export `check_vlm_model` / `check_diffusers_receiver_model`）
   - `src/semantic_transmission/common/config.py`（移除 `ComfyUIConfig` 类 + 移除 `SemanticTransmissionConfig` 类）
   - `src/semantic_transmission/common/model_check.py`（**新建**：`check_vlm_model` / `check_diffusers_receiver_model` 纯函数）
   - `src/semantic_transmission/receiver/__init__.py`（简化 `create_receiver`）
-  - `tests/test_config.py`（**删除** `TestComfyUIConfig` 和 `TestSemanticTransmissionConfig` 两个测试类；保留 `get_default_vlm_path` 等与 ComfyUI 无关的测试）
+  - `src/semantic_transmission/sender/__init__.py`（**连锁清理** — 移除 `ComfyUISender` re-export 和 `__all__` 条目）
+  - `tests/test_config.py`（**重写**：删除 `TestComfyUIConfig` / `TestSemanticTransmissionConfig` 测试类；新增 `get_default_vlm_path` / `get_default_z_image_path` / `DiffusersReceiverConfig` 测试类）
   - `tests/test_receiver_factory.py`（移除 backend 切换用例）
 - **具体步骤**:
   1. grep 确认 `common/comfyui_client.py` 和 `common.config.ComfyUIConfig` / `SemanticTransmissionConfig` 在 CLI/GUI 之外无其他引用（CLI/GUI 引用由 M-11/M-12 接续清理）
@@ -297,7 +300,13 @@
 - **自测方法**: `uv run pytest tests/test_receiver_factory.py tests/test_config.py tests/test_diffusers_receiver.py`
 - **回滚方案**: `git revert` 本任务提交
 - **预估工作量**: M
-- **约束例外说明**: 本任务涉及文件数 10 > `maxFilesPerTask=8`。超出的 2 个文件（`common/__init__.py` + `tests/test_config.py`）是 `common/comfyui_client.py` 删除和 `ComfyUIConfig` 移除的**必要连锁改动**，不能推迟：不处理 `common/__init__.py` 会导致 Python 启动时 `ImportError`，不处理 `test_config.py` 会导致 pytest 立即失败。拆分为 M-10a/M-10b 会引入额外的依赖链复杂度但无实质收益。2026-04-09 Plan Audit 修正后的决定：作为单次例外允许超约束，不修改 workflow.json 的 `maxFilesPerTask`
+- **约束例外说明**: 本任务涉及文件数 13 > `maxFilesPerTask=8`。超出的 5 个文件均为 `common/comfyui_client.py` + `ComfyUIConfig` 移除的**必要连锁改动**：
+  1. `common/__init__.py` — 不处理会导致 Python 启动时 `ImportError`
+  2. `tests/test_config.py` — 不处理会导致 pytest collection 失败
+  3. `sender/comfyui_sender.py`（2026-04-09 Plan Audit 修正追加）— 直接 import 已删的 `ComfyUIClient`，不删会导致 `sender/__init__.py` 链式 ImportError，整个测试套全挂
+  4. `sender/__init__.py`（2026-04-09 追加）— re-export `ComfyUISender`，不改会导致 `import semantic_transmission.sender` ImportError
+  5. `tests/test_comfyui_sender.py`（2026-04-09 追加）— 直接依赖 `ComfyUISender`，保留会 pytest collection 失败
+  拆分为 M-10a/M-10b 会引入额外的依赖链复杂度但无实质收益。2026-04-09 Plan Audit 修正后的决定：作为单次例外允许超约束，不修改 workflow.json 的 `maxFilesPerTask`。注：`scripts/run_sender.py` / `scripts/run_receiver.py` / `scripts/demo_e2e.py` 也依赖已删的 `common.comfyui_client`，但为避免 M-10 范围进一步膨胀，由 **M-16 归档** 统一处理（M-16 涉及文件清单同步更新）
 
 #### [M-11] 清理-CLI 层 ComfyUI 分支 + check 子命令改写
 
@@ -478,11 +487,14 @@
 - **依赖**: M-10, M-11, M-12, M-13, M-14, M-15
 - **目标**: 更新项目文档以反映 ComfyUI 完全清除，把 ComfyUI 原型阶段的历史材料归档到 archive 子目录，并批量提交 17 个 GitHub issue（13 个原 HANDOFF 清单有效项 + 4 个本次 brainstorming 新发现）
 - **背景信息**: M-10~M-15 完成后代码层面已无 ComfyUI 痕迹，但文档和资源里仍有大量 ComfyUI 引用。`docs/comfyui-setup.md` 和 `resources/comfyui/` 目录是 PR #6 ComfyUI 原型阶段的产物，当前已过时但有历史参考价值。此外 `scripts/test_comfyui_connection.py` 和 `scripts/verify_workflows.py` 两个脚本直接 import `common.comfyui_client` 和 `ComfyUIConfig`，M-10 之后会立即失效，也必须归档。本次 brainstorming 决定（2-b 方案）：归档到 `docs/archive/comfyui-prototype/` 子目录并加 README 说明。同时更新 demo-handbook、architecture、ROADMAP、cli-reference 等文档移除 ComfyUI 后端相关内容。**此外**：HANDOFF.md 第 4 节原有 14 个待提 issue + 本次 brainstorming 新发现 4 个 issue，原计划是 M-09 完成后在 PR 步骤中批量提交，但 HANDOFF.md 已因本次插入 Phase 2.5 而过时，issue 提交动作归属到本任务（archive 性质匹配）。注意原 HANDOFF 清单的 #12（ComfyUIReceiver 不继承 BaseReceiver）在 M-10 后已失效，不再提交，实际有效为 13 个，加 4 个新 = 17 个。
-- **涉及文件**（10 — 超出 `maxFilesPerTask=8` 约束 2 个，原因见任务末尾"约束例外说明"）:
+- **涉及文件**（13 — 超出 `maxFilesPerTask=8` 约束 5 个，原因见任务末尾"约束例外说明"）:
   - `docs/comfyui-setup.md` → 移动到 `docs/archive/comfyui-prototype/comfyui-setup.md`
   - `resources/comfyui/` → 移动到 `docs/archive/comfyui-prototype/workflows/`
   - `scripts/test_comfyui_connection.py` → 移动到 `docs/archive/comfyui-prototype/scripts/test_comfyui_connection.py`
   - `scripts/verify_workflows.py` → 移动到 `docs/archive/comfyui-prototype/scripts/verify_workflows.py`
+  - `scripts/run_sender.py` → 移动到 `docs/archive/comfyui-prototype/scripts/run_sender.py`（**2026-04-09 追加** — M-10 执行时发现该脚本依赖已删的 `common.comfyui_client` / `ComfyUIConfig` / `sender/comfyui_sender`，必须归档）
+  - `scripts/run_receiver.py` → 移动到 `docs/archive/comfyui-prototype/scripts/run_receiver.py`（**2026-04-09 追加** — 同上，依赖已删的 `receiver/comfyui_receiver`）
+  - `scripts/demo_e2e.py` → 移动到 `docs/archive/comfyui-prototype/scripts/demo_e2e.py`（**2026-04-09 追加** — 同上，完整双端 ComfyUI demo 脚本，已被 `semantic-tx demo` 子命令替代）
   - `docs/archive/comfyui-prototype/README.md`（新建）
   - `docs/demo-handbook.md`（移除 ComfyUI 后端路径描述）
   - `docs/architecture.md`（更新架构图 + 模块描述）
@@ -495,7 +507,10 @@
   3. `git mv resources/comfyui docs/archive/comfyui-prototype/workflows`
   4. `git mv scripts/test_comfyui_connection.py docs/archive/comfyui-prototype/scripts/test_comfyui_connection.py`
   5. `git mv scripts/verify_workflows.py docs/archive/comfyui-prototype/scripts/verify_workflows.py`
-  6. 新建 `docs/archive/comfyui-prototype/README.md`：说明"Phase 2 ComfyUI 原型阶段的产物，当前代码已完全脱离 ComfyUI，此目录仅作历史参考。内含：原 ComfyUI 部署指南（comfyui-setup.md）、原 ComfyUI 工作流 JSON（workflows/）、原连通性测试和工作流验证脚本（scripts/，依赖已删除的 common.comfyui_client，无法运行）"
+  5a. `git mv scripts/run_sender.py docs/archive/comfyui-prototype/scripts/run_sender.py`（2026-04-09 追加）
+  5b. `git mv scripts/run_receiver.py docs/archive/comfyui-prototype/scripts/run_receiver.py`（2026-04-09 追加）
+  5c. `git mv scripts/demo_e2e.py docs/archive/comfyui-prototype/scripts/demo_e2e.py`（2026-04-09 追加）
+  6. 新建 `docs/archive/comfyui-prototype/README.md`：说明"Phase 2 ComfyUI 原型阶段的产物，当前代码已完全脱离 ComfyUI，此目录仅作历史参考。内含：原 ComfyUI 部署指南（comfyui-setup.md）、原 ComfyUI 工作流 JSON（workflows/）、原连通性测试和工作流验证脚本（scripts/，依赖已删除的 common.comfyui_client，无法运行）、原始端到端 demo 脚本 run_sender.py / run_receiver.py / demo_e2e.py（已被 `semantic-tx demo`、`semantic-tx sender`、`semantic-tx receiver` 子命令取代）"
   7. **更新 `CLAUDE.md`**（grep "ComfyUI" CLAUDE.md 命中约 10 处，逐项处理）：
      - 常用命令部分：删除 `uv run python scripts/demo_e2e.py  # 运行端到端 demo（需 ComfyUI 服务运行中）` 一行的"需 ComfyUI 服务运行中"
      - 常用命令部分：删除 `uv run semantic-tx check connection  # 检查 ComfyUI 连通性` 一行，改为 3 行：`check vlm` / `check diffusers` / `check relay --host X --port Y`
@@ -541,7 +556,10 @@
   - `gh issue list --state open --limit 30` 显示 17 个新 issue
 - **回滚方案**: `git revert` 本任务提交；如 issue 已提交错误，`gh issue close <number>` 批量关闭
 - **预估工作量**: M（原估 S，加入 scripts 归档 + issue 批量提交后升级）
-- **约束例外说明**: 本任务涉及文件数 10 > `maxFilesPerTask=8`。超出的 2 个文件（`scripts/test_comfyui_connection.py` + `scripts/verify_workflows.py`）是 M-10 删除 `common/comfyui_client.py` 和 `ComfyUIConfig` 的**必要连锁归档**，不能推迟：这两个脚本在 M-10 之后会立即因 ImportError 失效，必须在 Phase 2.5 内处理。放在 M-16 归档是最贴合任务性质的选择。2026-04-09 Plan Audit 修正后的决定：作为单次例外允许超约束，不修改 workflow.json 的 `maxFilesPerTask`
+- **约束例外说明**: 本任务涉及文件数 13 > `maxFilesPerTask=8`。超出的 5 个文件均与 M-10 删除 `common/comfyui_client.py` 和 `ComfyUIConfig` 的**必要连锁归档**相关：
+  - `scripts/test_comfyui_connection.py` + `scripts/verify_workflows.py`（原有 2 个）
+  - `scripts/run_sender.py` + `scripts/run_receiver.py` + `scripts/demo_e2e.py`（2026-04-09 M-10 执行时发现追加 3 个）
+  这 5 个脚本都在 M-10 之后立即因 ImportError 失效，必须在 Phase 2.5 内处理。放在 M-16 归档是最贴合任务性质的选择。2026-04-09 Plan Audit 修正后的决定：作为单次例外允许超约束，不修改 workflow.json 的 `maxFilesPerTask`
 
 ### Phase 3: 验证
 

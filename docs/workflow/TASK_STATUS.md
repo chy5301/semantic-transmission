@@ -11,9 +11,9 @@
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 3 | 0 | 0 |
-| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 0 | 0 | 7 |
+| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 1 | 0 | 6 |
 | Phase 3: 验证 | 2 | 1 | 0 | 1 |
-| **合计** | **18** | **10** | **0** | **8** |
+| **合计** | **18** | **11** | **0** | **7** |
 
 ## 任务状态
 
@@ -28,7 +28,7 @@
 | M-06 | 实现-批量连续帧图像生成 | Phase 2 | ✅ 已完成 | M-04 |
 | M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ✅ 已完成 | M-05 |
 | M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ✅ 已完成 | M-05 |
-| M-10 | 清除-ComfyUI 底层运行时代码 | Phase 2.5 | ⬜ 待开始 | M-09a |
+| M-10 | 清除-ComfyUI 底层运行时代码 | Phase 2.5 | ✅ 已完成 | M-09a |
 | M-11 | 清理-CLI 层 ComfyUI 分支 + check 子命令改写 | Phase 2.5 | ⬜ 待开始 | M-10 |
 | M-12 | 清理-GUI 层 ComfyUI 分支 + config_panel 重构 | Phase 2.5 | ⬜ 待开始 | M-10 |
 | M-13 | 重构-接收端 Tab 统一队列模式 | Phase 2.5 | ⬜ 待开始 | M-12 |
@@ -101,6 +101,11 @@
   - **修正 5 (M5 + O2) — M-12 显式引用 D11 "新-2 bug 顺手修复"决策**：M-12 背景信息和步骤 5 都显式标注"修复 relay 字段语义错位 bug"，避免下次 review 时漏掉这是"顺手修 bug"而非"新增功能"
   - **修正 6 (L6) — M-16 `docs/cli-reference.md` 细化**：原"更新 check 参数文档"改为明确列出 check vlm / check diffusers / check relay 三个子命令各自补充完整文档
   - **修正 7 (O4 + O5 已合并进 P1 修正 1)**：M-09 验证 Phase 2.5 产物的要求 + `output/demo/*` 4 个 untracked 文件作为 M-09 commit 的一部分
+- 2026-04-09: [M-10 计划变更] M-10 执行时发现计划遗漏两处连锁依赖，按"必要连锁"例外逻辑扩展范围：
+  - **发现 1**：`src/semantic_transmission/sender/comfyui_sender.py` 依赖 `common.comfyui_client.ComfyUIClient`，并被 `sender/__init__.py` re-export，同时 `tests/test_comfyui_sender.py` 对其单测。M-10 若只删 `common/comfyui_client.py` 而不删 `sender/comfyui_sender.py`，`import semantic_transmission.sender` 会立即 ImportError，整个 pytest collection 阶段挂掉（测试范围内的三件套只通过是因为它们没 import sender，但其他测试文件会全炸）。该文件是 PR #14 之后的 dead code（GUI/CLI 发送端均已改用 `LocalCannyExtractor`）。决定在 M-10 一并删除 `sender/comfyui_sender.py`、清理 `sender/__init__.py` re-export、删除 `tests/test_comfyui_sender.py`，作为"必要连锁删除"追加到 M-10 范围
+  - **发现 2**：`scripts/run_sender.py`、`scripts/run_receiver.py`、`scripts/demo_e2e.py` 也直接 import 了 `common.comfyui_client` / `ComfyUIConfig` / `comfyui_receiver` / `comfyui_sender`，M-10 之后会 ImportError。M-16 原计划只归档 `scripts/verify_workflows.py` + `scripts/test_comfyui_connection.py` 两个脚本，**遗漏了上述 3 个**。决定不在 M-10 处理（避免范围进一步膨胀），由 M-16 一并归档到 `docs/archive/comfyui-prototype/scripts/`。本次 M-10 commit 同步更新 TASK_PLAN.md 的 M-16 涉及文件清单和约束例外说明
+  - **M-10 涉及文件总数**：从 10 → 13（原 10 + sender 3）。与 `common/__init__.py` + `test_config.py` 的超约束理由一致（ComfyUI 底层删除的必要连锁），属于单次例外延伸，不修改 `workflow.json` 的 `maxFilesPerTask`
+  - **test_config.py 重写**：原计划"保留 `get_default_vlm_path` 等与 ComfyUI 无关的测试"，但原文件内仅有 ComfyUIConfig/SemanticTransmissionConfig 相关测试。重写为覆盖 `get_default_vlm_path` / `get_default_z_image_path` / `DiffusersReceiverConfig` 的新测试集（10 项）
 - 2026-04-08: [下次 workflow 方向修正] 原 HANDOFF.md 第 5 节把"Phase-Separated Batch"作为下次 workflow 预定种子并包含具体设计选择（β4 目录即队列、γ3 batch_summary.json、CLI 策略 β 等）。本次 brainstorming 发现：
   - Phase-Separated Batch 只是解决"单机 VRAM 临界 + 批量模型生命周期"的**候选方案之一**
   - 用户新提出的"统一 socket 通信架构"是另一个候选方案，且与 GUI 双端传输 / 接收端监听 Tab 问题有强交叉
@@ -511,3 +516,69 @@
 **遗留问题**:
 - ComfyUI 特有采样器配置（AuraFlow shift=3、res_multistep）未在 diffusers 端对齐，可能影响生成质量，留给 M-09 评估或后续优化
 - DiffusersReceiver 模型加载缺乏抽象的问题（已记录为待提 issue），本任务进一步证实：transformer/controlnet/pipeline 三段加载逻辑写死在 `load()` 中
+
+---
+
+#### [M-10] 清除-ComfyUI 底层运行时代码 + 抽取模型检测模块 — 交接记录
+
+**完成时间**: 2026-04-09
+
+**完成内容**:
+- 彻底删除 ComfyUI 运行时底层：`common/comfyui_client.py` + `ComfyUIConfig` + `SemanticTransmissionConfig` 全部移除
+- 删除接收端 ComfyUI 实现：`receiver/comfyui_receiver.py` + 对应测试
+- **计划变更**：连锁删除发送端 ComfyUI 实现 `sender/comfyui_sender.py` + 测试 + `sender/__init__.py` 的 re-export（详见决策日志 2026-04-09 M-10 计划变更 条目）
+- 新建 `common/model_check.py` 作为 CLI / GUI 共享的模型就绪检测单一数据源，含两个纯函数：`check_vlm_model(model_path=None)` 和 `check_diffusers_receiver_model(config=None)`
+- 简化 `create_receiver()` 工厂函数：移除 `backend` 参数，直接返回 `DiffusersReceiver` 实例
+- 重写 `tests/test_config.py`：覆盖 `get_default_vlm_path` / `get_default_z_image_path` / `DiffusersReceiverConfig`（10 项）
+
+**修改的文件**（13）:
+- `src/semantic_transmission/common/comfyui_client.py`（**删除**）
+- `src/semantic_transmission/receiver/comfyui_receiver.py`（**删除**）
+- `src/semantic_transmission/sender/comfyui_sender.py`（**删除**，计划变更）
+- `tests/test_comfyui_client.py`（**删除**）
+- `tests/test_comfyui_receiver.py`（**删除**）
+- `tests/test_comfyui_sender.py`（**删除**，计划变更）
+- `src/semantic_transmission/common/model_check.py`（**新建**）
+- `src/semantic_transmission/common/config.py` — 删除 `ComfyUIConfig` 和 `SemanticTransmissionConfig`，更新模块 docstring
+- `src/semantic_transmission/common/__init__.py` — 清理 re-export，改为导出 `DiffusersReceiverConfig` / `check_vlm_model` / `check_diffusers_receiver_model` / 两个 path helper
+- `src/semantic_transmission/receiver/__init__.py` — `create_receiver()` 签名简化
+- `src/semantic_transmission/sender/__init__.py` — 移除 `ComfyUISender` re-export（计划变更）
+- `tests/test_config.py` — 重写为 `get_default_*` + `DiffusersReceiverConfig` 测试集
+- `tests/test_receiver_factory.py` — 移除 `TestCreateReceiverComfyUI`，其他用例改用无参 `create_receiver()`
+
+**验证结果**:
+- 自测三件套: ✅ `uv run pytest tests/test_receiver_factory.py tests/test_config.py tests/test_diffusers_receiver.py` → **38 passed**
+- Ruff check（M-10 范围）: ✅ `common/` + `receiver/` + `sender/` + 三个测试文件全部通过
+- Ruff format（M-10 范围）: ✅ 14 files（含新建 `model_check.py` 一次格式化后）全部符合
+- 四项 ImportError 验收点: ✅ `ComfyUIReceiver` / `ComfyUIConfig` / `SemanticTransmissionConfig` / `ComfyUIClient` 全部不可导入
+- `common/model_check.py` 烟测: ✅ `check_vlm_model()` 返回 VLM 就绪；`check_diffusers_receiver_model()` 返回 transformer/ControlNet ✓、HF cache ✗（默认路径下未命中，符合纯函数预期行为）
+- 整个项目的 `ruff check .` 预期仍失败（CLI/GUI 残留 `import ComfyUIConfig` 等，由 M-11/M-12 清理），这是计划中的"预期预期失败"
+
+**关键决策**:
+- **新增 `common/model_check.py` 放在 M-10 而非 M-11/M-12 内重复实现**：遵循"CLI 不能从 GUI import"的依赖方向约束（Plan Audit 修正 3 的原因）
+- **`common/__init__.py` re-export `check_vlm_model` / `check_diffusers_receiver_model`**：方便下游以 `from semantic_transmission.common import check_vlm_model` 引用
+- **`test_config.py` 重写而非清空**：保留对 `common/config.py` 公共 API 的测试覆盖，否则该模块将无单测
+- **`test_receiver_factory.py` 不再保留 backend 参数**：`create_receiver()` 既然已简化签名，测试直接用无参调用；未做向后兼容包装
+- **sender/scripts 处理范围**：sender 端的 3 个文件作为 M-10 "必要连锁删除"就地处理；scripts 的 3 个额外文件归入 M-16 批量归档（M-16 涉及文件清单本 commit 同步更新）
+- **Diffusers HF cache 路径**：`check_diffusers_receiver_model` 使用 `HF_HOME` 环境变量 + `hub/models--{name}` 结构判断，与 diffusers `from_pretrained` 默认 cache 行为对齐
+
+**计划变更**:
+- M-10 涉及文件从 10 → 13（sender 3 个文件连锁删除）
+- TASK_PLAN.md 同步更新 M-10 涉及文件清单 + 约束例外说明
+- TASK_PLAN.md 同步更新 M-16 涉及文件清单（追加 `scripts/run_sender.py` / `scripts/run_receiver.py` / `scripts/demo_e2e.py` 归档）+ 约束例外说明
+- TASK_STATUS.md 决策日志已追加 2026-04-09 [M-10 计划变更] 条目
+
+**下一任务**: M-11 清理-CLI 层 ComfyUI 分支 + check 子命令改写
+
+**下一任务需关注**:
+- `cli/demo.py` / `cli/batch_demo.py` / `cli/receiver.py` 移除 `--backend` 选项和相关 ComfyUI import 分支，所有接收端创建统一改走 `create_receiver()` 无参调用
+- `cli/check.py` 完全重写为三个子命令：`check vlm` / `check diffusers` / `check relay --host --port`
+- `common/model_check.py` 已就绪，直接 `from semantic_transmission.common.model_check import check_vlm_model, check_diffusers_receiver_model`
+- `check relay` 需 import `SocketRelaySender` 做 TCP 连通性测试（connect 后立即 close）
+- `tests/test_cli.py` 需删除 backend 用例，新增 3 个 check 子命令用例
+- 完成 M-11 后可运行 `uv run ruff check src/semantic_transmission/cli tests/test_cli.py` 确认 CLI 层清理完毕
+
+**遗留问题**:
+- scripts/run_sender.py / run_receiver.py / demo_e2e.py 当前状态为 ImportError（依赖已删除的 `common.comfyui_client`）。这是预期的，M-16 归档时处理
+- 整个项目 `uv run ruff check .` 仍失败，因 CLI/GUI 层有 `import ComfyUIClient` 残留（M-11/M-12 清理）
+- `check_diffusers_receiver_model` 对 HF cache 的检测逻辑简化为"存在 `models--{name}` 目录即通过"，不深入检查 `snapshots/` 下 pipeline_index.json 或 specific revision；对 Phase 2.5 的 GUI 检测按钮场景足够使用，精细化可留给后续 issue
