@@ -11,9 +11,9 @@
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 3 | 0 | 0 |
-| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 3 | 0 | 4 |
+| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 4 | 0 | 3 |
 | Phase 3: 验证 | 2 | 1 | 0 | 1 |
-| **合计** | **18** | **13** | **0** | **5** |
+| **合计** | **18** | **14** | **0** | **4** |
 
 ## 任务状态
 
@@ -31,7 +31,7 @@
 | M-10 | 清除-ComfyUI 底层运行时代码 | Phase 2.5 | ✅ 已完成 | M-09a |
 | M-11 | 清理-CLI 层 ComfyUI 分支 + check 子命令改写 | Phase 2.5 | ✅ 已完成 | M-10 |
 | M-12 | 清理-GUI 层 ComfyUI 分支 + config_panel 重构 | Phase 2.5 | ✅ 已完成 | M-10 |
-| M-13 | 重构-接收端 Tab 统一队列模式 | Phase 2.5 | ⬜ 待开始 | M-12 |
+| M-13 | 重构-接收端 Tab 统一队列模式 | Phase 2.5 | ✅ 已完成 | M-12 |
 | M-14 | 打磨-UI 圆点 + 描述 + Prompt Mode 默认值 | Phase 2.5 | ⬜ 待开始 | 无 |
 | M-15 | 增强-批量端到端 Accordion 展示 + 每组质量评估 | Phase 2.5 | ⬜ 待开始 | M-12 |
 | M-16 | 归档-文档更新 + ComfyUI 历史归档 | Phase 2.5 | ⬜ 待开始 | M-10, M-11, M-12, M-13, M-14, M-15 |
@@ -688,3 +688,54 @@
 **遗留问题**:
 - `gui/app.py` 标题行仍有"基于 ComfyUI + VLM 的语义级图像压缩传输"文案；`gui/batch_sender_panel.py` Markdown 和 `gui/sender_panel.py` docstring / 日志仍有"不依赖 ComfyUI"表述。这些由 M-16 统一文案更新
 - GUI 层仍无 pytest 覆盖，M-12 仅依赖 `create_app()` 烟测；M-13 应补齐 `tests/test_gui_receiver_panel.py` 至少覆盖队列行为
+
+---
+
+#### [M-13] 重构-接收端 Tab 统一队列模式 — 交接记录
+
+**完成时间**: 2026-04-09
+
+**完成内容**:
+- `gui/receiver_panel.py` 完全重写为队列模式：gr.State 维护 `queue`（list[dict]） + `receiver_state`（BaseReceiver | None）；UI 由原"单张即时触发"改为"加入队列 → 运行队列 → 清空/卸载"四按钮工作流；还原结果改用 `gr.Gallery` 展示
+- 抽出 6 个纯函数便于测试：`add_to_queue` / `append_external_item` / `clear_queue` / `unload_model` / `run_queue`（generator）/ `_format_queue_df` / `_persist_edge`；`run_queue` 通过 `create_receiver()` 一次加载模型并在本次调用内循环 `receiver.process()`，结束后**保持 receiver 引用**供下次运行复用
+- 单张场景作为"队列 1 项"特例，无需额外 UI；"卸载模型"按钮显式 `receiver.unload()` 并清空 state
+- `sender_panel.py` 的 `send_to_receiver_btn` 按钮文案从"→ 发送到接收端"改为"→ 加入接收端队列"
+- `app.py` 更新 Tab 间传递绑定：`sender.send_to_receiver_btn` 的 click handler 从 `lambda edge, prompt: (edge, prompt)` 改为 `receiver_panel.append_external_item`；inputs 新增 `receiver.queue_state`，outputs 从 `edge_input/prompt_input` 改为 `queue_state/queue_display`
+- 新建 `tests/test_gui_receiver_panel.py`：23 项测试覆盖 _format_queue_df / add_to_queue / append_external_item / clear_queue / unload_model / run_queue（含 mock receiver、空队列、单项、多项、每项失败续跑、create 失败等路径）
+
+**修改的文件**（4）:
+- `src/semantic_transmission/gui/receiver_panel.py` — **重写**，133 行增至 ~260 行
+- `src/semantic_transmission/gui/sender_panel.py` — 按钮文案 1 处
+- `src/semantic_transmission/gui/app.py` — Tab 间传递绑定 + 新增 `append_external_item` import
+- `tests/test_gui_receiver_panel.py` — **新建**，23 项测试
+
+**验证结果**:
+- 新测试专项: ✅ `uv run pytest tests/test_gui_receiver_panel.py` → **23 passed**
+- 全量测试: ✅ `uv run pytest tests/` → **197 passed**（M-12 时 174 + 新增 23）
+- Ruff check（全项目）: ✅ All checks passed
+- Ruff format（全项目）: ✅ 58 files formatted
+- GUI 烟测 `create_app()`: ✅ 所有 6 个 Tab 正常构建，无 import / 绑定错误
+
+**关键决策**:
+- **保留 receiver 跨运行**：`run_queue` 结束时返回 receiver 引用保存到 gr.State，下次运行优先复用。避免"连续点两次运行队列都要重新加载 18 GB 模型"的痛点。显式释放由"卸载模型"按钮触发
+- **`run_queue` 直接循环 `process()` 而非调 `process_batch()`**：原计划建议用 `process_batch`，但底层 `process_batch` 是一次性完成全部再返回 BatchOutput，**无法 yield 中间进度**。GUI 需要逐条 yield 让用户看到"[2/5] 正在还原..."的实时反馈。DiffusersReceiver 的 `process_batch` 覆写核心价值是"确保模型常驻 GPU"，但 `run_queue` 里只要模型已 load，直接 `process()` 循环就已经实现复用。记录为设计取舍
+- **gr.State 存储队列元素为 dict**：`{edge_path, prompt, seed}` 三键；边缘图一律落盘为临时 PNG 文件（`_persist_edge`），不保存 PIL/ndarray 对象，因为 gr.State 在同会话进程内虽然可以存任意对象，但文件路径对 dataframe 显示更友好，也避免了 numpy→PIL 的反复转换
+- **`_persist_edge` 处理三种类型**：str/Path（文件路径直接返回）、PIL.Image（落盘）、ndarray（转 PIL 落盘）。临时文件用 `tempfile.NamedTemporaryFile(delete=False)`，生命周期绑定到会话（Gradio 进程退出时由 OS 清理）
+- **`append_external_item` 不校验 prompt 非空**：供 sender_panel 跨 Tab 调用时保留宽松策略，允许发送端 manual 模式下 prompt 为空的边界情况直接进队列
+- **`run_queue` 逐条失败续跑**：某项 receiver.process 抛异常时只记录失败日志并继续下一项，最终返回 `N/M 成功` 汇总，避免单张失败中断整个队列
+- **`build_receiver_tab` 的 `config_components` 形参保留但 `del`**：M-12 留下的约定，M-13 保持。理由：避免破坏 app.py 的统一调用签名，未来若需要全局配置可直接再次使用
+- **测试不覆盖 `_random_seed` / `_persist_edge` / `build_receiver_tab`**：`_random_seed` 是一行 `random.randint`，`_persist_edge` 已在 `test_pil_image_persisted_to_temp_file` 间接覆盖，`build_receiver_tab` 依赖 Gradio Blocks 上下文，由 `create_app()` 烟测间接验证
+
+**计划变更**: 无（严格按 TASK_PLAN M-13 定义执行，唯一偏离是 `run_queue` 从 `process_batch` 改为逐条 `process` 循环，理由见"关键决策"）
+
+**下一任务**: M-14 打磨-UI 圆点 + 描述 + Prompt Mode 默认值（依赖无，可独立执行）
+
+**下一任务需关注**:
+- `gui/theme.py` 删除 `.mode-radio { display: none }` CSS 规则，让所有 Radio 圆点恢复显示
+- sender / pipeline / batch_sender / batch 四处 Prompt Mode 的选项顺序从"手动在前 + 默认 manual"改为"VLM 在前 + 默认 auto"
+- 描述文案可能需同步微调（M-14 具体步骤需查 TASK_PLAN 确认）
+
+**遗留问题**:
+- `gui/receiver_panel.py` 里 `run_queue` 使用 `_` 忽略中间 time.time() 差值不大严谨；测试依赖 MagicMock，未实测真实 DiffusersReceiver 的显存行为（由 M-09 做端到端验收时实测）
+- gr.Gallery 在 Gradio 5.x 中对 PIL.Image 列表的展示兼容性无法通过单元测试覆盖，仍需手动启动 GUI 验证
+- M-12 遗留的"app.py 标题、sender_panel 文案"等 ComfyUI 文档性引用仍由 M-16 统一更新

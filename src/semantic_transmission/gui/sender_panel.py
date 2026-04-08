@@ -151,7 +151,7 @@ def build_sender_tab(config_components: dict) -> dict:
     with gr.Row():
         run_btn = gr.Button("▶ 运行发送端", variant="primary")
         send_to_receiver_btn = gr.Button(
-            "→ 发送到接收端", variant="secondary", visible=False
+            "→ 加入接收端队列", variant="secondary", visible=False
         )
 
     # --- 输出区 ---
