@@ -216,12 +216,16 @@ def build_receiver_tab(config_components: dict) -> dict:
     """
     del config_components  # M-13 目前未从全局配置读取任何字段
 
+    gr.Markdown(
+        "### 接收端\n积累多项 (边缘图 + 语义描述) 后一次性运行，模型只加载一次。"
+    )
+
     # --- 队列与 receiver 状态 ---
     queue_state = gr.State(value=[])
     receiver_state = gr.State(value=None)
 
     # --- 单项输入区 ---
-    gr.Markdown("### 加入队列")
+    gr.Markdown("#### 加入队列")
     with gr.Row():
         with gr.Column():
             edge_input = gr.Image(label="边缘图", type="filepath")
@@ -237,7 +241,7 @@ def build_receiver_tab(config_components: dict) -> dict:
     add_btn = gr.Button("＋ 加入队列", variant="secondary")
 
     # --- 队列展示 ---
-    gr.Markdown("### 当前队列")
+    gr.Markdown("#### 当前队列")
     queue_display = gr.Dataframe(
         headers=["#", "Prompt 摘要", "Seed"],
         interactive=False,
@@ -249,7 +253,7 @@ def build_receiver_tab(config_components: dict) -> dict:
         unload_btn = gr.Button("卸载模型", variant="secondary")
 
     # --- 输出区 ---
-    gr.Markdown("### 还原结果")
+    gr.Markdown("#### 还原结果")
     restored_gallery = gr.Gallery(
         label="还原图像",
         columns=3,

@@ -35,13 +35,17 @@ def _gui_check_diffusers() -> str:
 def build_config_tab() -> dict:
     """构建配置 Tab 的 UI 组件并绑定事件，返回组件引用字典。"""
     gr.Markdown(
-        "### 接收端后端\n"
+        "### 配置\n检查 VLM 与 Diffusers 接收端模型是否就绪，设置发送端 VLM 模型路径。"
+    )
+
+    gr.Markdown(
+        "#### 接收端后端\n"
         "本项目已完全采用 **Diffusers 本地推理**（Z-Image-Turbo + ControlNet Union，GGUF Q8_0 量化）。"
         "接收端无需外部服务。"
     )
 
     # --- VLM 模型 ---
-    gr.Markdown("### VLM 模型（发送端 auto-prompt 使用）")
+    gr.Markdown("#### VLM 模型（发送端 auto-prompt 使用）")
     vlm_model_name = gr.Textbox(value="Qwen/Qwen2.5-VL-7B-Instruct", label="模型名称")
     vlm_model_path = gr.Textbox(
         value=get_default_vlm_path() or "",
@@ -57,7 +61,7 @@ def build_config_tab() -> dict:
 
     # --- Diffusers 接收端模型 ---
     gr.Markdown(
-        "### Diffusers 接收端模型\n"
+        "#### Diffusers 接收端模型\n"
         "检查 transformer GGUF、ControlNet 权重和 HF cache 下 pipeline base 组件是否就绪。"
     )
     with gr.Row():

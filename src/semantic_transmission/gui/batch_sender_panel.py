@@ -327,7 +327,7 @@ def build_batch_sender_tab(config_components):
 
     with gr.Column():
         gr.Markdown(
-            "### 批量发送（双机演示）\n批量处理目录中所有图片，提取边缘后发送到接收端。**发送端不依赖 ComfyUI**。"
+            "### 批量发送\n批量提取目录下所有图片的边缘图与语义描述，发送到对端接收端。"
         )
 
         input_dir = gr.Textbox(
@@ -344,17 +344,17 @@ def build_batch_sender_tab(config_components):
         with gr.Row():
             prompt_mode = gr.Radio(
                 choices=[
-                    ("手动指定统一描述", "manual"),
                     ("VLM 自动生成描述（每张独立）", "auto"),
+                    ("手动指定统一描述", "manual"),
                 ],
-                value="manual",
+                value="auto",
                 label="Prompt 模式",
             )
 
         manual_prompt = gr.Textbox(
             label="手动描述",
             placeholder="所有图片使用这个描述文本",
-            visible=True,
+            visible=False,
             lines=2,
         )
 

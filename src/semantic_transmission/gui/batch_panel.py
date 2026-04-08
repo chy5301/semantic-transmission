@@ -260,7 +260,9 @@ def build_batch_tab(config_components):
         return
 
     with gr.Column():
-        gr.Markdown("### 批量端到端处理\n一次性处理目录中所有图片，自动生成对比图。")
+        gr.Markdown(
+            "### 批量端到端\n一次性处理目录下所有图片的完整流程（边缘提取 → 语义描述 → 还原），逐组展示结果。"
+        )
 
         input_dir = gr.Textbox(
             label="输入图片目录",
@@ -276,17 +278,17 @@ def build_batch_tab(config_components):
         with gr.Row():
             prompt_mode = gr.Radio(
                 choices=[
-                    ("手动指定统一描述", "manual"),
                     ("VLM 自动生成描述（每张独立）", "auto"),
+                    ("手动指定统一描述", "manual"),
                 ],
-                value="manual",
+                value="auto",
                 label="Prompt 模式",
             )
 
         manual_prompt = gr.Textbox(
             label="手动描述",
             placeholder="所有图片使用这个描述文本",
-            visible=True,
+            visible=False,
         )
 
         with gr.Row():

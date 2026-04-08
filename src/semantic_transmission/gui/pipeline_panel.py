@@ -319,21 +319,25 @@ def _run_evaluation(original_path, restored_img):
 
 def build_pipeline_tab(config_components: dict) -> dict:
     """构建端到端演示 Tab 的 UI 组件并绑定事件。"""
+    gr.Markdown(
+        "### 端到端演示\n一键完成 边缘提取 → 语义描述 → 还原图像 的全流程，并展示传输统计。"
+    )
+
     # --- 输入区 ---
     with gr.Row():
         with gr.Column(scale=1):
             image_input = gr.Image(label="原始图像", type="filepath")
         with gr.Column(scale=1):
             mode_radio = gr.Radio(
-                choices=[("手动输入", "manual"), ("VLM 自动生成", "auto")],
-                value="manual",
+                choices=[("VLM 自动生成", "auto"), ("手动输入", "manual")],
+                value="auto",
                 label="描述模式",
-                elem_classes=["mode-radio"],
             )
             prompt_input = gr.Textbox(
                 label="Prompt",
                 lines=3,
                 placeholder="输入图像描述文本...",
+                visible=False,
             )
             seed_input = gr.Number(label="随机种子（可选）", precision=0, value=None)
 

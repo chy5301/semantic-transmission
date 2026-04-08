@@ -11,9 +11,9 @@
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 3 | 0 | 0 |
-| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 4 | 0 | 3 |
+| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 5 | 0 | 2 |
 | Phase 3: 验证 | 2 | 1 | 0 | 1 |
-| **合计** | **18** | **14** | **0** | **4** |
+| **合计** | **18** | **15** | **0** | **3** |
 
 ## 任务状态
 
@@ -32,7 +32,7 @@
 | M-11 | 清理-CLI 层 ComfyUI 分支 + check 子命令改写 | Phase 2.5 | ✅ 已完成 | M-10 |
 | M-12 | 清理-GUI 层 ComfyUI 分支 + config_panel 重构 | Phase 2.5 | ✅ 已完成 | M-10 |
 | M-13 | 重构-接收端 Tab 统一队列模式 | Phase 2.5 | ✅ 已完成 | M-12 |
-| M-14 | 打磨-UI 圆点 + 描述 + Prompt Mode 默认值 | Phase 2.5 | ⬜ 待开始 | 无 |
+| M-14 | 打磨-UI 圆点 + 描述 + Prompt Mode 默认值 | Phase 2.5 | ✅ 已完成 | 无 |
 | M-15 | 增强-批量端到端 Accordion 展示 + 每组质量评估 | Phase 2.5 | ⬜ 待开始 | M-12 |
 | M-16 | 归档-文档更新 + ComfyUI 历史归档 | Phase 2.5 | ⬜ 待开始 | M-10, M-11, M-12, M-13, M-14, M-15 |
 | M-09a | 修复-模型加载 GGUF 量化与分组件加载 | Phase 3 | ✅ 已完成 | M-04 |
@@ -739,3 +739,55 @@
 - `gui/receiver_panel.py` 里 `run_queue` 使用 `_` 忽略中间 time.time() 差值不大严谨；测试依赖 MagicMock，未实测真实 DiffusersReceiver 的显存行为（由 M-09 做端到端验收时实测）
 - gr.Gallery 在 Gradio 5.x 中对 PIL.Image 列表的展示兼容性无法通过单元测试覆盖，仍需手动启动 GUI 验证
 - M-12 遗留的"app.py 标题、sender_panel 文案"等 ComfyUI 文档性引用仍由 M-16 统一更新
+
+---
+
+#### [M-14] 打磨-UI 圆点 + 描述 + Prompt Mode 默认值 — 交接记录
+
+**完成时间**: 2026-04-09
+
+**完成内容**:
+- 删除 `theme.py` 的 `.mode-radio input[type="radio"] { display: none !important; }` CSS 规则，让所有 Radio 圆点恢复显示（原 PR #9 只在 sender/pipeline 加 `elem_classes=["mode-radio"]`，batch_sender/batch 没加，造成视觉不一致）
+- 统一四处 Prompt Mode Radio 为 **VLM 在前 + 默认 auto** + 初始 `manual_prompt` 输入框默认隐藏：
+  - `sender_panel.py` / `pipeline_panel.py`: `choices=[("VLM 自动生成","auto"),("手动输入","manual")], value="auto"`；移除 `elem_classes=["mode-radio"]`；`prompt_input.visible=False`
+  - `batch_sender_panel.py` / `batch_panel.py`: `choices=[("VLM 自动生成描述（每张独立）","auto"),("手动指定统一描述","manual")], value="auto"`；`manual_prompt.visible=False`
+- 为所有 6 个 Tab 补充一行顶级 Markdown 描述，风格统一（`### Tab 名\n一行说明`）：
+  - 配置 / 单张发送 / 批量发送 / 接收端 / 端到端演示 / 批量端到端
+- `batch_sender_panel` 描述从"批量发送（双机演示）... 发送端不依赖 ComfyUI" 简化为"批量发送\n批量提取目录下所有图片的边缘图与语义描述，发送到对端接收端。"（顺手清理 M-12 遗留的 ComfyUI 文案提及，符合 M-14 描述统一目标）
+- `receiver_panel.py` / `config_panel.py` 原有的 `### 章节` 标题降级为 `#### 子章节`，避免与新加的 Tab 顶级 `### 描述` 标题冲突
+
+**修改的文件**（7）:
+- `src/semantic_transmission/gui/theme.py` — 删除 `.mode-radio` CSS 规则（6 行）
+- `src/semantic_transmission/gui/sender_panel.py` — Radio 顺序默认 + 移除 elem_classes + `prompt_input.visible=False` + Tab 描述
+- `src/semantic_transmission/gui/pipeline_panel.py` — 同上
+- `src/semantic_transmission/gui/batch_sender_panel.py` — Radio 顺序默认 + `manual_prompt.visible=False` + 描述简化
+- `src/semantic_transmission/gui/batch_panel.py` — Radio 顺序默认 + `manual_prompt.visible=False` + Tab 描述（原无）
+- `src/semantic_transmission/gui/receiver_panel.py` — 顶部加 Tab 描述，原 `### 加入队列 / ### 当前队列 / ### 还原结果` 降为 `####`
+- `src/semantic_transmission/gui/config_panel.py` — 顶部加 Tab 描述，原 `### 接收端后端 / ### VLM 模型 / ### Diffusers 接收端模型` 降为 `####`
+
+**验证结果**:
+- 全量测试: ✅ `uv run pytest tests/` → **197 passed**（M-14 未新增测试，行为未变）
+- Ruff check（全项目）: ✅ All checks passed
+- Ruff format（全项目）: ✅ 58 files formatted（sender_panel.py 自动格式化）
+- GUI 烟测 `create_app()`: ✅ 6 个 Tab 正常构建
+
+**关键决策**:
+- **`batch_sender_panel` 描述顺手简化**：原文"批量发送（双机演示）... **发送端不依赖 ComfyUI**" 一句在 ComfyUI 完全清除后反而冗余且误导。M-12 交接时明确说"GUI 文案留待 M-16 统一处理"，但此处正是 M-14 "统一描述文案"的职责范围（描述文案就是 M-14 的核心工作项之一），不算越界。M-16 仍需处理 `app.py` 标题和 `sender_panel.py` 日志里的 "不依赖 ComfyUI" 等剩余文案
+- **章节标题从 `###` 降为 `####`**：新加的 Tab 顶级描述使用 `###`，为避免视觉层级混乱，子章节下降一级。Gradio Markdown 在 `gr.Markdown("### ...\n...")` 里会正常渲染 H3/H4 层级
+- **`manual_prompt`/`prompt_input` 初始不可见**：默认 auto 模式下用户看不到手动输入框，切换到 manual 时由 `on_prompt_mode_change`/`_on_mode_change` handler 更新可见性。现有 change handler 逻辑 `visible=(mode == "manual")` 未变，只需修改初始 `visible` 值和默认 value
+- **未改 `pipeline_panel.py` 的 `visible=True`→`visible=False` 原 prompt_input 初始值**：已在 Edit 中改为 visible=False 统一，避免默认 auto 时手动输入框仍显示的视觉错位
+- **未给 Radio 加 elem_classes**：原 elem_classes=["mode-radio"] 只是用来触发隐藏 CSS，删除 CSS 后该 class 无意义，清理掉更干净
+
+**计划变更**: 无（严格按 TASK_PLAN M-14 定义执行）
+
+**下一任务**: M-15 增强-批量端到端 Accordion 展示 + 每组质量评估（依赖 M-12 ✅）
+
+**下一任务需关注**:
+- `batch_panel.py` 结果展示从"最后一张对比图"改为每组 Accordion（原图 / 边缘 / 还原 / prompt）
+- 新增"运行质量评估（会额外耗时）"复选框，勾选时每组计算 PSNR/SSIM/LPIPS 并输出总体平均
+- Accordion 动态生成策略：可考虑先按 `BatchImageDiscoverer` 发现的图片数量预生成 N 个隐藏 Accordion 再 update 展开，或者使用 `gr.Group` 动态添加
+- 评估结果可能需要扩展 `BatchResult`/`SampleResult` 数据结构增加 `metrics` 字段
+- 新增测试应覆盖 metrics 汇总逻辑
+
+**遗留问题**:
+- M-12 遗留的 `app.py` 标题 "基于 ComfyUI + VLM" 和 `sender_panel.py` 日志 "不依赖 ComfyUI" 仍未清理，待 M-16 统一文案更新
