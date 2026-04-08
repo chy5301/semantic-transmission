@@ -140,10 +140,12 @@ gh pr merge <number> --squash --delete-branch --admin
 
 ## 3. 关键背景（must preserve across auto-compact）
 
+> ⚠️ **本节部分条款已被 2026-04-08 决策反转**：第 2 条和第 3 条标注 `[已失效]` 的不要按字面执行，新的处理以 `TASK_STATUS.md` 决策日志为准。第 1/4/5 条仍然有效。
+
 1. **M-09a 已经验证可工作**：`semantic-tx demo --backend diffusers` + manual prompt 组合稳定，63.7s/张，VRAM < 20 GB，211 tests passed。
-2. **本次 workflow 范围严格不包括**：Phase-Separated Batch、ModelStore/ModelLoader 抽象、config.toml 重构。这些是下次 workflow 的内容，已记录为 issue。
-3. **不要在收尾会话再起 brainstorming**。brainstorming 已在前一会话做过，结论保存在本文档第 5 节和决策日志里。
-4. **环境变量必须 export 才能跑 M-09 实测**（HF_HOME + MODEL_CACHE_DIR）。
+2. ~~**本次 workflow 范围严格不包括**：Phase-Separated Batch、ModelStore/ModelLoader 抽象、config.toml 重构。这些是下次 workflow 的内容，已记录为 issue。~~ **[2026-04-08 部分反转]** Phase-Separated Batch / ModelStore / config.toml 仍然不在本 workflow 范围，但**新增了 Phase 2.5**（GUI 完善与 ComfyUI 清除，M-10~M-16 共 7 个任务），反转了 M-03 的 Strangler Fig 策略（决定全面清除 ComfyUI 运行时代码）。新的范围以 `TASK_PLAN.md` 为准
+3. ~~**不要在收尾会话再起 brainstorming**。~~ **[2026-04-08 已反转]** 2026-04-08 的会话恰恰是收尾前重新 brainstorm 并产生 Phase 2.5 计划调整的会话。下次会话可以按新的 `TASK_PLAN.md` 顺序执行，无需再次 brainstorm，但也不要拒绝必要的讨论
+4. **环境变量必须 export 才能跑 Phase 2.5 / M-09 实测**（`HF_HOME` + `MODEL_CACHE_DIR`）。
 5. **GitHub CLI 操作**遵循项目 CLAUDE.md 约定：管理员合并自己的 PR 用 `--admin`。
 
 ---

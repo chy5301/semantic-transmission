@@ -249,38 +249,55 @@
 - **阶段**: Phase 2.5 - GUI 完善与 ComfyUI 清除
 - **依赖**: M-09a
 - **目标**: 删除 ComfyUI 运行时代码路径，简化 receiver 工厂和 common/config；同时新建 `common/model_check.py` 作为 CLI 和 GUI 共享的模型就绪检测单一数据源
-- **背景信息**: receiver-decouple-comfyui workflow 的核心目标是接收端脱离 ComfyUI。M-03 时采用 Strangler Fig 模式保留 ComfyUIReceiver 作为 fallback，但 M-09a 已验证 Diffusers 路径稳定，fallback 不再必要。全面清除 ComfyUI 运行时代码（保留 docs 和 resources 作为历史材料，由 M-16 处理）。本任务聚焦底层：common/comfyui_client.py、receiver/comfyui_receiver.py、对应测试、receiver 工厂和 common/config。同时为避免 M-11 和 M-12 重复实现模型检测逻辑（CLI 从 GUI 模块 import 会造成依赖方向错误），本任务顺便新建 `common/model_check.py` 作为 VLM / Diffusers 模型检测的单一数据源，CLI 和 GUI 都从这里 import。CLI 和 GUI 层的清理分别由 M-11/M-12 接续。
-- **涉及文件**（8）:
+- **背景信息**: receiver-decouple-comfyui workflow 的核心目标是接收端脱离 ComfyUI。M-03 时采用 Strangler Fig 模式保留 ComfyUIReceiver 作为 fallback，但 M-09a 已验证 Diffusers 路径稳定，fallback 不再必要。全面清除 ComfyUI 运行时代码（保留 docs 和 resources 作为历史材料，由 M-16 处理）。本任务聚焦底层：common/comfyui_client.py、receiver/comfyui_receiver.py、对应测试、receiver 工厂、common/config 和 common 包的 re-export。同时为避免 M-11 和 M-12 重复实现模型检测逻辑（CLI 从 GUI 模块 import 会造成依赖方向错误），本任务顺便新建 `common/model_check.py` 作为 VLM / Diffusers 模型检测的单一数据源，CLI 和 GUI 都从这里 import。CLI 和 GUI 层的清理分别由 M-11/M-12 接续。**`SemanticTransmissionConfig`** 类型签名持有两个 `ComfyUIConfig`（sender/receiver），是 ComfyUI 场景专用的顶层配置，本任务一并删除（影响 `test_config.py` 的 `TestSemanticTransmissionConfig` 测试类）。
+- **涉及文件**（10 — 超出 `maxFilesPerTask=8` 约束 2 个，原因见任务末尾"约束例外说明"）:
   - `src/semantic_transmission/common/comfyui_client.py`（删除）
   - `src/semantic_transmission/receiver/comfyui_receiver.py`（删除）
   - `tests/test_comfyui_client.py`（删除）
   - `tests/test_comfyui_receiver.py`（删除）
-  - `src/semantic_transmission/receiver/__init__.py`（简化 `create_receiver`）
-  - `src/semantic_transmission/common/config.py`（移除 `ComfyUIConfig`）
+  - `src/semantic_transmission/common/__init__.py`（清理 re-export：移除 `ComfyUIClient` / `ComfyUIConfig` / `ComfyUIConnectionError` / `ComfyUIError` / `ComfyUITimeoutError` / `SemanticTransmissionConfig` 六项；视情况 re-export `check_vlm_model` / `check_diffusers_receiver_model`）
+  - `src/semantic_transmission/common/config.py`（移除 `ComfyUIConfig` 类 + 移除 `SemanticTransmissionConfig` 类）
   - `src/semantic_transmission/common/model_check.py`（**新建**：`check_vlm_model` / `check_diffusers_receiver_model` 纯函数）
+  - `src/semantic_transmission/receiver/__init__.py`（简化 `create_receiver`）
+  - `tests/test_config.py`（**删除** `TestComfyUIConfig` 和 `TestSemanticTransmissionConfig` 两个测试类；保留 `get_default_vlm_path` 等与 ComfyUI 无关的测试）
   - `tests/test_receiver_factory.py`（移除 backend 切换用例）
 - **具体步骤**:
-  1. grep 确认 `common/comfyui_client.py` 在 CLI/GUI 之外无其他引用
+  1. grep 确认 `common/comfyui_client.py` 和 `common.config.ComfyUIConfig` / `SemanticTransmissionConfig` 在 CLI/GUI 之外无其他引用（CLI/GUI 引用由 M-11/M-12 接续清理）
   2. 删除 `common/comfyui_client.py` 和 `receiver/comfyui_receiver.py`
   3. 删除对应的 `tests/test_comfyui_client.py` 和 `tests/test_comfyui_receiver.py`
-  4. 简化 `receiver/__init__.py` 的 `create_receiver`：不再接受 `backend` 参数，直接返回 `DiffusersReceiver`
-  5. 移除 `common/config.py` 的 `ComfyUIConfig` 类
+  4. **清理 `common/__init__.py`** 的 re-export：
+     - 移除 `from ... comfyui_client import ...` 一整段（`ComfyUIClient`、`ComfyUIConnectionError`、`ComfyUIError`、`ComfyUITimeoutError`）
+     - 移除 `from ... config import` 里的 `ComfyUIConfig` 和 `SemanticTransmissionConfig` 两项
+     - 更新 `__all__` 列表
+     - 可选：re-export `check_vlm_model` / `check_diffusers_receiver_model`（从下一步新建的 model_check.py）
+  5. **修改 `common/config.py`**：
+     - 移除 `ComfyUIConfig` 类
+     - 移除 `SemanticTransmissionConfig` 类（它持有两个 `ComfyUIConfig`，是 ComfyUI 专用顶层配置）
+     - 保留 `DiffusersReceiverConfig` / `get_default_vlm_path` 等与 ComfyUI 无关的内容
   6. **新建** `common/model_check.py`：
      - `check_vlm_model(model_path: str) -> tuple[bool, str]`：检查路径存在 + `config.json` 存在，返回 `(ok, 人类可读消息)`
      - `check_diffusers_receiver_model(config: DiffusersReceiverConfig) -> tuple[bool, str]`：检查 GGUF transformer 文件、ControlNet bf16 文件、HF cache pipeline base 三处路径
      - 纯函数，不依赖 Gradio 或 click（让 CLI 和 GUI 都能 import，避免依赖方向错误）
-  7. 更新 `tests/test_receiver_factory.py`，移除 backend 切换测试用例
-  8. 运行 `uv run pytest`（此时 CLI/GUI 相关测试可能报 import 错误，由 M-11/M-12 接续修复）
+  7. 简化 `receiver/__init__.py` 的 `create_receiver`：不再接受 `backend` 参数，直接返回 `DiffusersReceiver` 实例
+  8. **修改 `tests/test_config.py`**：
+     - 删除 `TestComfyUIConfig` 整个测试类（所有关于 `ComfyUIConfig.from_env` / host / port / timeout / base_url 等的测试）
+     - 删除 `TestSemanticTransmissionConfig` 整个测试类
+     - 保留其他与 ComfyUI 无关的测试
+  9. 更新 `tests/test_receiver_factory.py`，移除 backend 切换测试用例（如 `test_create_receiver_comfyui_backend` 等）
+  10. 运行 `uv run pytest tests/test_receiver_factory.py tests/test_config.py tests/test_diffusers_receiver.py` 验证 common/receiver 层测试通过（CLI/GUI 相关测试此时仍会报 import 错误，由 M-11/M-12 接续修复）
 - **验收标准**:
   - `common/comfyui_client.py` 和 `receiver/comfyui_receiver.py` 不存在
   - `from semantic_transmission.receiver import ComfyUIReceiver` 报 ImportError
+  - `from semantic_transmission.common import SemanticTransmissionConfig` 报 ImportError
+  - `from semantic_transmission.common import ComfyUIConfig` 报 ImportError
   - `create_receiver()` 签名已简化（无 backend 参数）
   - `common/model_check.py` 存在且可 `from semantic_transmission.common.model_check import check_vlm_model, check_diffusers_receiver_model`
-  - `uv run ruff check .` 和 `uv run ruff format --check .` 通过
-  - receiver 和 common 层相关测试通过（CLI/GUI 测试可能留待 M-11/M-12 修复）
-- **自测方法**: `uv run pytest tests/test_receiver_factory.py tests/test_diffusers_receiver.py`
+  - `uv run ruff check src/semantic_transmission/common/ src/semantic_transmission/receiver/ tests/test_config.py tests/test_receiver_factory.py` 通过（整个项目的 ruff 会因 CLI/GUI 残留 import 失败，这是预期的，由 M-11/M-12 解决）
+  - `uv run pytest tests/test_receiver_factory.py tests/test_config.py tests/test_diffusers_receiver.py` 通过
+- **自测方法**: `uv run pytest tests/test_receiver_factory.py tests/test_config.py tests/test_diffusers_receiver.py`
 - **回滚方案**: `git revert` 本任务提交
 - **预估工作量**: M
+- **约束例外说明**: 本任务涉及文件数 10 > `maxFilesPerTask=8`。超出的 2 个文件（`common/__init__.py` + `tests/test_config.py`）是 `common/comfyui_client.py` 删除和 `ComfyUIConfig` 移除的**必要连锁改动**，不能推迟：不处理 `common/__init__.py` 会导致 Python 启动时 `ImportError`，不处理 `test_config.py` 会导致 pytest 立即失败。拆分为 M-10a/M-10b 会引入额外的依赖链复杂度但无实质收益。2026-04-09 Plan Audit 修正后的决定：作为单次例外允许超约束，不修改 workflow.json 的 `maxFilesPerTask`
 
 #### [M-11] 清理-CLI 层 ComfyUI 分支 + check 子命令改写
 
@@ -460,52 +477,71 @@
 - **阶段**: Phase 2.5 - GUI 完善与 ComfyUI 清除
 - **依赖**: M-10, M-11, M-12, M-13, M-14, M-15
 - **目标**: 更新项目文档以反映 ComfyUI 完全清除，把 ComfyUI 原型阶段的历史材料归档到 archive 子目录，并批量提交 17 个 GitHub issue（13 个原 HANDOFF 清单有效项 + 4 个本次 brainstorming 新发现）
-- **背景信息**: M-10~M-15 完成后代码层面已无 ComfyUI 痕迹，但文档和资源里仍有大量 ComfyUI 引用。`docs/comfyui-setup.md` 和 `resources/comfyui/` 目录是 PR #6 ComfyUI 原型阶段的产物，当前已过时但有历史参考价值。本次 brainstorming 决定（2-b 方案）：归档到 `docs/archive/comfyui-prototype/` 子目录并加 README 说明。同时更新 demo-handbook、architecture、ROADMAP、cli-reference 等文档移除 ComfyUI 后端相关内容。**此外**：HANDOFF.md 第 4 节原有 14 个待提 issue + 本次 brainstorming 新发现 4 个 issue，原计划是 M-09 完成后在 PR 步骤中批量提交，但 HANDOFF.md 已因本次插入 Phase 2.5 而过时，issue 提交动作归属到本任务（archive 性质匹配）。注意原 HANDOFF 清单的 #12（ComfyUIReceiver 不继承 BaseReceiver）在 M-10 后已失效，不再提交，实际有效为 13 个。
-- **涉及文件**:
+- **背景信息**: M-10~M-15 完成后代码层面已无 ComfyUI 痕迹，但文档和资源里仍有大量 ComfyUI 引用。`docs/comfyui-setup.md` 和 `resources/comfyui/` 目录是 PR #6 ComfyUI 原型阶段的产物，当前已过时但有历史参考价值。此外 `scripts/test_comfyui_connection.py` 和 `scripts/verify_workflows.py` 两个脚本直接 import `common.comfyui_client` 和 `ComfyUIConfig`，M-10 之后会立即失效，也必须归档。本次 brainstorming 决定（2-b 方案）：归档到 `docs/archive/comfyui-prototype/` 子目录并加 README 说明。同时更新 demo-handbook、architecture、ROADMAP、cli-reference 等文档移除 ComfyUI 后端相关内容。**此外**：HANDOFF.md 第 4 节原有 14 个待提 issue + 本次 brainstorming 新发现 4 个 issue，原计划是 M-09 完成后在 PR 步骤中批量提交，但 HANDOFF.md 已因本次插入 Phase 2.5 而过时，issue 提交动作归属到本任务（archive 性质匹配）。注意原 HANDOFF 清单的 #12（ComfyUIReceiver 不继承 BaseReceiver）在 M-10 后已失效，不再提交，实际有效为 13 个，加 4 个新 = 17 个。
+- **涉及文件**（10 — 超出 `maxFilesPerTask=8` 约束 2 个，原因见任务末尾"约束例外说明"）:
   - `docs/comfyui-setup.md` → 移动到 `docs/archive/comfyui-prototype/comfyui-setup.md`
   - `resources/comfyui/` → 移动到 `docs/archive/comfyui-prototype/workflows/`
+  - `scripts/test_comfyui_connection.py` → 移动到 `docs/archive/comfyui-prototype/scripts/test_comfyui_connection.py`
+  - `scripts/verify_workflows.py` → 移动到 `docs/archive/comfyui-prototype/scripts/verify_workflows.py`
   - `docs/archive/comfyui-prototype/README.md`（新建）
   - `docs/demo-handbook.md`（移除 ComfyUI 后端路径描述）
   - `docs/architecture.md`（更新架构图 + 模块描述）
   - `docs/ROADMAP.md`（更新 Phase 2 状态追加 ComfyUI 完全退出说明）
-  - `docs/cli-reference.md`（更新 demo / batch-demo / receiver 参数 + 重写 check 子命令为 vlm / diffusers / relay 三个独立子命令的完整参数文档）
-  - `CLAUDE.md`（更新项目阶段表、源码结构、环境前置条件、常用命令、技术栈五处 ComfyUI 相关内容）
+  - `docs/cli-reference.md`（删除 `check connection` / `check workflows` 章节 + 新增 `check vlm` / `check diffusers` / `check relay` 三个章节 + 更新 demo/batch-demo/receiver 参数说明 + 更新脚本迁移表）
+  - `CLAUDE.md`（更新项目阶段表、源码结构、环境前置条件、常用命令、技术栈、resources 路径引用共 7-8 处 ComfyUI 相关内容）
 - **具体步骤**:
-  1. `git mv docs/comfyui-setup.md docs/archive/comfyui-prototype/comfyui-setup.md`
-  2. `git mv resources/comfyui docs/archive/comfyui-prototype/workflows`
-  3. 新建 `docs/archive/comfyui-prototype/README.md`：说明"Phase 2 ComfyUI 原型阶段的产物，当前代码已完全脱离 ComfyUI，此目录仅作历史参考"
-  4. 批量更新 docs 和 CLAUDE.md（`grep -r "ComfyUI" docs/ CLAUDE.md` 逐个处理）：
-     - `CLAUDE.md` 需要改动 5 处：
-       1. 常用命令部分：删除 `uv run python scripts/demo_e2e.py  # 运行端到端 demo（需 ComfyUI 服务运行中）` 中的"需 ComfyUI 服务运行中"
-       2. 常用命令部分：删除 `uv run semantic-tx check connection  # 检查 ComfyUI 连通性` 一行，或改为列出 `check vlm` / `check diffusers` / `check relay` 三个新命令
-       3. 项目阶段表 Phase 2 状态从"进行中"改为"已完成"，追加"接收端已完全脱离 ComfyUI"说明
-       4. 源码结构部分 common 模块描述从"ComfyUI 客户端、配置、类型定义"改为"配置、类型定义、模型检测"
-       5. 环境前置条件删除"ComfyUI 服务需在本地运行"一行；技术栈删除"ComfyUI API 模式"条目；`resources/comfyui/` 路径引用改为 `docs/archive/comfyui-prototype/workflows/`
-     - `docs/demo-handbook.md`：删除所有 ComfyUI 后端相关章节，只保留 Diffusers 路径
-     - `docs/architecture.md`：更新架构图（Mermaid），移除 ComfyUI 分支
-     - `docs/ROADMAP.md`：Phase 2 状态更新，补充 ComfyUI 完全退出说明
-     - `docs/cli-reference.md`：为 `check vlm` / `check diffusers` / `check relay --host X --port Y` 三个新子命令分别补充参数说明、输出格式示例、使用场景说明
-  5. 确认 `grep -r "ComfyUI" docs/ src/ CLAUDE.md --include="*.py" --include="*.md"` 只在 `docs/archive/` 和历史日志类文档（如 decision log、HANDOFF archive 等）中命中
-  6. **批量提交 17 个 GitHub issue**（使用 `gh issue create`）：
+  1. `mkdir -p docs/archive/comfyui-prototype/scripts`
+  2. `git mv docs/comfyui-setup.md docs/archive/comfyui-prototype/comfyui-setup.md`
+  3. `git mv resources/comfyui docs/archive/comfyui-prototype/workflows`
+  4. `git mv scripts/test_comfyui_connection.py docs/archive/comfyui-prototype/scripts/test_comfyui_connection.py`
+  5. `git mv scripts/verify_workflows.py docs/archive/comfyui-prototype/scripts/verify_workflows.py`
+  6. 新建 `docs/archive/comfyui-prototype/README.md`：说明"Phase 2 ComfyUI 原型阶段的产物，当前代码已完全脱离 ComfyUI，此目录仅作历史参考。内含：原 ComfyUI 部署指南（comfyui-setup.md）、原 ComfyUI 工作流 JSON（workflows/）、原连通性测试和工作流验证脚本（scripts/，依赖已删除的 common.comfyui_client，无法运行）"
+  7. **更新 `CLAUDE.md`**（grep "ComfyUI" CLAUDE.md 命中约 10 处，逐项处理）：
+     - 常用命令部分：删除 `uv run python scripts/demo_e2e.py  # 运行端到端 demo（需 ComfyUI 服务运行中）` 一行的"需 ComfyUI 服务运行中"
+     - 常用命令部分：删除 `uv run semantic-tx check connection  # 检查 ComfyUI 连通性` 一行，改为 3 行：`check vlm` / `check diffusers` / `check relay --host X --port Y`
+     - 项目阶段表 "阶段二：ComfyUI API 原型" 状态从"进行中"改为"已完成"，追加"接收端已完全脱离 ComfyUI，运行时代码清除，历史归档在 docs/archive/"
+     - 源码结构部分 common 模块描述从"ComfyUI 客户端、配置、类型定义"改为"配置、类型定义、模型检测（model_check）"
+     - 关键资源部分：`resources/comfyui/` → `docs/archive/comfyui-prototype/workflows/`（路径更新）
+     - 关键资源部分：`docs/comfyui-setup.md` → `docs/archive/comfyui-prototype/comfyui-setup.md`（路径更新或标注已归档）
+     - 环境前置条件部分删除 "ComfyUI 服务需在本地运行（默认地址 127.0.0.1:8188），配置见 ..." 一行
+     - 技术栈部分删除 "ComfyUI API 模式：通过 HTTP API 调用 ComfyUI 工作流" 条目
+     - "阶段四：工程化与脱离 ComfyUI" 这一项可保留为未来规划（不变）
+  8. **更新 `docs/cli-reference.md`** — 这是本任务最大的文档改动：
+     - **删除** `check connection` 章节（原 line 146-158 区域）
+     - **删除** `check workflows` 章节（原 line 160-177 区域）
+     - **新增** `check vlm` 章节：命令说明、参数（无参数或可选 `--model-path`）、输出格式示例、使用场景（发送端机器自检）
+     - **新增** `check diffusers` 章节：命令说明、参数、输出格式示例（显示 transformer/ControlNet/HF cache 三处状态）、使用场景（接收端机器自检）
+     - **新增** `check relay --host X --port Y` 章节：参数必填说明、成功/失败返回示例、使用场景（双机部署对端连通性测试）
+     - **更新** 命令表格（原 line 20-21 两条 check 子命令改为三条）
+     - **更新** `demo` / `batch-demo` / `receiver` 三个命令的参数说明，移除 `--backend` 相关内容
+     - **更新** 脚本迁移表（原 line 256-257 引用的 `scripts/test_comfyui_connection.py` 和 `scripts/verify_workflows.py` 已归档，这段应删除或改为"历史脚本，已归档到 docs/archive/comfyui-prototype/scripts/"说明）
+  9. **更新 `docs/demo-handbook.md`**：删除所有 ComfyUI 后端相关章节，只保留 Diffusers 路径的演示手册
+  10. **更新 `docs/architecture.md`**：更新架构图（Mermaid），移除 ComfyUI 分支；更新模块描述，common 部分去掉 ComfyUI 客户端；删除"ComfyUI API 原型"相关段落，或改写为历史描述
+  11. **更新 `docs/ROADMAP.md`**：Phase 2 状态从"进行中"改为"已完成"，补充"receiver-decouple-comfyui workflow 完成后接收端完全脱离 ComfyUI"说明
+  12. 验证：`grep -rn "ComfyUI" docs/ src/ CLAUDE.md scripts/ --include="*.py" --include="*.md"` 应只在 `docs/archive/` 和 `docs/workflow/TASK_STATUS.md`（决策日志历史）、`docs/workflow/TASK_PLAN.md`（任务描述历史）、`docs/workflow/HANDOFF.md`（archive 后的历史文档）中命中；`scripts/` 目录不再有任何 ComfyUI 相关 Python 文件
+  13. **批量提交 17 个 GitHub issue**（使用 `gh issue create`）：
      - **HANDOFF.md 原 14 个清单中有效的 13 个**（详见 HANDOFF.md archive 版第 4 节，排除 #12 "ComfyUIReceiver 不继承 BaseReceiver"，该项在 M-10 后已自然消失）：#1/#2/#3/#4/#5/#7/#8/#9/#10/#11/#13/#14/#15
-     - **本次 brainstorming 新发现的 4 个**（详见 TASK_STATUS.md 决策日志 2026-04-08 D11）：
-       - 新-1：**统一 socket 通信架构 & 批量 VRAM 临界 & 双端演示能力综合问题**（高优先级）—— 这个 issue 描述**问题本身**（单机 VLM+Diffusers 同时驻留会 OOM / GUI 无法作为完整双机演示工具 / 批量模型生命周期耦合），**明确不预设解决方案**。候选解法（Phase-Separated Batch / 统一 socket 架构 / 独立接收端监听 Tab / ModelStore 抽象）可参考 HANDOFF.md archive 版第 5 节 + 本次 brainstorming 记录，但下次 workflow 启动时**必须重新 brainstorm**，不直接复用本次或 HANDOFF 原种子结论
-       - 新-3：`SocketRelaySender` 不支持指定源端口（低，防火墙场景可能需要）
-       - 新-4：`SocketRelayReceiver` 不做来源白名单过滤（低）
-       - 新-5：GUI 缺少独立"接收端监听" Tab（中，与新-1 相关但可独立讨论）
+     - **本次 brainstorming 新发现的 4 个**（详见 TASK_STATUS.md 决策日志 2026-04-08 D11 + 下次 workflow 方向修正条目）：
+       - **新-1**：**统一 socket 通信架构 & 批量 VRAM 临界 & 双端演示能力综合问题**（高优先级）—— 这个 issue 描述**问题本身**（单机 VLM+Diffusers 同时驻留会 OOM / GUI 无法作为完整双机演示工具 / 批量模型生命周期耦合），**明确不预设解决方案**。候选解法（Phase-Separated Batch / 统一 socket 架构 / 独立接收端监听 Tab / ModelStore 抽象）可参考 HANDOFF.md archive 版第 5 节 + 本次 brainstorming 记录，但下次 workflow 启动时**必须重新 brainstorm**，不直接复用本次或 HANDOFF 原种子结论
+       - **新-3**：`SocketRelaySender` 不支持指定源端口（低，防火墙场景可能需要）
+       - **新-4**：`SocketRelayReceiver` 不做来源白名单过滤（低）
+       - **新-5**：GUI 缺少独立"接收端监听" Tab（中，与新-1 相关但可独立讨论）
      - 每个 issue 需要 label（refactor / bug / architecture / vram / network / config / cleanup / priority-low/medium/high）
      - 提交后把 issue 编号记录到 TASK_STATUS.md 的 M-16 交接记录
 - **验收标准**:
-  - `docs/archive/comfyui-prototype/` 目录存在且包含 README + comfyui-setup.md + workflows/
-  - `grep -r "ComfyUI" src/` 无命中
-  - `docs/demo-handbook.md` / `docs/architecture.md` / `docs/cli-reference.md` 已更新
-  - `docs/ROADMAP.md` Phase 2 状态已更新
-  - `CLAUDE.md` 5 处改动全部完成
-  - `docs/cli-reference.md` 包含 check vlm / check diffusers / check relay 三个子命令的完整参数文档
-  - 17 个 GitHub issue 已提交，编号记录在交接记录中
-- **自测方法**: `grep -r "ComfyUI" docs/ src/ CLAUDE.md --include="*.py" --include="*.md"` 只在 archive 目录和历史决策日志命中；`gh issue list --state open --limit 30` 显示 17 个新 issue
+  - `docs/archive/comfyui-prototype/` 目录存在且包含 README + comfyui-setup.md + workflows/ + scripts/
+  - `grep -rn "ComfyUI" src/ scripts/ --include="*.py"` 无命中（运行时代码和脚本层全干净）
+  - `grep -rn "ComfyUI" docs/ CLAUDE.md --include="*.md"` 只在 `docs/archive/` 和 `docs/workflow/` 下命中（后者是历史决策记录）
+  - `docs/demo-handbook.md` / `docs/architecture.md` / `docs/ROADMAP.md` / `CLAUDE.md` 都已更新
+  - `docs/cli-reference.md` 包含 `check vlm` / `check diffusers` / `check relay` 三个子命令的完整参数文档；旧的 `check connection` / `check workflows` 章节已删除；脚本迁移表已更新
+  - 17 个 GitHub issue 已提交，编号记录在 M-16 交接记录中
+- **自测方法**:
+  - `grep -rn "ComfyUI" docs/ src/ scripts/ CLAUDE.md --include="*.py" --include="*.md"` 只在 archive 目录和 docs/workflow/ 历史文件命中
+  - `ls scripts/` 不包含 test_comfyui_connection.py 和 verify_workflows.py
+  - `gh issue list --state open --limit 30` 显示 17 个新 issue
 - **回滚方案**: `git revert` 本任务提交；如 issue 已提交错误，`gh issue close <number>` 批量关闭
-- **预估工作量**: M（原估 S，加入 issue 批量提交后升级）
+- **预估工作量**: M（原估 S，加入 scripts 归档 + issue 批量提交后升级）
+- **约束例外说明**: 本任务涉及文件数 10 > `maxFilesPerTask=8`。超出的 2 个文件（`scripts/test_comfyui_connection.py` + `scripts/verify_workflows.py`）是 M-10 删除 `common/comfyui_client.py` 和 `ComfyUIConfig` 的**必要连锁归档**，不能推迟：这两个脚本在 M-10 之后会立即因 ImportError 失效，必须在 Phase 2.5 内处理。放在 M-16 归档是最贴合任务性质的选择。2026-04-09 Plan Audit 修正后的决定：作为单次例外允许超约束，不修改 workflow.json 的 `maxFilesPerTask`
 
 ### Phase 3: 验证
 
