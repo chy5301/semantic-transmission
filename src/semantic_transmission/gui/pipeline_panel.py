@@ -31,9 +31,6 @@ def _run_e2e(
     mode,
     prompt,
     seed,
-    receiver_backend,
-    receiver_host,
-    receiver_port,
     vlm_model_name,
     vlm_model_path,
 ):
@@ -41,11 +38,10 @@ def _run_e2e(
     # 输出槽位: original, edge, restored, steps, prompt_result, stats, log
     empty_stats = []
     steps = [
-        ("[1/5] 连接检查", ""),
-        ("[2/5] 提取边缘图", ""),
-        ("[3/5] 获取语义描述", ""),
-        ("[4/5] 还原图像", ""),
-        ("[5/5] 生成对比图", ""),
+        ("[1/4] 提取边缘图", ""),
+        ("[2/4] 获取语义描述", ""),
+        ("[3/4] 还原图像", ""),
+        ("[4/4] 生成对比图", ""),
     ]
     log = ""
     original_img = None
@@ -61,8 +57,7 @@ def _run_e2e(
     original_img = Image.open(image_path)
     original_bytes = os.path.getsize(image_path)
 
-    # --- [1/5] 连接检查 ---
-    steps[0] = ("[1/5] 连接检查", "")
+    # --- [1/4] 提取边缘图（本地 OpenCV） ---
     yield (
         original_img,
         edge_img,
@@ -73,58 +68,7 @@ def _run_e2e(
         log,
     )
 
-    log += "[1/5] 连接检查\n"
-    log += "  发送端：使用本地 Canny 提取，无需连接\n"
-
-    if receiver_backend == "comfyui":
-        from semantic_transmission.common.comfyui_client import ComfyUIClient
-        from semantic_transmission.common.config import ComfyUIConfig
-
-        r_cfg = ComfyUIConfig(host=receiver_host, port=int(receiver_port))
-        r_client = ComfyUIClient(r_cfg)
-        try:
-            if not r_client.check_health():
-                log += f"  接收端连接失败: {r_cfg.base_url}\n"
-                yield (
-                    original_img,
-                    edge_img,
-                    restored_img,
-                    _format_steps(steps, 5),
-                    prompt_result,
-                    empty_stats,
-                    log,
-                )
-                return
-            log += f"  接收端 ({r_cfg.base_url}): OK\n"
-        except Exception as e:
-            log += f"  接收端连接失败: {e}\n"
-            yield (
-                original_img,
-                edge_img,
-                restored_img,
-                _format_steps(steps, 5),
-                prompt_result,
-                empty_stats,
-                log,
-            )
-            return
-    else:
-        log += "  接收端：使用 Diffusers 本地推理，无需连接\n"
-
-    steps[0] = ("[1/5] 连接检查", "OK")
-
-    # --- [2/5] 提取边缘图（本地 OpenCV） ---
-    yield (
-        original_img,
-        edge_img,
-        restored_img,
-        _format_steps(steps, 1),
-        prompt_result,
-        empty_stats,
-        log,
-    )
-
-    log += "[2/5] 本地提取 Canny 边缘图...\n"
+    log += "[1/4] 本地提取 Canny 边缘图...\n"
     try:
         img_rgb = original_img.convert("RGB")
         image_array = np.array(img_rgb)
@@ -137,14 +81,14 @@ def _run_e2e(
         log += (
             f"  完成 ({edge_pil.size[0]}x{edge_pil.size[1]}, {sender_elapsed:.1f}s)\n"
         )
-        steps[1] = ("[2/5] 提取边缘图", f"{sender_elapsed:.1f}s")
+        steps[0] = ("[1/4] 提取边缘图", f"{sender_elapsed:.1f}s")
     except Exception as e:
         log += f"  失败: {e}\n"
         yield (
             original_img,
             edge_img,
             restored_img,
-            _format_steps(steps, 5),
+            _format_steps(steps, 4),
             prompt_result,
             empty_stats,
             log,
@@ -155,22 +99,22 @@ def _run_e2e(
         original_img,
         edge_img,
         restored_img,
-        _format_steps(steps, 2),
+        _format_steps(steps, 1),
         prompt_result,
         empty_stats,
         log,
     )
 
-    # --- [3/5] 获取语义描述 ---
+    # --- [2/4] 获取语义描述 ---
     vlm_elapsed = 0.0
-    log += "[3/5] 获取语义描述...\n"
+    log += "[2/4] 获取语义描述...\n"
     if mode == "auto":
         log += "  正在加载 VLM 模型...\n"
         yield (
             original_img,
             edge_img,
             restored_img,
-            _format_steps(steps, 2),
+            _format_steps(steps, 1),
             prompt_result,
             empty_stats,
             log,
@@ -201,14 +145,14 @@ def _run_e2e(
                 f"  完成 ({vlm_elapsed:.1f}s, {char_count} 字符 / {byte_count} 字节)\n"
             )
             log += "  VLM 模型已卸载\n"
-            steps[2] = ("[3/5] 获取语义描述", f"{vlm_elapsed:.1f}s (VLM)")
+            steps[1] = ("[2/4] 获取语义描述", f"{vlm_elapsed:.1f}s (VLM)")
         except Exception as e:
             log += f"  VLM 失败: {e}\n"
             yield (
                 original_img,
                 edge_img,
                 restored_img,
-                _format_steps(steps, 5),
+                _format_steps(steps, 4),
                 prompt_result,
                 empty_stats,
                 log,
@@ -219,25 +163,25 @@ def _run_e2e(
         if not prompt_result:
             log += "  警告：Prompt 为空\n"
         log += f"  手动 Prompt ({len(prompt_result)} 字符)\n"
-        steps[2] = ("[3/5] 获取语义描述", "手动")
+        steps[1] = ("[2/4] 获取语义描述", "手动")
 
     yield (
         original_img,
         edge_img,
         restored_img,
-        _format_steps(steps, 3),
+        _format_steps(steps, 2),
         prompt_result,
         empty_stats,
         log,
     )
 
-    # --- [4/5] 还原图像 ---
-    log += f"[4/5] 接收端还原图像（{receiver_backend}）...\n"
+    # --- [3/4] 还原图像 ---
+    log += "[3/4] 接收端还原图像（diffusers）...\n"
     yield (
         original_img,
         edge_img,
         restored_img,
-        _format_steps(steps, 3),
+        _format_steps(steps, 2),
         prompt_result,
         empty_stats,
         log,
@@ -245,11 +189,7 @@ def _run_e2e(
 
     seed_int = int(seed) if seed is not None and seed != "" else None
     try:
-        receiver = create_receiver(
-            receiver_backend,
-            host=receiver_host,
-            port=int(receiver_port),
-        )
+        receiver = create_receiver()
         buf = io.BytesIO()
         edge_pil.save(buf, format="PNG")
         edge_bytes = buf.getvalue()
@@ -259,14 +199,14 @@ def _run_e2e(
         receiver_elapsed = time.time() - t0
         restored_img = restored_pil
         log += f"  完成 ({restored_pil.size[0]}x{restored_pil.size[1]}, {receiver_elapsed:.1f}s)\n"
-        steps[3] = ("[4/5] 还原图像", f"{receiver_elapsed:.1f}s")
+        steps[2] = ("[3/4] 还原图像", f"{receiver_elapsed:.1f}s")
     except Exception as e:
         log += f"  失败: {e}\n"
         yield (
             original_img,
             edge_img,
             restored_img,
-            _format_steps(steps, 5),
+            _format_steps(steps, 4),
             prompt_result,
             empty_stats,
             log,
@@ -277,14 +217,14 @@ def _run_e2e(
         original_img,
         edge_img,
         restored_img,
-        _format_steps(steps, 4),
+        _format_steps(steps, 3),
         prompt_result,
         empty_stats,
         log,
     )
 
-    # --- [5/5] 对比图 + 统计 ---
-    log += "[5/5] 生成对比图与统计...\n"
+    # --- [4/4] 对比图 + 统计 ---
+    log += "[4/4] 生成对比图与统计...\n"
     t0 = time.time()
     # 对比图生成留给前端展示（三张图已 yield），此处计算统计
     comp_elapsed = time.time() - t0
@@ -306,7 +246,7 @@ def _run_e2e(
         ["总耗时", f"{total_elapsed:.1f}s"],
     ]
 
-    steps[4] = ("[5/5] 生成对比图", f"{comp_elapsed:.1f}s")
+    steps[3] = ("[4/4] 生成对比图", f"{comp_elapsed:.1f}s")
     log += "─" * 30 + "\n"
     log += f"端到端完成！总耗时 {total_elapsed:.1f}s，压缩比 {original_bytes / total_tx:.2f}x\n"
 
@@ -314,7 +254,7 @@ def _run_e2e(
         original_img,
         edge_img,
         restored_img,
-        _format_steps(steps, 5),
+        _format_steps(steps, 4),
         prompt_result,
         stats,
         log,
@@ -466,9 +406,6 @@ def build_pipeline_tab(config_components: dict) -> dict:
             mode_radio,
             prompt_input,
             seed_input,
-            config_components["receiver_backend"],
-            config_components["receiver_host"],
-            config_components["receiver_port"],
             config_components["vlm_model_name"],
             config_components["vlm_model_path"],
         ],

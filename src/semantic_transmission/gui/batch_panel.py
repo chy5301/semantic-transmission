@@ -57,7 +57,6 @@ def build_batch_tab(config_components):
         recursive: bool,
         skip_errors: bool,
         seed: int | None,
-        receiver_backend: str,
         vlm_model_name: str,
         vlm_model_path: str,
     ) -> Iterator[tuple[str, str | None]]:
@@ -95,9 +94,9 @@ def build_batch_tab(config_components):
 
         # 初始化发送端（本地 Canny 提取）和接收端
         extractor = LocalCannyExtractor()
-        receiver = create_receiver(receiver_backend)
+        receiver = create_receiver()
         log_text += "\n发送端：本地 Canny 提取\n"
-        log_text += f"接收端：{receiver_backend}\n"
+        log_text += "接收端：Diffusers 本地推理\n"
         yield log_text, None
         time.sleep(0.1)
 
@@ -342,7 +341,6 @@ def build_batch_tab(config_components):
                 recursive,
                 skip_errors,
                 seed,
-                config_components["receiver_backend"],
                 config_components["vlm_model_name"],
                 config_components["vlm_model_path"],
             ],

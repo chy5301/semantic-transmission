@@ -12,9 +12,7 @@ def _random_seed():
     return random.randint(0, 2**32 - 1)
 
 
-def _run_receiver(
-    edge_image_path, prompt, seed, receiver_backend, receiver_host, receiver_port
-):
+def _run_receiver(edge_image_path, prompt, seed):
     """运行接收端流程，generator 逐步 yield 更新 UI。"""
     log = ""
     restored_img = None
@@ -29,42 +27,14 @@ def _run_receiver(
         yield restored_img, log
         return
 
-    # [1] 连接检查（仅 ComfyUI 后端）
-    if receiver_backend == "comfyui":
-        from semantic_transmission.common.comfyui_client import ComfyUIClient
-        from semantic_transmission.common.config import ComfyUIConfig
-
-        log += "[1/2] 检查 ComfyUI 连接...\n"
-        yield restored_img, log
-
-        config = ComfyUIConfig(host=receiver_host, port=int(receiver_port))
-        client = ComfyUIClient(config)
-        try:
-            if not client.check_health():
-                log += f"  连接失败: {config.base_url} 服务异常\n"
-                yield restored_img, log
-                return
-            log += f"  {config.base_url}: OK\n"
-        except Exception as e:
-            log += f"  连接失败: {e}\n"
-            yield restored_img, log
-            return
-    else:
-        log += "[1/2] 使用 Diffusers 本地推理，跳过连接检查\n"
-        yield restored_img, log
-
-    # [2] 还原图像
+    # 还原图像（Diffusers 本地推理）
     seed_int = int(seed) if seed is not None and seed != "" else None
     seed_info = f", seed={seed_int}" if seed_int is not None else ""
-    log += f"[2/2] 接收端还原图像（{receiver_backend}）{seed_info}...\n"
+    log += f"接收端还原图像（diffusers）{seed_info}...\n"
     yield restored_img, log
 
     try:
-        receiver = create_receiver(
-            receiver_backend,
-            host=receiver_host,
-            port=int(receiver_port),
-        )
+        receiver = create_receiver()
         start = time.time()
         restored_pil = receiver.process(edge_image_path, prompt.strip(), seed=seed_int)
         elapsed = time.time() - start
@@ -114,16 +84,11 @@ def build_receiver_tab(config_components: dict) -> dict:
     # --- 事件绑定 ---
     seed_btn.click(fn=_random_seed, outputs=seed_input)
 
+    # 注：M-12 后 config_components 不再被本 Tab 读取；保留参数兼容 app.py 调用，M-13 将重写此文件引入队列模式
+    del config_components
     run_btn.click(
         fn=_run_receiver,
-        inputs=[
-            edge_input,
-            prompt_input,
-            seed_input,
-            config_components["receiver_backend"],
-            config_components["receiver_host"],
-            config_components["receiver_port"],
-        ],
+        inputs=[edge_input, prompt_input, seed_input],
         outputs=[restored_output, log_output],
     )
 
