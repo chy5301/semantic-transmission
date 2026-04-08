@@ -30,6 +30,7 @@ class SampleResult:
     status: Literal["success", "failed", "skipped"]
     error: str | None = None
     timings: dict[str, float] = field(default_factory=dict)
+    metrics: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """转换为字典用于 JSON 序列化。"""
@@ -39,6 +40,7 @@ class SampleResult:
             "error": self.error,
             "timings": self.timings,
             "total_time": sum(self.timings.values()),
+            "metrics": self.metrics,
         }
 
 

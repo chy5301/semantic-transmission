@@ -11,9 +11,9 @@
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 3 | 0 | 0 |
-| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 5 | 0 | 2 |
+| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 6 | 0 | 1 |
 | Phase 3: 验证 | 2 | 1 | 0 | 1 |
-| **合计** | **18** | **15** | **0** | **3** |
+| **合计** | **18** | **16** | **0** | **2** |
 
 ## 任务状态
 
@@ -33,7 +33,7 @@
 | M-12 | 清理-GUI 层 ComfyUI 分支 + config_panel 重构 | Phase 2.5 | ✅ 已完成 | M-10 |
 | M-13 | 重构-接收端 Tab 统一队列模式 | Phase 2.5 | ✅ 已完成 | M-12 |
 | M-14 | 打磨-UI 圆点 + 描述 + Prompt Mode 默认值 | Phase 2.5 | ✅ 已完成 | 无 |
-| M-15 | 增强-批量端到端 Accordion 展示 + 每组质量评估 | Phase 2.5 | ⬜ 待开始 | M-12 |
+| M-15 | 增强-批量端到端 Accordion 展示 + 每组质量评估 | Phase 2.5 | ✅ 已完成 | M-12 |
 | M-16 | 归档-文档更新 + ComfyUI 历史归档 | Phase 2.5 | ⬜ 待开始 | M-10, M-11, M-12, M-13, M-14, M-15 |
 | M-09a | 修复-模型加载 GGUF 量化与分组件加载 | Phase 3 | ✅ 已完成 | M-04 |
 | M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⬜ 待开始 | M-09a, M-10, M-11, M-12, M-13, M-14, M-15, M-16 |
@@ -791,3 +791,64 @@
 
 **遗留问题**:
 - M-12 遗留的 `app.py` 标题 "基于 ComfyUI + VLM" 和 `sender_panel.py` 日志 "不依赖 ComfyUI" 仍未清理，待 M-16 统一文案更新
+
+---
+
+#### [M-15] 增强-批量端到端 Accordion 展示 + 每组质量评估 — 交接记录
+
+**完成时间**: 2026-04-09
+
+**完成内容**:
+- `pipeline/batch_processor.py` `SampleResult` 扩展 `metrics: dict[str, float]` 字段；`to_dict()` 序列化时包含 metrics
+- `gui/batch_panel.py` 大幅重构：
+  - 新增纯函数 `compute_sample_metrics(original, restored, lpips_model=None) -> dict`：返回 PSNR/SSIM，传入 lpips 模型时加入 LPIPS
+  - 新增纯函数 `aggregate_metrics(samples) -> list[list[str]]`：汇总所有成功样本 metrics 平均值，生成总体评估 Dataframe 行（PSNR 带 dB 单位，SSIM/LPIPS 保留 4 位小数）
+  - `run_batch_process` generator 签名新增 `run_eval: bool`，yield 从 `(log, comparison_path)` 改为 `(log, results_list, overall_metrics_rows)`
+  - 评估启用时循环外 `load_lpips_model()` 加载一次，循环内每组处理完立即调 `compute_sample_metrics`；失败只记录日志不中断
+  - 结果展示层由原"最后一张对比图 gr.Image"改为 **`@gr.render` 动态 Accordion**：每项展开后显示原图/边缘图/还原图 3 列 + Prompt Textbox + 每项 metrics Dataframe
+  - Accordion 标题附带本组 metrics 摘要（如 `[1] dog.jpg (PSNR=28.53, SSIM=0.8421)`）
+  - 总体评估区为独立 Dataframe（指标 / 平均值 / 样本数）
+  - 新增 `run_eval_checkbox` 复选框，默认关闭
+- 新建 `tests/test_gui_batch_panel.py`：**11 项**单元测试覆盖 `compute_sample_metrics`（相同图/不同图/文件路径/lpips 注入）和 `aggregate_metrics`（空/无 metrics/只有 PSNR+SSIM/包含 LPIPS/跳过失败样本）+ SampleResult.metrics 序列化
+
+**修改的文件**（3）:
+- `src/semantic_transmission/pipeline/batch_processor.py` — `SampleResult` 新增 metrics 字段 + to_dict 包含
+- `src/semantic_transmission/gui/batch_panel.py` — **大改**，新增 2 个辅助函数 + `@gr.render` 动态 Accordion + 评估复选框；从 360 行增至 ~500 行
+- `tests/test_gui_batch_panel.py` — **新建**，11 项测试
+
+**验证结果**:
+- 新测试专项: ✅ `uv run pytest tests/test_gui_batch_panel.py` → **11 passed**
+- 全量测试: ✅ `uv run pytest tests/` → **208 passed**（M-14 时 197 + 新增 11）
+- Ruff check（全项目）: ✅ All checks passed
+- Ruff format（全项目）: ✅ 59 files formatted
+- GUI 烟测 `create_app()`: ✅ 6 个 Tab 正常构建，含 `@gr.render` 子树初始化无错
+
+**关键决策**:
+- **使用 Gradio 5.0 的 `@gr.render`** 动态渲染 Accordion：比"预生成 N 个隐藏 Accordion 再 update visible"的方案更简洁，支持任意数量样本、样本数未知时也工作。代价是每次 `results_state` 变更会重新渲染整个子树，对 <50 张图的批量场景性能无忧
+- **`compute_sample_metrics` 拆成独立纯函数**：便于单元测试；LPIPS 模型显式通过参数注入，上层在批量评估时可加载一次复用，避免每张图重复加载 LPIPS 模型
+- **不把 `compute_sample_metrics` 放进 `evaluation/__init__.py`**：考虑过，但它是针对 GUI 批量场景的具体编排（PSNR/SSIM 无模型 + LPIPS 可选模型注入），属于 GUI 层业务逻辑。`evaluation` 模块保持"低级函数库"定位，不加业务拼接
+- **`aggregate_metrics` 按固定顺序返回 PSNR → SSIM → LPIPS 行**：符合报告阅读习惯（像素级 → 感知级），同时在 PSNR 格式化时附加 `dB` 单位
+- **评估失败不中断批量**：LPIPS 首次加载失败或单项 eval 抛异常都只记录日志，`sample_metrics` 保持为空 dict，`aggregate_metrics` 自动跳过。保证"评估是可选辅助，不阻塞主流程"
+- **Accordion 标题带 metrics 摘要**：用户不展开就能看到质量概况，快速定位质量差的样本
+- **`results_state` 在失败分支也 yield**：原 batch_panel 的失败分支 `break` 前只 yield 一次然后退出 for 循环，改为在 break 前 yield 包含已有结果的 state，避免用户看到空结果页面
+- **LPIPS 模型未指定设备**：`load_lpips_model()` 默认 CPU，对 <50 张图的批量可接受；GPU 模式推迟到 `load_lpips_model(device="cuda")` 的未来优化（`DiffusersReceiver` 此时正驻留 GPU，加载 LPIPS 到 CPU 避免显存竞争）
+- **`run_eval=False` 路径完全不加载 LPIPS / 计算 metrics**：满足"不勾选时保持原有速度"的验收要求
+- **保留 `_make_comparison_image` 辅助函数**：虽然对比图不再展示在 Tab 中，但仍写入每个样本输出目录 `comparison.png`，保留"磁盘产物完整"的语义
+- **不保留 `last_comparison` gr.Image**：被 Accordion 替代，移除减少 UI 混乱
+
+**计划变更**: 无（严格按 TASK_PLAN M-15 定义执行）
+
+**下一任务**: M-16 归档-文档更新 + ComfyUI 历史归档（依赖 M-10~M-15 ✅ 全部完成）
+
+**下一任务需关注**:
+- M-16 是 Phase 2.5 收官任务：归档 `docs/comfyui-setup.md` / `resources/comfyui/` / 5 个 scripts 到 `docs/archive/comfyui-prototype/`；更新 CLAUDE.md / demo-handbook / architecture / ROADMAP / cli-reference；批量提交 17 个 GitHub issue
+- M-10 执行时已约定 M-16 涉及文件扩展：scripts 归档新增 `run_sender.py` / `run_receiver.py` / `demo_e2e.py` 三项（原计划 + 2 项 = 5 项 scripts）
+- 清理历次任务记录的"文案遗留问题"：`gui/app.py` 标题、`gui/batch_sender_panel.py` / `gui/sender_panel.py` 的 ComfyUI 表述
+- `CLAUDE.md` 需更新约 10 处 ComfyUI 引用
+- `docs/cli-reference.md` 删除 `check connection` / `check workflows` 章节，新增 `check vlm` / `check diffusers` / `check relay` 三章节；更新 demo/batch-demo/receiver 参数说明移除 `--backend`
+- 17 个 GitHub issue 见 HANDOFF.md archive 版 + TASK_STATUS.md 决策日志 2026-04-08 D11
+
+**遗留问题**:
+- `@gr.render` 的渲染时机在大批量（>100 张）场景可能触发多次重建，实际使用时可能需要节流；当前无性能基线数据，留给 M-09 端到端验收时实测
+- `compute_sample_metrics` 使用 CPU 跑 LPIPS，大批量场景性能瓶颈；未来如迁移 GPU 需确保 DiffusersReceiver 已 unload 或共享 CUDA 上下文
+- `tests/test_gui_batch_panel.py` 不覆盖 `@gr.render` 渲染函数或 `run_batch_process` generator 完整流程（依赖 receiver / VLM / 文件系统）；这些由端到端手动测试和 M-09 验收覆盖
