@@ -11,9 +11,9 @@
 | Phase 0: 准备 | 4 | 4 | 0 | 0 |
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 3 | 0 | 0 |
-| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 1 | 0 | 6 |
+| Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 2 | 0 | 5 |
 | Phase 3: 验证 | 2 | 1 | 0 | 1 |
-| **合计** | **18** | **11** | **0** | **7** |
+| **合计** | **18** | **12** | **0** | **6** |
 
 ## 任务状态
 
@@ -29,7 +29,7 @@
 | M-07 | 集成-GUI 接收端面板适配 | Phase 2 | ✅ 已完成 | M-05 |
 | M-08 | 集成-CLI 接收端命令适配 | Phase 2 | ✅ 已完成 | M-05 |
 | M-10 | 清除-ComfyUI 底层运行时代码 | Phase 2.5 | ✅ 已完成 | M-09a |
-| M-11 | 清理-CLI 层 ComfyUI 分支 + check 子命令改写 | Phase 2.5 | ⬜ 待开始 | M-10 |
+| M-11 | 清理-CLI 层 ComfyUI 分支 + check 子命令改写 | Phase 2.5 | ✅ 已完成 | M-10 |
 | M-12 | 清理-GUI 层 ComfyUI 分支 + config_panel 重构 | Phase 2.5 | ⬜ 待开始 | M-10 |
 | M-13 | 重构-接收端 Tab 统一队列模式 | Phase 2.5 | ⬜ 待开始 | M-12 |
 | M-14 | 打磨-UI 圆点 + 描述 + Prompt Mode 默认值 | Phase 2.5 | ⬜ 待开始 | 无 |
@@ -582,3 +582,55 @@
 - scripts/run_sender.py / run_receiver.py / demo_e2e.py 当前状态为 ImportError（依赖已删除的 `common.comfyui_client`）。这是预期的，M-16 归档时处理
 - 整个项目 `uv run ruff check .` 仍失败，因 CLI/GUI 层有 `import ComfyUIClient` 残留（M-11/M-12 清理）
 - `check_diffusers_receiver_model` 对 HF cache 的检测逻辑简化为"存在 `models--{name}` 目录即通过"，不深入检查 `snapshots/` 下 pipeline_index.json 或 specific revision；对 Phase 2.5 的 GUI 检测按钮场景足够使用，精细化可留给后续 issue
+
+---
+
+#### [M-11] 清理-CLI 层 ComfyUI 分支 + check 子命令改写 — 交接记录
+
+**完成时间**: 2026-04-09
+
+**完成内容**:
+- `cli/demo.py` / `cli/batch_demo.py` / `cli/receiver.py` 全部移除 `--backend` / `--receiver-host` / `--receiver-port` / `--comfyui-host` / `--comfyui-port` click 选项及相关 ComfyUI 条件分支，接收端创建统一改为 `create_receiver()` 无参调用
+- `cli/check.py` 完全重写为三个子命令：
+  - `check vlm [--model-path PATH]` — 调用 `common.model_check.check_vlm_model`（发送端机器自检）
+  - `check diffusers` — 调用 `common.model_check.check_diffusers_receiver_model`（接收端机器自检）
+  - `check relay --host X --port Y [--timeout SEC]` — 通过 Python stdlib `socket` TCP connect + close 测试对端可达性（双机部署）
+- `tests/test_cli.py` 删除 `connection` / `workflows` 用例，新增 9 项 check 子命令测试（3 个 --help + 3 个功能 + 2 个 relay 边界 + 1 个 monkeypatch 调用验证）
+
+**修改的文件**（5）:
+- `src/semantic_transmission/cli/check.py` — **重写**（原 305 行降至约 70 行）
+- `src/semantic_transmission/cli/demo.py` — 移除 `--backend` / `--receiver-host` / `--receiver-port` 参数 + ComfyUI 分支，步骤标号 `[1/4]`~`[4/4]` 重排
+- `src/semantic_transmission/cli/batch_demo.py` — 同上，步骤标号由 `[1/4]`~`[4/4]` 重排为 `[1/3]`~`[3/3]`
+- `src/semantic_transmission/cli/receiver.py` — **大幅简化**，删除 `--backend` / `--comfyui-host` / `--comfyui-port` + 所有 ComfyUI 条件分支
+- `tests/test_cli.py` — TestReceiverCommand / TestDemoCommand / TestCheckCommand 三个测试类更新，新增 `--backend not in output` 负断言防回归
+
+**验证结果**:
+- CLI 专项测试: ✅ `uv run pytest tests/test_cli.py` → **18 passed**
+- 全量测试（M-10 + M-11 合并后）: ✅ `uv run pytest tests/` → **174 passed**
+- Ruff check（全项目 CLI/common/receiver/sender/tests 范围）: ✅ All checks passed
+- Ruff format: ✅ 11 files formatted（check.py / test_cli.py 自动格式化后入库）
+- `semantic-tx demo --help` / `batch-demo --help` / `receiver --help`: ✅ 均不再显示 `--backend` / `comfyui-host` 等
+- `semantic-tx check --help`: ✅ 仅显示 vlm / diffusers / relay 三个子命令
+
+**关键决策**:
+- **`check relay` 使用 stdlib `socket` 而非 `SocketRelaySender`**：原 TASK_PLAN 建议通过 `SocketRelaySender.connect() + close()` 测试，但该类设计是"连接即发送 packet"，并非单纯 TCP 握手工具，且构造需要完整 packet schema。改用 `socket.create_connection` 语义更清晰、依赖更少、失败诊断更直观。不影响 `SocketRelaySender` 本身的测试覆盖
+- **`check vlm` / `check diffusers` 失败时 `raise SystemExit(1)`**：保持与 shell 检查脚本的退出码约定（非 0 = 失败），便于 CI 或双机部署脚本链式判断
+- **`cli/receiver.py` 整文件重写而非逐行 Edit**：原文件 158 行，`--backend` 相关逻辑穿插在参数、函数签名、健康检查、create_receiver 调用四处，整文件 Write 更干净
+- **步骤标号 `[1/4]` → `[1/3]`（batch_demo）**：原 4 步中"健康检查"是第 2 步，移除后剩 3 步，相应重排。`demo.py` 原 4 步中只去掉了分支打印（不减步骤数），但步骤含义变更（[1/4] 原为连接检查，现为 Canny 提取），所以整体偏移一位仍保持 4/4 总数
+- **`tests/test_cli.py` 新增负断言**（`assert "--backend" not in result.output`）：防止后续回归意外加回 `--backend` 参数
+- **test_relay_unreachable 使用端口 1**：系统保留端口 1 大概率无服务监听，配合 0.5s 超时快速验证失败路径，避免测试依赖外部不可达地址
+
+**计划变更**: 无（严格按 TASK_PLAN M-11 定义执行，唯一偏离是 `check relay` 的实现手段从 `SocketRelaySender` 改为 stdlib socket，理由见"关键决策"）
+
+**下一任务**: M-12 清理-GUI 层 ComfyUI 分支 + config_panel 重构
+
+**下一任务需关注**:
+- `config_panel.py` 大改：移除 `receiver_backend` Radio、"ComfyUI 连接" 区块、原 `relay_host`/`relay_port` 字段；新增"Diffusers 模型"区块调用 `common.model_check.check_diffusers_receiver_model`
+- `pipeline_panel.py` / `receiver_panel.py` / `batch_panel.py` 移除 `if backend == "comfyui"` 分支（当前都有 `import ComfyUIConfig`，M-11 之后是整个项目 ruff 仍失败的根源）
+- `batch_sender_panel.py` 承接中继配置：`relay_host`/`relay_port` label 改为"接收端 IP/端口"（顺手修 bug），默认值清空，加"测试对端连接"按钮（可复用 `check relay` 的 stdlib socket 思路）
+- `gui/app.py` 更新 config_components 传递
+- 涉及文件 6 个，刚好在 `maxFilesPerTask=8` 约束内
+
+**遗留问题**:
+- 整个项目 `uv run ruff check .` 仍失败，因 GUI 层 4 个 panel 还有 `import ComfyUIConfig` / `import ComfyUIClient` 残留（M-12 清理后应全部通过）
+- GUI 层目前没有 pytest 覆盖（tests/ 下无 test_gui_*.py），M-12 对 GUI 的验证需依赖 `uv run python -c "from semantic_transmission.gui.app import ..."` 烟测 + 手动 GUI 启动检查

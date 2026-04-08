@@ -1,6 +1,5 @@
 """semantic-tx receiver 子命令：双机演示接收端。"""
 
-import sys
 import time
 from pathlib import Path
 
@@ -59,23 +58,6 @@ def _process_packet(
 )
 @click.option("--relay-port", default=9000, type=int, help="监听端口（默认 9000）")
 @click.option(
-    "--backend",
-    default="diffusers",
-    type=click.Choice(["comfyui", "diffusers"]),
-    help="接收端后端（默认 diffusers）",
-)
-@click.option(
-    "--comfyui-host",
-    default="127.0.0.1",
-    help="ComfyUI 地址（仅 comfyui 后端，默认 127.0.0.1）",
-)
-@click.option(
-    "--comfyui-port",
-    default=8188,
-    type=int,
-    help="ComfyUI 端口（仅 comfyui 后端，默认 8188）",
-)
-@click.option(
     "--output-dir",
     default=Path("output/received"),
     type=click.Path(path_type=Path),
@@ -87,10 +69,8 @@ def _process_packet(
     default=False,
     help="连续模式：持续监听，每次接收后等待下一次连接",
 )
-def receiver(
-    relay_host, relay_port, backend, comfyui_host, comfyui_port, output_dir, continuous
-):
-    """接收端：监听端口接收数据 → 还原图像。"""
+def receiver(relay_host, relay_port, output_dir, continuous):
+    """接收端：监听端口接收数据 → 还原图像（Diffusers 本地推理）。"""
     import builtins
     import functools
 
@@ -100,31 +80,11 @@ def receiver(
     _print("  语义传输接收端")
     _print("=" * 60)
     _print(f"  监听地址: {relay_host}:{relay_port}")
-    _print(f"  后端: {backend}")
     _print(f"  输出目录: {output_dir}")
     _print(f"  模式: {'连续' if continuous else '单次'}")
 
-    # 健康检查（仅 ComfyUI 后端）
-    if backend == "comfyui":
-        from semantic_transmission.common.comfyui_client import ComfyUIClient
-        from semantic_transmission.common.config import ComfyUIConfig
-
-        config = ComfyUIConfig(host=comfyui_host, port=comfyui_port)
-        client = ComfyUIClient(config)
-        _print(f"  ComfyUI: {config.base_url}")
-
-        _print("\n[检查] ComfyUI 连接...")
-        try:
-            client.check_health()
-            _print(f"  ComfyUI ({config.base_url}): OK")
-        except Exception as e:
-            _print(f"  ComfyUI 连接失败: {e}")
-            sys.exit(1)
-    else:
-        _print("\n[检查] 使用 Diffusers 本地推理，跳过连接检查")
-
     output_dir.mkdir(parents=True, exist_ok=True)
-    recv = create_receiver(backend, host=comfyui_host, port=comfyui_port)
+    recv = create_receiver()
     index = 1
 
     relay = SocketRelayReceiver(relay_host, relay_port)
