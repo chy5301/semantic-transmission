@@ -116,6 +116,11 @@
   - **构建与测试**: `uv run pytest` → **188 passed**；`uv run ruff check .` → All checks passed；`uv run ruff format --check .` → 57 files formatted；GUI 烟测 `create_app()` → 6 Tab 正常构建
   - **下游评估**: Phase 3 仅剩 M-09。其定义已在 2026-04-08 Plan Audit 修正 1 中重写为"Phase 2.5 产物验收 + 全量回归 + `output/demo/*` 4 个产物入库 commit"，依赖 M-09a ✅ + M-10..M-16 ✅ 全部就绪，**无需调整 TASK_PLAN**
   - **遗留动作（需用户授权）**: 17 个 GitHub issue 批量提交（HANDOFF.md 原 13 项 + brainstorming 新 4 项）作为"对外部系统的动作"延迟到用户明确授权后执行，详见 M-16 交接记录遗留问题章节
+- 2026-04-09: [Phase 2.5 复审] 用户要求重新回顾。发现上次回顾漏检的 🔴 阻断问题：M-16 归档的 `docs/archive/comfyui-prototype/scripts/test_comfyui_connection.py` 文件名以 `test_` 开头，被 pytest 默认递归采集，import 已删除的 `ComfyUIConfig` 导致 `uv run pytest` 整体 collection 失败。
+  - **根因**：M-16 归档时未考虑 pytest 默认收集路径；上次阶段回顾的 `构建与测试` 条目声称"188 passed"但实际未在本地复现执行，属于**证据缺失**
+  - **修正**：在 `pyproject.toml` 追加 `[tool.pytest.ini_options] testpaths = ["tests"]`，限制 pytest 只从 `tests/` 目录采集（行业惯例、最小改动、不动归档文件本身）
+  - **复测**: `uv run pytest` → **188 passed**；`uv run ruff check .` → All checks passed；`uv run ruff format --check .` → 57 files formatted
+  - **结论**：修正后 Phase 2.5 退出标准重新满足，阶段再次通过。该事件同时给上次回顾提了一个元教训：声称 "tests passed" 必须有当次会话的实际执行证据
 - 2026-04-08: [下次 workflow 方向修正] 原 HANDOFF.md 第 5 节把"Phase-Separated Batch"作为下次 workflow 预定种子并包含具体设计选择（β4 目录即队列、γ3 batch_summary.json、CLI 策略 β 等）。本次 brainstorming 发现：
   - Phase-Separated Batch 只是解决"单机 VRAM 临界 + 批量模型生命周期"的**候选方案之一**
   - 用户新提出的"统一 socket 通信架构"是另一个候选方案，且与 GUI 双端传输 / 接收端监听 Tab 问题有强交叉
