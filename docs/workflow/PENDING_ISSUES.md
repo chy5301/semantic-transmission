@@ -7,11 +7,11 @@
 > **相关记忆**：`memory/project_pending_issues.md`（跨会话索引，提交后同步更新）
 > **原始出处**：`docs/workflow/HANDOFF.md` §4（13 项原清单） + `TASK_STATUS.md` 决策日志 2026-04-08 / 2026-04-09 条目（新增项出处）
 >
-> **最后更新**：2026-04-09（M-09 手测完成后新增 4 项）
+> **最后更新**：2026-04-09（M-09 复审合并 简-3 + M09-2 → M09-2）
 
 ---
 
-## 总计 26 项
+## 总计 25 项
 
 | 来源 | 数量 |
 |------|------|
@@ -21,8 +21,8 @@
 | 2026-04-09 `/simplify` 复审新增 | 6 |
 | 2026-04-09 M-09 手测新增 | 4 |
 | 小计 | 30 |
-| 2026-04-09 合并整理（见下） | −4 |
-| **合计** | **26** |
+| 2026-04-09 合并整理（见下） | −5 |
+| **合计** | **25** |
 
 **编号约定**：
 - `#N` 来自 HANDOFF §4 原清单
@@ -37,6 +37,7 @@
 - #3 + #10 → 合并为 **#3**（项目级 config.toml + 合并 CLI 四套配置体系），#10 条目作为占位指向 #3
 - #7 → 并入 **新-1**（VRAM 临界本属综合议题的子场景）
 - 简-3 + 简-4 → 合并为 **简-3**（GUI 资源生命周期不完整），简-4 条目作为占位指向简-3
+- **简-3 + M09-2 → 合并为 M09-2**（GUI 资源 + 模型生命周期统一治理，2026-04-09 复审追加；简-3 条目作为占位指向 M09-2，优先级取 high）
 - 简-7 候选（`check relay` 内联 socket 探测）未独立成项，作为 bullet 写入 **新-1**
 
 ---
@@ -45,7 +46,7 @@
 
 | # | 状态 | GitHub issue 编号 | 提交日期 |
 |---|------|------|------|
-| 全部 26 项 | ⬜ 未提交 | — | — |
+| 全部 25 项 | ⬜ 未提交 | — | — |
 
 （提交后在此处填写 `gh-#N` 并更新 TASK_STATUS.md 决策日志）
 
@@ -64,10 +65,10 @@
 | #3 | 缺乏项目级配置持久化，CLI 四套配置体系并存 | feature, config, priority-high |
 | 新-1 | 统一 socket 通信架构 + 批量 VRAM 临界 + 双端演示能力综合议题（**不预设方案**） | discussion, architecture, priority-high |
 | 简-1 | 图像加载 / RGB 转换逻辑在 CLI、GUI、evaluation 三层散落 10+ 处 | refactor, dx, priority-high |
-| M09-2 | ◆ 端到端演示 + ◇ 批量端到端 Tab 模型生命周期泄漏，推理灾难级慢 | bug, gui, vram, priority-high |
+| M09-2 | GUI 资源 + 模型生命周期统一治理（端到端/批量端到端模型泄漏 + 批量异常路径显存未释放 + 队列 tmp PNG 累积） | bug, gui, vram, priority-high |
 | M09-3 | DiffusersReceiver 还原图尺寸不等比 + 细节丢失（CFG=1.0 + step=9 + resize） | bug, receiver, quality, priority-high |
 
-### 🟡 中优先级（9 项）
+### 🟡 中优先级（8 项）
 
 | # | 标题 | 标签 |
 |---|------|------|
@@ -78,7 +79,6 @@
 | 新-5 | GUI 缺少独立的"接收端监听" Tab，双机演示不便 | enhancement, gui, priority-medium |
 | 审-1 | 4 篇文档仍含过时 ComfyUI 文案（`user-guide.md` / `project-overview.md` / `development-guide.md` / `gui-design.md`） | docs, priority-medium |
 | 简-2 | `BaseReceiver.process_batch` 重复实现了 `pipeline/batch_processor` 的逐样本循环 | refactor, architecture, priority-medium |
-| 简-3 | GUI 批量 / 队列流程资源生命周期不完整：异常路径显存未释放 + tmp PNG 累积 | bug, gui, vram, priority-medium |
 | M09-1 | GUI 批量 Tab 输入/输出目录只能手动键入路径，无交互式选择器 | enhancement, gui, ux, priority-medium |
 
 ### 🟢 低优先级（10 项）
@@ -240,19 +240,13 @@ M-16 按"最小变更范围"原则只更新了入口/运行时相关文档（ROA
 
 **方案**：`BaseReceiver.process_batch` 委托给 `batch_processor` 的 per-sample runner，消除重复脚手架。
 
-### 简-3 — GUI 批量 / 队列流程资源生命周期不完整
+### 简-3 — GUI 资源生命周期问题 → 已合并入 **M09-2**
 
-**合并自**：简-3 + 简-4（2026-04-09 合并整理）
+2026-04-09 复审合并：原"异常路径显存未释放 + tmp PNG 累积"两个 GUI 资源生命周期问题，与 M09-2 的"模型生命周期泄漏"是同一根因（GUI 缺乏统一的 try/finally + unload 治理）。合并到 M09-2 统一处理，优先级取 high。
 
-同一层级（GUI 资源生命周期）的两个问题：
-- **异常路径显存未释放**：`gui/batch_panel.py::run_batch_process` 中 `vlm_sender.unload()` 只在正常 fallthrough 时执行（~line 349）。外层循环 `break` 或未捕获异常时，VLM / LPIPS / receiver 均不释放，长会话 GUI 会累积 GPU 内存。
-- **tmp PNG 文件累积**：`gui/receiver_panel.py::_persist_edge` 用 `NamedTemporaryFile(delete=False)` 持久化每次 `add_to_queue` / `append_external_item` 的边缘图，`clear_queue` / `unload_model` / 会话结束均不 unlink。
+### 简-4 — GUI 队列 tmp PNG 文件无清理 → 已合并入 **M09-2**
 
-**方案**：用 try/finally 或 context manager 统一包裹批量流程的资源释放；在 state 里跟踪 tmp 文件路径，clear/unload 时清理。
-
-### 简-4 — GUI 队列 tmp PNG 文件无清理 → 已合并入 **简-3**
-
-2026-04-09 合并整理：同属 GUI 资源生命周期问题，合并到简-3 统一处理。
+2026-04-09 合并链：简-4 → 简-3 → M09-2。同属 GUI 资源生命周期问题。
 
 ### 简-5 — GUI `run_batch_process` 参数 sprawl + 指标格式化代码复制
 
@@ -274,21 +268,33 @@ M-16 按"最小变更范围"原则只更新了入口/运行时相关文档（ROA
 
 **方案**：改用 `gr.FileExplorer`（限制在服务器端某个 root）或 `gr.File(file_count="multiple")`；如果走目录语义，可参考 Gradio 4.x 的 `gr.FileExplorer` 示例。注意服务器端路径安全（不应允许浏览任意位置）。
 
-### M09-2 — ◆ 端到端演示 + ◇ 批量端到端 Tab 模型生命周期泄漏
+### M09-2 — GUI 资源 + 模型生命周期统一治理
 
-**P0 级性能缺陷**，本 workflow 手测期间发现，有完整命令行日志铁证：
+**合并自**：M09-2 + 简-3 + 简-4（2026-04-09 复审合并）
 
-**◆ 端到端演示 Tab**（`gui/pipeline_panel.py`）：
+GUI 层缺乏统一的资源/模型生命周期治理，表现为四个具体症状（覆盖 `pipeline_panel.py` / `batch_panel.py` / `receiver_panel.py` 三个面板）。**P0 级性能缺陷**，本 workflow 手测期间发现，有完整命令行日志铁证：
+
+**症状 A — ◆ 端到端演示 Tab 模型不 unload**（`gui/pipeline_panel.py`）：
 - 连续点 3 次"运行端到端演示"
 - 第 1/2 次：Diffusers 推理 `9/9 [00:28, 3.17s/it]` 正常
 - 第 3 次：Diffusers 推理 `4/9 [04:18<04:17, 51.54s/it]`，**慢 16 倍**
 - 根因：每次运行都 `Loading pipeline components: 5/5` 重新加载 VLM + Diffusers，但从不 unload，显存累积到第 3 次触发 shared GPU memory spill
 
-**◇ 批量端到端 Tab**（`gui/batch_panel.py`）：
+**症状 B — ◇ 批量端到端 Tab 双模型同驻**（`gui/batch_panel.py`）：
 - 冷启动后跑 3 张图
 - 第 1 张 VLM describe 正常（33.9s，2320 字符）
 - 第 1 张进入 Diffusers 阶段：`1/9 [05:12<41:38, 312.34s/it]`，**灾难级别**
 - 根因推测：VLM 未 unload 就开始 load Diffusers，双模型同时驻留 ~24 GB 显存无余量，首步推理就 swap 到系统内存；或者每张图都重复 load/unload 但不 unload 前一张
+
+**症状 C — 批量异常路径显存未释放**（`gui/batch_panel.py::run_batch_process`，原简-3）：
+- `vlm_sender.unload()` 只在正常 fallthrough 时执行（~line 349）
+- 外层循环 `break` 或未捕获异常时，VLM / LPIPS / receiver 均不释放
+- 长会话 GUI 会累积 GPU 内存
+
+**症状 D — 队列 tmp PNG 文件累积**（`gui/receiver_panel.py::_persist_edge`，原简-4）：
+- `NamedTemporaryFile(delete=False)` 持久化每次 `add_to_queue` / `append_external_item` 的边缘图
+- `clear_queue` / `unload_model` / 会话结束均不 unlink
+- 文件越积越多
 
 **对照组（正确实现）**：
 - ✅ 📦 批量发送 Tab（`gui/batch_sender_panel.py`）
@@ -296,7 +302,7 @@ M-16 按"最小变更范围"原则只更新了入口/运行时相关文档（ROA
 - 结构上是"加载一次 + 批量处理 + 显式卸载"的理想模式
 
 **方案参考**（不强制）：
-- 短期：照抄 `batch_sender_panel.py` 的生命周期模式，给 `pipeline_panel.py` 和 `batch_panel.py` 加显式 unload
+- 短期：照抄 `batch_sender_panel.py` 的 load-once-unload 模式，给 `pipeline_panel.py` 和 `batch_panel.py` 加显式 unload；用 try/finally 或 context manager 统一包裹批量流程的资源释放（覆盖症状 A/B/C）；在 state 里跟踪 tmp 文件路径，clear/unload 时清理（症状 D）
 - 长期：与新-1 的 Phase-Separated Batch 方向合并，彻底解耦 VLM/Diffusers 生命周期
 
 ### M09-3 — DiffusersReceiver 还原图尺寸不等比 + 细节丢失
