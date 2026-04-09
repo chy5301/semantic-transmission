@@ -1,12 +1,14 @@
 # 演示手册
 
-覆盖单机端到端演示和双机网络演示的完整操作步骤。
+覆盖单机端到端演示和双机网络演示的完整操作步骤。接收端使用 **Diffusers 本地推理**
+（Z-Image-Turbo + ControlNet Union，GGUF Q8_0 量化），无需外部 ComfyUI 服务。
 
 ## 前置条件
 
 - 已完成 [使用指南](user-guide.md) 中的安装步骤
-- ComfyUI 已启动且连通性测试通过
-- 模型文件已下载
+- 接收端模型文件已下载到 `$MODEL_CACHE_DIR/Z-Image-Turbo/`（可通过 `semantic-tx check diffusers` 检测）
+- （可选）发送端 VLM 模型已下载到 `$MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct`（可通过 `semantic-tx check vlm` 检测）
+- 环境变量 `MODEL_CACHE_DIR` 和 `HF_HOME` 已正确设置
 
 ## GUI 演示（推荐）
 
@@ -22,16 +24,36 @@ uv run semantic-tx gui
 
 ### 操作步骤
 
-1. **（可选）配置 Tab**：确认 ComfyUI 地址，点击"测试连接"验证连通性
+1. **配置 Tab**：点击"检查 VLM 模型"和"检查 Diffusers 模型"按钮确认模型就绪
 2. **切换到"端到端演示" Tab**
 3. **上传图像**：拖拽或点击上传区域选择图片（可使用 `resources/test_images/` 中的测试图）
 4. **选择描述模式**：
+   - "VLM 自动生成"（默认）：使用 Qwen2.5-VL 模型自动生成描述
    - "手动输入"：在 Prompt 框中填写图像描述
-   - "VLM 自动生成"：使用 Qwen-VL 模型自动生成描述
 5. **点击"运行端到端演示"**
-6. **观察进度**：进度区显示 5 个步骤（✓ 已完成 / ◉ 进行中 / ○ 待执行）
+6. **观察进度**：进度区显示 4 个步骤（✓ 已完成 / ◉ 进行中 / ○ 待执行）
 7. **查看结果**：原图、边缘图、还原图三列对比展示
 8. **（可选）质量评估**：展开底部"质量评估"面板，点击运行获取 PSNR/SSIM/LPIPS 指标
+
+### 批量端到端演示
+
+"批量端到端" Tab 支持一次处理目录下所有图片：
+
+1. 填入输入目录和输出目录
+2. 选择 Prompt 模式（VLM 自动 / 手动统一）
+3. 可选勾选"运行质量评估（会额外耗时）"
+4. 点击"开始批量处理"
+5. 逐组结果展开 Accordion 折叠块查看原图/边缘图/还原图/prompt/metrics
+6. 底部"总体评估"表显示平均 PSNR/SSIM/LPIPS
+
+### 双机演示（GUI 模式）
+
+"批量发送" Tab 用于双机部署的发送端：
+
+1. 在本 Tab 内的"接收端对端"区填入对端 IP 和端口
+2. 点击"测试对端连接"验证可达
+3. 填入本地图像目录，选择 Prompt 模式
+4. 点击"开始批量发送"
 
 > 如需远程演示，启动时加 `--share` 参数生成公网链接：`semantic-tx gui --share`
 
@@ -39,31 +61,20 @@ uv run semantic-tx gui
 
 ## 单机端到端演示（命令行）
 
-### 脚本：`scripts/demo_e2e.py`
+### 命令：`semantic-tx demo`
 
-在同一台机器上完成：输入图像 → 发送端（边缘提取 + 语义描述）→ 接收端（图像还原）。
+在同一台机器上完成：输入图像 → 本地 Canny 边缘提取 → VLM 语义描述 → Diffusers 还原。
 
-### 参数说明
-
-| 参数 | 必填 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--image` | 是 | — | 输入图像路径 |
-| `--prompt` | 二选一 | — | 手动指定描述文本 |
-| `--auto-prompt` | 二选一 | — | 使用 VLM 自动生成描述 |
-| `--sender-host` | 否 | `127.0.0.1` | 发送端 ComfyUI 地址 |
-| `--sender-port` | 否 | `8188` | 发送端 ComfyUI 端口 |
-| `--receiver-host` | 否 | `127.0.0.1` | 接收端 ComfyUI 地址 |
-| `--receiver-port` | 否 | `8188` | 接收端 ComfyUI 端口 |
-| `--output-dir` | 否 | `output/demo` | 输出目录 |
-| `--seed` | 否 | 随机 | KSampler 随机种子（便于复现） |
-| `--vlm-model` | 否 | `Qwen/Qwen2.5-VL-7B-Instruct` | VLM 模型名称 |
-| `--vlm-model-path` | 否 | `$MODEL_CACHE_DIR/Qwen/...` | VLM 模型本地路径 |
-
-> `--prompt` 和 `--auto-prompt` 互斥，必须指定其一。
+详细参数见 [CLI 参考文档](cli-reference.md#semantic-tx-demo)。
 
 ### 操作步骤
 
-1. **启动 ComfyUI**：打开 ComfyUI 启动器，确认服务运行在 `127.0.0.1:8188`
+1. **（可选）检查模型就绪**：
+
+```bash
+semantic-tx check vlm
+semantic-tx check diffusers
+```
 
 2. **准备测试图像**：项目自带测试图片在 `resources/test_images/` 目录
 
@@ -71,27 +82,38 @@ uv run semantic-tx gui
 
 ```bash
 # 手动 prompt（快速验证，不需要 VLM 模型）
-uv run python scripts/demo_e2e.py \
+uv run semantic-tx demo \
     --image resources/test_images/cat.jpg \
     --prompt "A cat sitting on a wooden floor, indoor scene with warm lighting"
 
 # 自动 prompt（完整流程，需要 VLM 模型）
-uv run python scripts/demo_e2e.py \
+uv run semantic-tx demo \
     --image resources/test_images/cat.jpg \
     --auto-prompt
 
 # 指定种子以便复现结果
-uv run python scripts/demo_e2e.py \
+uv run semantic-tx demo \
     --image resources/test_images/cat.jpg \
     --auto-prompt \
     --seed 42
 ```
 
 4. **查看结果**：输出保存在 `output/demo/` 下，包含：
-   - 原图副本
-   - Canny 边缘图
-   - 还原图像
+   - `edge.png`（Canny 边缘图）
+   - `restored.png`（还原图像）
+   - `comparison.png`（对比图：原图 | 边缘图 | 还原图）
    - `prompt.txt`（使用的描述文本）
+
+### 批量演示
+
+```bash
+uv run semantic-tx batch-demo \
+    --input-dir resources/test_images \
+    --auto-prompt \
+    --skip-errors
+```
+
+详见 [CLI 参考文档](cli-reference.md#semantic-tx-batch-demo)。
 
 ### 质量评估
 
@@ -125,76 +147,52 @@ uv run python scripts/evaluate.py \
 ```mermaid
 graph LR
     subgraph machine_a["机器 A（发送端）"]
-        SA[run_sender.py] --> CA[ComfyUI]
+        SA["semantic-tx sender<br/>(本地 Canny + Qwen2.5-VL)"]
     end
     subgraph network["TCP 网络"]
         SA -->|边缘图 + prompt| RB
     end
     subgraph machine_b["机器 B（接收端）"]
-        RB[run_receiver.py] --> CB[ComfyUI]
+        RB["semantic-tx receiver<br/>(Diffusers 本地推理)"]
     end
 ```
 
 ### 前置条件
 
-- 两台机器各自部署 ComfyUI 并安装模型
+- 两台机器各自安装项目依赖并下载对应模型：
+  - 机器 A（发送端）：Qwen2.5-VL（如用 auto-prompt）
+  - 机器 B（接收端）：Z-Image-Turbo GGUF + ControlNet Union
 - 两台机器在同一局域网内，接收端端口（默认 9000）可被发送端访问
 - 如有防火墙，需开放接收端的 TCP 端口
 
-### 接收端脚本：`scripts/run_receiver.py`
-
-| 参数 | 必填 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--relay-host` | 否 | `0.0.0.0` | 监听地址 |
-| `--relay-port` | 否 | `9000` | 监听端口 |
-| `--comfyui-host` | 否 | `127.0.0.1` | 本机 ComfyUI 地址 |
-| `--comfyui-port` | 否 | `8188` | 本机 ComfyUI 端口 |
-| `--output-dir` | 否 | `output/received` | 输出目录 |
-| `--continuous` | 否 | — | 连续模式：持续监听多次传输 |
-
-### 发送端脚本：`scripts/run_sender.py`
-
-| 参数 | 必填 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--image` | 是 | — | 输入图像路径 |
-| `--prompt` | 二选一 | — | 手动指定描述文本 |
-| `--auto-prompt` | 二选一 | — | 使用 VLM 自动生成描述 |
-| `--relay-host` | 是 | — | 接收端机器 IP 地址 |
-| `--relay-port` | 否 | `9000` | 接收端监听端口 |
-| `--comfyui-host` | 否 | `127.0.0.1` | 本机 ComfyUI 地址 |
-| `--comfyui-port` | 否 | `8188` | 本机 ComfyUI 端口 |
-| `--seed` | 否 | 随机 | KSampler 随机种子 |
-| `--vlm-model` | 否 | — | VLM 模型名称 |
-| `--vlm-model-path` | 否 | `$MODEL_CACHE_DIR/Qwen/...` | VLM 模型本地路径 |
-
 ### 操作步骤
 
-1. **确认网络连通**：从发送端 ping 接收端 IP，确认可达
+1. **确认网络连通**：从发送端运行 `semantic-tx check relay --host <机器B IP> --port 9000`
 
 2. **在接收端（机器 B）启动监听**：
 
 ```bash
 # 单次接收
-uv run python scripts/run_receiver.py
+uv run semantic-tx receiver
 
 # 连续模式（持续监听）
-uv run python scripts/run_receiver.py --continuous
+uv run semantic-tx receiver --continuous
 
 # 自定义端口
-uv run python scripts/run_receiver.py --relay-port 9000
+uv run semantic-tx receiver --relay-port 9000
 ```
 
 3. **在发送端（机器 A）发送图像**：
 
 ```bash
 # 手动 prompt
-uv run python scripts/run_sender.py \
+uv run semantic-tx sender \
     --image photo.jpg \
     --prompt "A red car parked in front of a building" \
     --relay-host 192.168.1.20
 
 # 自动 prompt
-uv run python scripts/run_sender.py \
+uv run semantic-tx sender \
     --image photo.jpg \
     --auto-prompt \
     --relay-host 192.168.1.20
@@ -225,9 +223,10 @@ sudo firewall-cmd --add-port=9000/tcp --permanent && sudo firewall-cmd --reload
 
 | 错误 | 原因 | 解决 |
 |------|------|------|
-| `ConnectionRefusedError` | ComfyUI 未启动或端口不对 | 确认 ComfyUI 运行中，检查 host/port 参数 |
-| `TimeoutError` | 工作流执行超时 | 检查 GPU 状态，确认模型已加载 |
-| `FileNotFoundError: workflow` | 工作流文件缺失 | 确认 `resources/comfyui/` 下有工作流 JSON 文件 |
-| 连接接收端失败 | 网络不通或防火墙拦截 | 检查 ping 连通性，开放防火墙端口 |
-| VLM 模型加载失败 | 模型未下载或路径错误 | 运行 `download_models.py` 下载，或指定 `--vlm-model-path` |
-| CUDA out of memory | GPU 显存不足 | 关闭其他 GPU 程序，或使用手动 prompt 模式跳过 VLM |
+| `ConnectionRefusedError`（发送端） | 接收端未启动或端口未开放 | 确认 `semantic-tx receiver` 运行中，用 `semantic-tx check relay` 验证 |
+| `FileNotFoundError: z-image-turbo-Q8_0.gguf` | 接收端 GGUF 模型未下载 | 运行 `semantic-tx download --dry-run` 查看下载计划，确认 `MODEL_CACHE_DIR` 正确 |
+| `FileNotFoundError: ControlNet` | ControlNet 权重缺失 | 检查 `$MODEL_CACHE_DIR/Z-Image-Turbo/Z-Image-Turbo-Fun-Controlnet-Union.safetensors` |
+| HF cache 缺失 | pipeline base 组件未缓存 | 运行 `semantic-tx check diffusers` 查看缺失项，确认 `HF_HOME` 正确或联网加载 |
+| VLM 模型加载失败 | Qwen2.5-VL 未下载或路径错误 | 运行 `semantic-tx check vlm`，按提示下载或指定 `--vlm-model-path` |
+| CUDA out of memory | GPU 显存不足 | 关闭其他 GPU 程序；接收端已使用 GGUF Q8_0 量化 + 分组件加载，24 GB 显存应充足 |
+| 每步推理极慢（分钟级） | 模型未量化或 float32 被加载 | 确认使用 GGUF Q8_0 transformer，正常每步约 3 秒 |

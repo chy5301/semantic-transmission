@@ -94,7 +94,7 @@ def batch_sender(
 ):
     """批量发送端：对目录中每张图片提取边缘 + 语义描述 → 发送到接收端。
 
-    不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
+    使用本地 OpenCV 提取 Canny 边缘。
     """
     import builtins
     import functools
@@ -115,7 +115,7 @@ def batch_sender(
 
     # 扫描目录，发现所有图片
     _print("=" * 60)
-    _print("  语义传输批量发送端（本地 Canny，不依赖 ComfyUI）")
+    _print("  语义传输批量发送端（本地 Canny + Qwen2.5-VL）")
     _print("=" * 60)
     _print(f"  输入目录: {input_dir}")
     _print(f"  输出目录: {output_dir}")

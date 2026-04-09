@@ -26,7 +26,7 @@ def create_app() -> gr.Blocks:
         gr.Markdown(
             f"# 语义传输系统 Semantic Transmission\n"
             f"> v{__version__} &nbsp;|&nbsp; "
-            f"基于 ComfyUI + VLM 的语义级图像压缩传输"
+            f"基于 Diffusers + VLM 的语义级图像压缩传输"
         )
 
         with gr.Tabs():

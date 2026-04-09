@@ -1,6 +1,6 @@
 """发送端 Tab：图像上传 → Canny 边缘提取 → VLM 语义描述。
 
-不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
+使用本地 OpenCV 提取 Canny 边缘。
 """
 
 import time
@@ -110,7 +110,7 @@ def _run_sender(
 
     send_btn_visible = True
     log += "─" * 30 + "\n"
-    log += "发送端完成！（本地 Canny，不依赖 ComfyUI）\n"
+    log += "发送端完成！（本地 Canny + VLM）\n"
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
 

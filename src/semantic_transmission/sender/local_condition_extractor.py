@@ -1,4 +1,4 @@
-"""本地条件提取器：使用 OpenCV 提取 Canny 边缘，不依赖 ComfyUI。"""
+"""本地条件提取器：使用 OpenCV 提取 Canny 边缘。"""
 
 import cv2
 import numpy as np
