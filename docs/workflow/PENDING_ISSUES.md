@@ -67,7 +67,7 @@
 | M09-2 | ◆ 端到端演示 + ◇ 批量端到端 Tab 模型生命周期泄漏，推理灾难级慢 | bug, gui, vram, priority-high |
 | M09-3 | DiffusersReceiver 还原图尺寸不等比 + 细节丢失（CFG=1.0 + step=9 + resize） | bug, receiver, quality, priority-high |
 
-### 🟡 中优先级（8 项）
+### 🟡 中优先级（9 项）
 
 | # | 标题 | 标签 |
 |---|------|------|
@@ -81,7 +81,7 @@
 | 简-3 | GUI 批量 / 队列流程资源生命周期不完整：异常路径显存未释放 + tmp PNG 累积 | bug, gui, vram, priority-medium |
 | M09-1 | GUI 批量 Tab 输入/输出目录只能手动键入路径，无交互式选择器 | enhancement, gui, ux, priority-medium |
 
-### 🟢 低优先级（9 项）
+### 🟢 低优先级（10 项）
 
 | # | 标题 | 标签 |
 |---|------|------|
