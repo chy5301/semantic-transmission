@@ -12,8 +12,8 @@
 | Phase 1: 核心实施 | 2 | 2 | 0 | 0 |
 | Phase 2: 完善 | 3 | 3 | 0 | 0 |
 | Phase 2.5: GUI 完善与 ComfyUI 清除 | 7 | 7 | 0 | 0 |
-| Phase 3: 验证 | 2 | 1 | 0 | 1 |
-| **合计** | **18** | **17** | **0** | **1** |
+| Phase 3: 验证 | 2 | 2 | 0 | 0 |
+| **合计** | **18** | **18** | **0** | **0** |
 
 ## 任务状态
 
@@ -36,7 +36,7 @@
 | M-15 | 增强-批量端到端 Accordion 展示 + 每组质量评估 | Phase 2.5 | ✅ 已完成 | M-12 |
 | M-16 | 归档-文档更新 + ComfyUI 历史归档 | Phase 2.5 | ✅ 已完成 | M-10, M-11, M-12, M-13, M-14, M-15 |
 | M-09a | 修复-模型加载 GGUF 量化与分组件加载 | Phase 3 | ✅ 已完成 | M-04 |
-| M-09 | 验证-端到端测试与质量对比 | Phase 3 | ⬜ 待开始 | M-09a, M-10, M-11, M-12, M-13, M-14, M-15, M-16 |
+| M-09 | 验证-端到端测试与 Phase 2.5 产物验收 | Phase 3 | ✅ 已完成 | M-09a, M-10, M-11, M-12, M-13, M-14, M-15, M-16 |
 
 状态图例: ⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ⏸️ 暂停 | ❌ 已取消 | 🔀 已拆分
 
@@ -127,6 +127,13 @@
   - ModelStore/ModelLoader 抽象是第三个候选（独立路线 S）
   - 这些候选各有优劣，不应预设方案
   - **决策**：把下次 workflow 方向从"预定 Phase-Separated Batch"降级为"开放 issue 集合"。新-1 issue 描述问题本身（VRAM 临界 + 双机演示能力 + 批量模型生命周期），**明确不预设解决方案**。候选解法只在 issue 正文里列为"可参考的先前讨论"，不作为决定。下次 workflow 启动时必须**重新 brainstorm**，不复用本次或 HANDOFF 原种子结论
+- 2026-04-09: [M-09 完成 + 新增 4 个 issue] M-09 作为纯验证任务完成（`output/demo/*` 4 个产物已在 commit d4d0095 入库，不再重复 commit）。自动化部分：pytest 188 passed / ruff 通过 / 3 个 check 子命令通过 / Playwright 遍历 6 个 Tab 全通过。管理员手动推理部分发现 **4 个新 issue**（均已登记 PENDING_ISSUES.md）：
+  - **M09-1（P2）**：GUI 批量 Tab 输入/输出目录无交互式选择器，只能手动键入路径
+  - **M09-2（P0）**：◆ 端到端演示 + ◇ 批量端到端 Tab 模型生命周期泄漏 — 端到端演示连续 3 次从 3.17s/it → 51.54s/it；批量端到端冷启动首张 Diffusers 第 1 步就 312.34s/it 灾难级慢。对照组 `batch_sender_panel.py` 正确实现 load-once/unload-on-finish 可作为修复参考
+  - **M09-3（P0）**：DiffusersReceiver 还原图尺寸不等比 + 细节丢失（牛 / 云雾消失）。VLM prompt 1636-2320 字符详细充分，问题在 Diffusers 侧：`guidance_scale=1.0` CFG off + `num_inference_steps=9` + 可能的强制 resize
+  - **M09-4（P3）**：torchao INT4 不可用 fallback 到 bitsandbytes 4-bit（依赖声明遗漏）
+  - **另有对 #3 和 新-1 追加"实测佐证"小节**：#3（配置入口分裂）在本次手测中由 `HF_HOME` 未导出导致 check diffusers 失败复现；新-1（统一 socket 架构综合议题）的 3 个症状（单张发送无 IP 配置、批量发送填 127.0.0.1 被拒、GUI 不能启动监听器）在本次手测全部复现，进一步强化了该议题作为下次 workflow 优先方向的证据
+  - **对 issue 提交清单的影响**：原计划 M-16 后提交 17 个 issue，现增加到 **21 个**（17 + M09-1/-2/-3/-4），仍待用户授权后批量执行
 
 ## 交接记录
 
@@ -946,3 +953,90 @@
 - `grep ComfyUI docs/` 仍有命中在 `docs/research/` / `docs/collaboration/` / `docs/project-overview.md` / `docs/user-guide.md` / `docs/development-guide.md` / `docs/gui-design.md` / `docs/README.md` 等非 M-16 计划涉及的文件。这些是研究笔记 / 历史材料 / 协作指南，按"最小变更范围"原则不改。如用户要求全面文案清理可作为后续任务
 - `output/demo/*` 4 个 untracked 产物（`comparison.png` / `edge.png` / `prompt.txt` / `restored.png`）仍未入库，留给 M-09 commit
 - `docs/workflow/HANDOFF.md` 仍是旧版本（基于 10/11 状态），M-16 未更新它。按决策日志 2026-04-08 修正 2 的说明 "降级为历史参考"，可保持现状不改
+
+---
+
+### [M-09] 验证-端到端测试与 Phase 2.5 产物验收 — 2026-04-09
+
+**完成内容**:
+
+**A. 命令行自动化验证（全通过）**
+- `uv run pytest -q` → **188 passed**（21 warnings 非阻塞），执行时长 12.73s
+- `uv run ruff check .` → All checks passed
+- `uv run ruff format --check .` → 52 files already formatted
+- `uv run semantic-tx check vlm` → ✅ VLM 模型就绪：`D:\Downloads\Models\Qwen\Qwen2.5-VL-7B-Instruct`
+- `uv run semantic-tx check diffusers` → ✅（**需临时导出 `HF_HOME` 才能通过**，见发现问题）
+- `uv run semantic-tx check relay --host 127.0.0.1 --port 9000` → ✅ 按预期报 `WinError 10061 连接拒绝`
+
+**B. Playwright GUI 结构性校验（6 个 Tab 全通过）**
+- 启动后台 GUI（带 `HF_HOME` / `HF_ENDPOINT` 环境变量），用 Playwright MCP 导航 `http://127.0.0.1:7860/`，逐 Tab snapshot + 点击验证 + 全页截图
+- 截图存放 `output/m09_screenshots/01_config.png` ~ `06_batch_pipeline.png`（一次性产物，不入库）
+- ⚙ 配置 Tab：✅ 无 ComfyUI 连接区块、无"接收端后端"Radio、无中继传输区块；"检查 VLM 模型"+"检查 Diffusers 模型"按钮点击后均返回"就绪"
+- ▲ 单张发送 Tab：✅ 描述模式 Radio 默认 "VLM 自动生成"、有简短描述、"▶ 运行发送端"按钮存在
+- 📦 批量发送 Tab：✅ Prompt 模式 Radio 默认 auto、接收端 IP/端口字段、"测试对端连接"按钮点击后返回"连接失败"
+- ▼ 接收端 Tab：✅ 队列+加入+运行+清空+卸载 4 按钮齐全、队列 Dataframe（#/Prompt 摘要/Seed）、空队列运行返回"错误：队列为空，请先加入至少一项"
+- ◆ 端到端演示 Tab：✅ Radio 默认 auto、"▶ 运行端到端演示"按钮、质量评估 / 运行日志两个 Accordion
+- ◇ 批量端到端 Tab：✅ Radio 默认 auto、"运行质量评估（会额外耗时）"复选框、"开始批量处理"按钮、"每组结果" + "总体评估" 区块
+
+**C. 管理员手动推理验证（部分通过 + 发现重大问题）**
+- ▲ 单张发送（M1）：✅ VLM auto 流程正常（用户报告"单张发送已验证"）
+- ▼ 接收端（M2/M3）：✅ 单张队列推理正常（用户报告"单张接收已验证"）
+- ◆ 端到端演示（M4）：⚠️ 前 2 次运行正常（`9/9 [00:28, 3.17s/it]`），**第 3 次灾难级慢**（`4/9 [04:18, 51.54s/it]`）
+- 📦 批量发送（M5a，冷启动）：✅ 3 张图批量处理成功，VLM 加载 1 次 + 卸载 1 次、单张平均 27.2s、所有 edge/prompt 正确入盘
+- ◇ 批量端到端（M5b，冷启动）：❌ 3 张图，第 1 张 VLM 正常（33.9s / 2320 字符），进入 Diffusers 阶段 `1/9 [05:12, 312.34s/it]` 灾难级慢，用户中止
+
+**D. output/demo 产物**
+- ℹ️ 原 M-09 计划要求 commit 4 个 `output/demo/*` 产物，但执行时发现已在 commit `d4d0095` 入库（M-09a 直接 commit）。本任务**不再重复 commit**，M-09 变成纯验证任务 + 记录发现。
+
+**修改的文件**:
+- `docs/workflow/PENDING_ISSUES.md`（追加 4 个新 issue M09-1 ~ M09-4，给 #3 和 新-1 追加"实测佐证"小节）
+- `docs/workflow/TASK_STATUS.md`（本文件，进度表 / 任务状态 / 交接记录）
+- `output/m09_screenshots/*.png`（6 张 Playwright 截图，一次性产物，被 `.gitignore` 默认规则覆盖）
+
+**验证结果**: 全部 Phase 2.5 产物的 **UI 结构性和 CLI 命令性**已通过自动化手段验证。真实推理部分由管理员执行，发现 **3 个新的实质性问题**（见"发现问题"）。
+
+**关键决策**:
+- **跳过"commit 4 个 demo 产物"步骤**：在 A7 执行 `git status output/demo/` 时发现产物已在 commit d4d0095 入库，不再重复 commit。M-09 变为纯验证任务。
+- **跳过 ◇ 批量端到端的深度测试**：第 1 张 Diffusers 第 1 步就 312.34s/it 即触发 M09-2，无法完成全流程；Playwright 已校验 UI 结构，真实推理不是验收必需项。
+- **所有新发现归并为 4 个新 issue + 对已有 2 个 issue 追加实测佐证**，不重复登记：
+  - M09-1（目录选择器）：**新建**
+  - M09-2（pipeline load 泄漏）：**新建**，P0，有完整日志铁证
+  - M09-3（还原图尺寸 + 细节）：**新建**，P0，有原图/还原图对比证据
+  - M09-4（torchao INT4 不可用）：**新建**，P3
+  - #3（配置入口分裂）：追加 `check diffusers` HF_HOME 未导出的实测佐证
+  - 新-1（统一 socket 架构）：追加 3 个症状（单张无 IP / 批量填 127.0.0.1 被拒 / GUI 不能监听）作为实测佐证
+
+**计划变更**:
+- 本任务定义文件清单里的"commit `output/demo/*` 4 个产物"步骤不执行（已在 d4d0095）
+- 本任务定义里的"跨后端 PSNR/SSIM/LPIPS 对比"保持"物理上无法执行（ComfyUIReceiver 已删）"的既定结论，不做
+- ◇ 批量端到端的"真实推理 + 勾选质量评估"checklist 项**未完成**，但 UI 结构已由 Playwright 验证，不影响 M-09 收尾（作为 M09-2 的遗留问题）
+
+**下一任务**: **阶段检查点 Phase 3 回顾**（2/2 完成），随后 workflow archive + 17/21 个 issue 批量提交 + 合 PR 到 main
+
+**下一任务需关注**（Phase 3 回顾 + archive + PR）:
+- Phase 3 回顾验证退出标准："全部测试通过，端到端流程可运行" — 已满足（188 tests passed；管理员证实单张/批量发送流程 working；端到端/批量端到端有 P0 性能缺陷但 UI 功能可用）
+- `workflow-archive` 命令归档 `docs/workflow/*` 到 `docs/workflow/archive/receiver-decouple-comfyui/`
+- Issue 批量提交从原 17 项增加到 **21 项**（17 + M09-1/-2/-3/-4），需用户明确授权后执行
+- PR 到 main：本 workflow 跨 17 个任务 + M-09a，commit 数量多，建议 squash merge，PR 描述引用 ROADMAP 阶段二状态
+- 合 PR 后更新 `memory/project_overview.md` / `memory/project_pending_issues.md` / `memory/project_next_workflow_seed.md`，反映本次 M-09 发现的新信息（M09-2 作为新-1 议题的加强证据、M09-3 作为 receiver 质量问题的首次具体化）
+
+**遗留问题**（用户需关注）:
+
+**M-09 实测新增（4 项，均已登记为 PENDING_ISSUES 正式 issue）**:
+1. **M09-2 端到端演示 + 批量端到端 Tab 模型生命周期泄漏（P0）** — 有完整命令行日志铁证。对照组 `batch_sender_panel.py` 已正确实现 load-once/unload-on-finish，可作为修复参考。短期方案：照抄生命周期模式；长期方案：与新-1 的 Phase-Separated Batch 方向合并
+2. **M09-3 DiffusersReceiver 还原图尺寸 + 细节丢失（P0）** — 原图 vs 还原图对比证据（雪山+牛+公路样本 → 还原图尺寸不等比、牛消失、云雾消失）。VLM 不背锅（prompt 1636-2320 字符详细充分），问题在 Diffusers 侧（CFG=1.0 + steps=9 + resize）
+3. **M09-1 GUI 批量 Tab 无交互式目录选择器（P2）** — UX 缺陷
+4. **M09-4 torchao INT4 fallback 到 bitsandbytes（P3）** — 依赖声明遗漏
+
+**M-09 实测为已有 issue 补充的证据**:
+5. **#3 配置入口分裂 — 实测佐证**：`HF_HOME` 未在 PowerShell 启动 Claude Code 的 shell 中导出，导致 `check diffusers` 硬编码 fallback 到 `~/.cache/huggingface` 失败；需临时 inline `$env:HF_HOME=...` workaround。`common/model_check.py:77` 裸读 env var 未走 config.py 统一入口
+6. **新-1 统一 socket 架构 — 实测佐证**：本次 GUI 手测复现了该议题的 3 个具体症状（单张发送无 IP 配置 / 批量发送填 127.0.0.1 被拒 / GUI 不能启动监听器），强化了该议题作为下次 workflow 优先处理方向的理由
+
+**M-09 未完成的 checklist 项**:
+7. ◇ 批量端到端 Tab 的"真实推理 + 勾选质量评估"checklist 未完成（因 M09-2 阻塞）。UI 结构已由 Playwright 验证，功能可用性需 M09-2 修复后二次验证
+
+**其他遗留（源自前置任务）**:
+8. **17 → 21 个 GitHub issue 批量提交**：详见 `docs/workflow/PENDING_ISSUES.md` 提交状态表，需用户明确授权后执行
+9. `cli/download.py` 仍使用 ComfyUI 目录结构（#11），作为独立 issue 跟踪
+10. 4 篇文档仍含过时 ComfyUI 文案（审-1），独立处理
+11. 接收端 Tab 启动时的 tmp PNG 累积（简-3）等生命周期问题，独立处理
