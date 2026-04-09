@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import io
 import random
 from pathlib import Path
 
@@ -34,11 +35,8 @@ class DiffusersReceiver(BaseReceiver):
     def load(self) -> None:
         """加载模型到 GPU。如已加载则跳过。
 
-        分组件加载策略：
-        1. transformer 用 GGUF 量化（Q8_0，~7.2 GB），避免 HF float32→bf16 峰值
-        2. ControlNet 用本地 bf16 文件
-        3. Pipeline 从 HF 缓存加载其余组件（text_encoder/tokenizer/scheduler/vae），
-           传入已加载的 transformer 和 controlnet 跳过子目录加载
+        transformer 使用 GGUF Q8_0 量化以绕开 HF float32→bf16 的显存峰值；
+        其余组件从 HF cache 加载，transformer 与 controlnet 直接注入以跳过子目录加载。
         """
         if self._pipeline is not None:
             return
@@ -94,9 +92,8 @@ class DiffusersReceiver(BaseReceiver):
             还原图像 PIL.Image。
         """
         self.load()
+        assert self._pipeline is not None  # load() 成功后必为非 None
         pipeline = self._pipeline
-        if pipeline is None:
-            raise RuntimeError("模型加载失败，pipeline 为 None")
 
         condition = self._load_condition_image(edge_image)
 
@@ -126,8 +123,6 @@ class DiffusersReceiver(BaseReceiver):
         if isinstance(edge_image, Image.Image):
             img = edge_image
         elif isinstance(edge_image, bytes):
-            import io
-
             img = Image.open(io.BytesIO(edge_image))
         else:
             img = Image.open(edge_image)

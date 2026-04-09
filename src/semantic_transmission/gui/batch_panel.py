@@ -258,7 +258,7 @@ def build_batch_tab(config_components):
 
                 # 还原图像
                 start = time.time()
-                restored_image = receiver.process(edge_path, prompt_text, seed=seed)
+                restored_image = receiver.process(edge_image, prompt_text, seed=seed)
                 receiver_elapsed = time.time() - start
 
                 restored_path = sample_output_dir / "restored.png"
