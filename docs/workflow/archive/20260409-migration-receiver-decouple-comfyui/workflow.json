@@ -1,0 +1,45 @@
+{
+  "version": "1.1",
+  "initCommit": "070b6ce1ea7db5bf78308a917798d754e39d73bd",
+  "taskName": "receiver-decouple-comfyui",
+  "primaryType": "migration",
+  "secondaryTags": ["refactor", "bugfix"],
+  "taskPrefix": "M",
+  "constraints": {
+    "maxFilesPerTask": 8,
+    "maxHoursPerTask": 3
+  },
+  "stateFiles": {
+    "analysis": "docs/workflow/TASK_ANALYSIS.md",
+    "plan": "docs/workflow/TASK_PLAN.md",
+    "status": "docs/workflow/TASK_STATUS.md",
+    "dependencyMap": "docs/workflow/DEPENDENCY_MAP.md"
+  },
+  "phases": [
+    {
+      "name": "Phase 0: 准备",
+      "exitCriteria": "依赖就绪、接口设计完成、seed bug 修复"
+    },
+    {
+      "name": "Phase 1: 核心实施",
+      "exitCriteria": "DiffusersReceiver 单帧生成可工作，质量可对比"
+    },
+    {
+      "name": "Phase 2: 完善",
+      "exitCriteria": "批量连续帧、后端切换、GUI/CLI 集成完成"
+    },
+    {
+      "name": "Phase 2.5: GUI 完善与 ComfyUI 清除",
+      "exitCriteria": "ComfyUI 运行时代码完全移除，GUI 可测试（接收端队列化、批量端到端完整展示、Diffusers 模型检测就绪），文档完成归档"
+    },
+    {
+      "name": "Phase 3: 验证",
+      "exitCriteria": "全部测试通过，端到端流程可运行"
+    }
+  ],
+  "projectContext": {
+    "description": "接收端脱离 ComfyUI，改用 Python 直接调用模型推理；支持批量连续帧图像生成；预留视频合成模块接口；修复 seed=0 误判 bug",
+    "buildCommand": "uv sync",
+    "testCommand": "uv run pytest"
+  }
+}

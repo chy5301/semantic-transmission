@@ -19,6 +19,8 @@ dependencies = [
     "click>=8.0",
     "gradio>=5.0",
     "bitsandbytes>=0.46.1",
+    "diffusers>=0.33.0",
+    "gguf>=0.10.0",
 ]
 
 [project.scripts]
@@ -30,6 +32,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/semantic_transmission"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [dependency-groups]
 dev = [

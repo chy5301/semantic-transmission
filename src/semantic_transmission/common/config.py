@@ -1,7 +1,7 @@
-"""ComfyUI 连接配置与公共路径工具。"""
+"""接收端模型配置与公共路径工具。"""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 
 def get_default_vlm_path() -> str | None:
@@ -16,66 +16,56 @@ def get_default_vlm_path() -> str | None:
     return None
 
 
-@dataclass
-class ComfyUIConfig:
-    """ComfyUI 服务连接配置。
+def get_default_z_image_path(filename: str) -> str:
+    """获取 Z-Image-Turbo 模型文件默认本地路径。
 
-    支持通过环境变量 COMFYUI_HOST / COMFYUI_PORT / COMFYUI_TIMEOUT 覆盖默认值。
-    带前缀时（如 prefix="SENDER"），优先读取 COMFYUI_SENDER_HOST，未设置则回退到 COMFYUI_HOST。
+    基于环境变量 MODEL_CACHE_DIR 拼接路径。
+    未设置 MODEL_CACHE_DIR 时返回文件名本身。
+    """
+    cache_dir = os.environ.get("MODEL_CACHE_DIR")
+    if cache_dir:
+        return os.path.join(cache_dir, "Z-Image-Turbo", filename)
+    return filename
+
+
+@dataclass
+class DiffusersReceiverConfig:
+    """Diffusers 接收端模型配置。
+
+    支持通过环境变量 DIFFUSERS_MODEL_NAME / DIFFUSERS_CONTROLNET_NAME 等覆盖默认值。
     """
 
-    host: str = "127.0.0.1"
-    port: int = 8188
-    timeout: int = 30
+    model_name: str = "Tongyi-MAI/Z-Image-Turbo"
+    controlnet_name: str = ""
+    transformer_path: str = ""
+    device: str = "cuda"
+    num_inference_steps: int = 9
+    guidance_scale: float = 1.0
+    torch_dtype: str = "bfloat16"
 
-    @property
-    def base_url(self) -> str:
-        return f"http://{self.host}:{self.port}"
-
-    @property
-    def ws_url(self) -> str:
-        return f"ws://{self.host}:{self.port}/ws"
-
-    @classmethod
-    def from_env(cls, prefix: str | None = None) -> "ComfyUIConfig":
-        """从环境变量构造配置实例。
-
-        Args:
-            prefix: 环境变量前缀（如 "SENDER"、"RECEIVER"）。
-                    设置后优先读取 COMFYUI_{PREFIX}_HOST 等，未设置则回退到 COMFYUI_HOST。
-        """
-
-        def _get(key: str, default: str) -> str:
-            if prefix:
-                prefixed = f"COMFYUI_{prefix}_{key}"
-                val = os.environ.get(prefixed)
-                if val is not None:
-                    return val
-            return os.environ.get(f"COMFYUI_{key}", default)
-
-        return cls(
-            host=_get("HOST", "127.0.0.1"),
-            port=int(_get("PORT", "8188")),
-            timeout=int(_get("TIMEOUT", "30")),
-        )
-
-
-@dataclass
-class SemanticTransmissionConfig:
-    """语义传输整体配置，包含发送端和接收端的 ComfyUI 连接配置。"""
-
-    sender: ComfyUIConfig
-    receiver: ComfyUIConfig
+    def __post_init__(self):
+        if not self.transformer_path:
+            self.transformer_path = get_default_z_image_path("z-image-turbo-Q8_0.gguf")
+        if not self.controlnet_name:
+            self.controlnet_name = get_default_z_image_path(
+                "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
+            )
 
     @classmethod
-    def from_env(cls) -> "SemanticTransmissionConfig":
-        """从环境变量构造配置。
-
-        发送端读取 COMFYUI_SENDER_HOST/PORT/TIMEOUT，
-        接收端读取 COMFYUI_RECEIVER_HOST/PORT/TIMEOUT，
-        未设置时均回退到 COMFYUI_HOST/PORT/TIMEOUT。
-        """
-        return cls(
-            sender=ComfyUIConfig.from_env(prefix="SENDER"),
-            receiver=ComfyUIConfig.from_env(prefix="RECEIVER"),
-        )
+    def from_env(cls) -> "DiffusersReceiverConfig":
+        """从环境变量构造配置实例。"""
+        kwargs = {}
+        for f in fields(cls):
+            env_key = f"DIFFUSERS_{f.name.upper()}"
+            val = os.environ.get(env_key)
+            if val is not None:
+                if f.type in (int, float):
+                    try:
+                        kwargs[f.name] = f.type(val)
+                    except (ValueError, TypeError) as e:
+                        raise ValueError(
+                            f"环境变量 {env_key}={val!r} 无法转换为 {f.type.__name__}"
+                        ) from e
+                else:
+                    kwargs[f.name] = val
+        return cls(**kwargs)

@@ -42,14 +42,11 @@
 
 ---
 
-## 阶段二：基于 ComfyUI API 的原型搭建
+## 阶段二：原型搭建（ComfyUI API → Diffusers 本地推理）
 
-**目标**：打通端到端流程，验证可行性
+**目标**：打通端到端流程，验证可行性，最终脱离外部 ComfyUI 依赖
 
-### 前置条件
-
-- ComfyUI 工作流已分析完成（阶段一 G-02），节点拓扑和数据流已明确
-- ComfyUI API 端点已记录（阶段一 G-04），7 个核心端点 + WebSocket 调用流程
+**状态**：已完成。原基于 ComfyUI API 实现，后由 `receiver-decouple-comfyui` workflow（2026-04）迁移到 Diffusers 本地推理，ComfyUI 运行时代码已完全清除并归档至 `docs/archive/comfyui-prototype/`。
 
 ### 任务
 
@@ -69,12 +66,13 @@
 - [x] 搭建端到端 pipeline
   - 图像 → 发送端 → 序列化传输数据 → 接收端 → 还原图像
 - [x] 实现中继传输协议（LocalRelay + SocketRelay）
-- [x] 编写双机演示脚本（run_sender.py + run_receiver.py）
+- [x] 双机部署：`semantic-tx sender` / `semantic-tx receiver` CLI 子命令（原 run_sender.py / run_receiver.py 已归档）
 - [x] 初步评估还原质量
   - 质量评估模块：PSNR、SSIM、LPIPS、CLIP Score
   - 批量评估脚本：逐样本指标 + 汇总统计 + JSON 报告
-- [x] CLI 正规化：click 框架统一入口 `semantic-tx`（sender/receiver/demo/check/download/gui）
-- [x] Gradio GUI 开发：可视化界面（配置管理、发送端/接收端、端到端演示、质量评估）
+- [x] CLI 正规化：click 框架统一入口 `semantic-tx`（sender/receiver/demo/batch-demo/check/download/gui）
+- [x] Gradio GUI 开发：6 个功能面板（配置 / 单张发送 / 批量发送 / 接收端 / 端到端演示 / 批量端到端）
+- [x] **接收端迁移到 Diffusers 本地推理**（2026-04）：`DiffusersReceiver` 使用 Z-Image-Turbo GGUF Q8_0 transformer + ControlNet Union 分组件加载；删除 `common/comfyui_client.py` / `receiver/comfyui_receiver.py` / `sender/comfyui_sender.py`；CLI `check` 子命令重写为 `check vlm` / `check diffusers` / `check relay`；GUI 接收端 Tab 改为队列模式，批量端到端 Tab 改为 Accordion 展示 + 可选质量评估
 
 ### 交付物
 
@@ -85,8 +83,9 @@
 - 端到端测试报告（`docs/test-reports/`）
 - 质量评估模块和批量评估脚本
 - 完整文档体系（开发指南、架构文档、使用指南、演示手册、项目总览）
-- CLI 工具 `semantic-tx`（7 个子命令）
-- Gradio GUI（`semantic-tx gui`，4 个功能面板）
+- CLI 工具 `semantic-tx`（接收端完全脱离 ComfyUI，check 子命令重写为 vlm/diffusers/relay 三个独立角色）
+- Gradio GUI（`semantic-tx gui`，6 个功能面板）
+- ComfyUI 原型历史归档（`docs/archive/comfyui-prototype/`）
 
 ---
 
@@ -122,13 +121,15 @@
 
 ---
 
-## 阶段四：工程化与脱离 ComfyUI
+## 阶段四：工程化与部署
 
 **目标**：构建独立可部署的系统
 
+**状态**：阶段二已完成接收端脱离 ComfyUI（Diffusers 本地推理），本阶段聚焦部署形态和模块化
+
 ### 任务
 
-- [ ] 完全脱离 ComfyUI，用 Python 代码直接实现推理流程
+- [x] 脱离 ComfyUI，接收端使用 Diffusers 直接推理（阶段二已完成）
 - [ ] 模块化架构设计
   - 发送端 SDK / 接收端 SDK
   - 可插拔的模型后端

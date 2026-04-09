@@ -1,9 +1,10 @@
-"""批量发送 Tab 面板：双机演示发送端，批量处理目录中所有图片并发送到接收端。
+"""批量发送 Tab 面板：双机部署发送端，批量处理目录中所有图片并发送到接收端。
 
-不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
+发送端使用本地 OpenCV 提取 Canny 边缘；中继对端地址在本 Tab 内配置。
 """
 
 import json
+import socket
 import time
 from pathlib import Path
 from typing import Iterator
@@ -12,15 +13,44 @@ import gradio as gr
 import numpy as np
 from PIL import Image
 
-from semantic_transmission.pipeline.relay import SocketRelaySender, TransmissionPacket
 from semantic_transmission.pipeline.batch_processor import (
     BatchImageDiscoverer,
     BatchResult,
     SampleResult,
     make_sample_output_dir,
 )
+from semantic_transmission.pipeline.relay import SocketRelaySender, TransmissionPacket
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 from semantic_transmission.sender.qwen_vl_sender import QwenVLSender
+
+
+def _test_relay_connection(host: str, port: float | int) -> str:
+    """测试到对端接收端的 TCP 可达性，返回带颜色的 Markdown 状态文本。
+
+    使用 stdlib socket 做纯 TCP 握手测试，与 cli/check.py 的 `check relay`
+    实现保持一致。失败时给出具体错误（ConnectionRefusedError / TimeoutError 等）。
+    """
+    if not host:
+        return '<span style="color:#DC2626">● 请输入接收端 IP 地址</span>'
+    try:
+        port_int = int(port)
+    except (TypeError, ValueError):
+        return '<span style="color:#DC2626">● 端口必须是整数</span>'
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(3.0)
+    try:
+        start = time.time()
+        sock.connect((host, port_int))
+        elapsed_ms = (time.time() - start) * 1000
+        return (
+            f'<span style="color:#16A34A">● 可达 ({host}:{port_int}, '
+            f"延迟 {elapsed_ms:.0f}ms)</span>"
+        )
+    except OSError as e:
+        return f'<span style="color:#DC2626">● 连接失败: {e}</span>'
+    finally:
+        sock.close()
 
 
 def build_batch_sender_tab(config_components):
@@ -297,7 +327,7 @@ def build_batch_sender_tab(config_components):
 
     with gr.Column():
         gr.Markdown(
-            "### 批量发送（双机演示）\n批量处理目录中所有图片，提取边缘后发送到接收端。**发送端不依赖 ComfyUI**。"
+            "### 批量发送\n批量提取目录下所有图片的边缘图与语义描述，发送到对端接收端。"
         )
 
         input_dir = gr.Textbox(
@@ -314,17 +344,17 @@ def build_batch_sender_tab(config_components):
         with gr.Row():
             prompt_mode = gr.Radio(
                 choices=[
-                    ("手动指定统一描述", "manual"),
                     ("VLM 自动生成描述（每张独立）", "auto"),
+                    ("手动指定统一描述", "manual"),
                 ],
-                value="manual",
+                value="auto",
                 label="Prompt 模式",
             )
 
         manual_prompt = gr.Textbox(
             label="手动描述",
             placeholder="所有图片使用这个描述文本",
-            visible=True,
+            visible=False,
             lines=2,
         )
 
@@ -360,6 +390,28 @@ def build_batch_sender_tab(config_components):
                 info="留空使用随机种子，传递给接收端",
             )
 
+        # --- 中继对端配置（M-12：从全局 config_panel 挪到本 Tab 内部） ---
+        gr.Markdown("### 接收端对端")
+        with gr.Row():
+            relay_host = gr.Textbox(
+                value="",
+                label="接收端 IP 地址",
+                placeholder="如 192.168.1.100 或 127.0.0.1",
+                info="对端接收端的 IP 地址（非本机监听地址）",
+            )
+            relay_port = gr.Number(
+                value=9000,
+                label="接收端端口",
+                precision=0,
+                info="对端接收端监听的 TCP 端口",
+            )
+        with gr.Row():
+            test_relay_btn = gr.Button("测试对端连接", variant="secondary", size="sm")
+            relay_status = gr.Markdown(
+                '<span style="color:#94A3B8">● 未检测</span>',
+                elem_classes=["status-text"],
+            )
+
         run_btn = gr.Button("开始批量发送", variant="primary")
 
         output_log = gr.Textbox(
@@ -374,6 +426,13 @@ def build_batch_sender_tab(config_components):
 
         prompt_mode.change(
             on_prompt_mode_change, inputs=[prompt_mode], outputs=[manual_prompt]
+        )
+
+        # 测试对端连接
+        test_relay_btn.click(
+            fn=_test_relay_connection,
+            inputs=[relay_host, relay_port],
+            outputs=relay_status,
         )
 
         # 运行处理
@@ -391,8 +450,8 @@ def build_batch_sender_tab(config_components):
                 seed,
                 config_components["vlm_model_name"],
                 config_components["vlm_model_path"],
-                config_components["relay_host"],
-                config_components["relay_port"],
+                relay_host,
+                relay_port,
             ],
             outputs=[output_log],
         )

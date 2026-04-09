@@ -1,6 +1,6 @@
-"""semantic-tx sender 子命令：双机演示发送端。
+"""semantic-tx sender 子命令：双机部署发送端。
 
-不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
+使用本地 OpenCV 提取 Canny 边缘 + Qwen2.5-VL 生成语义描述，通过 TCP 中继发送。
 """
 
 import io
@@ -67,8 +67,7 @@ def sender(
 ):
     """发送端：提取边缘图 + 语义描述 → 发送到接收端。
 
-    不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
-    即使接收端连接失败，结果也会保存到输出目录。
+    使用本地 OpenCV 提取 Canny 边缘。即使接收端连接失败，结果也会保存到输出目录。
     """
     import builtins
     import functools
@@ -89,7 +88,7 @@ def sender(
     image_name = Path(image).stem
 
     _print("=" * 60)
-    _print("  语义传输发送端（本地 Canny，不依赖 ComfyUI）")
+    _print("  语义传输发送端（本地 Canny + Qwen2.5-VL）")
     _print("=" * 60)
     _print(f"  输入图像: {image}")
     _print(f"  Canny 阈值: {threshold1}, {threshold2}")

@@ -5,25 +5,25 @@
 ```mermaid
 graph TB
     subgraph common["common — 公共模块"]
-        config["config.py<br/>ComfyUI 连接配置"]
-        types["types.py<br/>数据类型定义"]
-        client["comfyui_client.py<br/>ComfyUI HTTP/WS 客户端"]
+        config["config.py<br/>DiffusersReceiverConfig / 路径工具"]
+        model_check["model_check.py<br/>VLM / Diffusers 模型就绪检测"]
     end
 
     subgraph sender["sender — 发送端"]
         base_s["base.py<br/>BaseSender / BaseConditionExtractor"]
-        comfyui_s["comfyui_sender.py<br/>ComfyUI 工作流调用"]
-        qwen_vl["qwen_vl_sender.py<br/>Qwen-VL 本地推理"]
+        local_canny["local_condition_extractor.py<br/>OpenCV Canny 边缘提取"]
+        qwen_vl["qwen_vl_sender.py<br/>Qwen2.5-VL 本地推理"]
     end
 
     subgraph receiver["receiver — 接收端"]
-        base_r["base.py<br/>BaseReceiver"]
-        comfyui_r["comfyui_receiver.py<br/>ComfyUI 工作流调用"]
-        wf_conv["workflow_converter.py<br/>工作流 JSON→API 格式转换"]
+        base_r["base.py<br/>BaseReceiver / FrameInput / BatchOutput"]
+        diffusers_r["diffusers_receiver.py<br/>Z-Image-Turbo GGUF + ControlNet Union"]
+        factory["__init__.py<br/>create_receiver 工厂函数"]
     end
 
     subgraph pipeline["pipeline — 管道编排"]
-        relay["relay.py<br/>LocalRelay / SocketRelay"]
+        relay["relay.py<br/>SocketRelaySender / SocketRelayReceiver"]
+        batch["batch_processor.py<br/>批量发现 / BatchResult / SampleResult"]
     end
 
     subgraph evaluation["evaluation — 质量评估"]
@@ -35,23 +35,18 @@ graph TB
     subgraph gui["gui — 可视化界面"]
         app["app.py<br/>Gradio Blocks 主应用"]
         theme["theme.py<br/>主题与样式"]
-        config_panel["config_panel.py<br/>配置面板"]
+        config_panel["config_panel.py<br/>模型就绪检测面板"]
     end
 
-    config_panel --> client
-    config_panel --> config
+    config_panel --> model_check
+    model_check --> config
 
-    base_s --> types
-    base_r --> types
-    comfyui_s --> client
-    comfyui_s --> config
-    comfyui_r --> client
-    comfyui_r --> config
-    comfyui_r --> wf_conv
-    qwen_vl --> base_s
-    comfyui_s --> base_s
-    comfyui_r --> base_r
-    relay --> types
+    base_s --> local_canny
+    base_s --> qwen_vl
+    diffusers_r --> base_r
+    diffusers_r --> config
+    factory --> diffusers_r
+    relay --> batch
 ```
 
 ## 核心数据流
@@ -65,12 +60,12 @@ sequenceDiagram
     participant Out as 还原图像
 
     Src->>Sender: 输入图像 (numpy array)
-    Note over Sender: 1. Qwen-VL 生成语义描述<br/>2. OpenCV Canny 提取边缘图
-    Sender->>Relay: TransmissionData<br/>(text + edge_image + metadata)
-    Note over Relay: LocalRelay: 内存传递<br/>SocketRelay: TCP length-prefixed framing
-    Relay->>Receiver: text + condition_image
-    Note over Receiver: ComfyUI API 调用<br/>Z-Image-Turbo + ControlNet Union
-    Receiver->>Out: ReceiverOutput (还原图像)
+    Note over Sender: 1. OpenCV Canny 提取边缘图<br/>2. Qwen2.5-VL 生成语义描述（可选）
+    Sender->>Relay: TransmissionPacket<br/>(edge_image + prompt_text + metadata)
+    Note over Relay: SocketRelay: TCP length-prefixed framing<br/>单机场景可直接构造 packet 传入 receiver
+    Relay->>Receiver: edge_image + prompt_text
+    Note over Receiver: Diffusers 本地推理<br/>GGUF Q8_0 transformer + ControlNet Union<br/>Z-Image-Turbo pipeline
+    Receiver->>Out: PIL.Image (还原图像)
 ```
 
 ## 抽象接口设计
@@ -79,29 +74,36 @@ sequenceDiagram
 
 | 抽象基类 | 当前实现 | 说明 |
 |----------|----------|------|
-| `BaseSender` | `QwenVLSender` | 使用 Qwen-VL 多模态模型生成语义描述 |
-| `BaseConditionExtractor` | `ComfyUISender` 内嵌 | 使用 OpenCV Canny 提取边缘图 |
-| `BaseReceiver` | `ComfyUIReceiver` | 通过 ComfyUI API 调用 Z-Image-Turbo + ControlNet |
-| `BaseRelay` | `LocalRelay` / `SocketRelaySender`+`SocketRelayReceiver` | 内存传递或 TCP 传输 |
+| `BaseSender` | `QwenVLSender` | 使用 Qwen2.5-VL 多模态模型生成语义描述 |
+| `BaseConditionExtractor` | `LocalCannyExtractor` | 使用 OpenCV Canny 提取边缘图 |
+| `BaseReceiver` | `DiffusersReceiver` | 使用 Diffusers 0.37 + Z-Image-Turbo GGUF + ControlNet Union 本地推理 |
+| 中继传输 | `SocketRelaySender` / `SocketRelayReceiver` | TCP length-prefixed 协议，双机部署时使用 |
 
-## ComfyUI 客户端调用流程
+## Diffusers 接收端加载流程
 
 ```mermaid
 sequenceDiagram
     participant App as 应用层
-    participant Client as ComfyUIClient
-    participant API as ComfyUI HTTP API
-    participant WS as ComfyUI WebSocket
+    participant Factory as create_receiver
+    participant Rec as DiffusersReceiver
+    participant TF as ZImageTransformer2DModel
+    participant CN as ZImageControlNetModel
+    participant Pipe as ZImageControlNetPipeline
 
-    App->>Client: submit_workflow(api_format_json)
-    Client->>API: POST /prompt
-    API-->>Client: prompt_id
-    Client->>API: GET /history/{prompt_id} (轮询)
-    API-->>Client: history_entry (完成时)
-    Client->>Client: get_result_images(history_entry)
-    Client->>API: GET /view?filename=...
-    API-->>Client: 图像数据
-    Client-->>App: 结果图像列表
+    App->>Factory: create_receiver()
+    Factory-->>App: DiffusersReceiver 实例
+    App->>Rec: process(edge_image, prompt, seed)
+    Rec->>Rec: load()（首次调用）
+    Rec->>TF: from_single_file(gguf_path, quantization_config=GGUFQuantizationConfig)
+    TF-->>Rec: Q8_0 量化的 transformer
+    Rec->>CN: from_single_file(controlnet_path, torch_dtype=bf16)
+    CN-->>Rec: ControlNet Union 模型
+    Rec->>Pipe: from_pretrained(model_name, transformer=tf, controlnet=cn)
+    Note over Pipe: 跳过 transformer/controlnet 子目录加载<br/>从 HF cache 加载 text_encoder/tokenizer/scheduler/vae
+    Pipe-->>Rec: 完整 Pipeline
+    Rec->>Pipe: __call__(prompt, control_image, num_inference_steps=9)
+    Pipe-->>Rec: 还原图像
+    Rec-->>App: PIL.Image
 ```
 
 ## 传输协议
@@ -116,5 +118,6 @@ TCP 中继使用 length-prefixed framing 协议，每个字段由 4 字节大端
 
 - **发送端模型替换**：实现 `BaseSender` 接口即可接入新的视觉理解模型
 - **条件类型扩展**：实现 `BaseConditionExtractor` 支持深度图、分割图等条件
-- **接收端模型替换**：实现 `BaseReceiver` 可接入非 ComfyUI 的生成模型（如 diffusers 直接推理）
-- **传输协议扩展**：实现 `BaseRelay` 可替换为 WebSocket、gRPC 等传输方式
+- **接收端模型替换**：实现 `BaseReceiver` 可接入其他生成模型（Wan2.x 等）
+- **量化策略扩展**：`DiffusersReceiver.load()` 目前写死 GGUF Q8_0 分组件加载，未来可抽象为 `ModelLoader` 策略模式
+- **传输协议扩展**：`pipeline.relay` 可扩展 WebSocket / gRPC 等传输方式

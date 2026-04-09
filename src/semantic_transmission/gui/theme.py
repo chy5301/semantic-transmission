@@ -53,9 +53,4 @@ CUSTOM_CSS = """
     font-size: 14px;
 }
 
-/* 隐藏 Radio 组件的圆点指示器，选中项已有蓝色背景高亮 */
-.mode-radio input[type="radio"] {
-    display: none !important;
-}
-
 """

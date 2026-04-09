@@ -16,6 +16,7 @@ skills-lock.json
 
 # Temporary files
 .tmp-*/
+.playwright-mcp/
 
 # 脚本输出（output/demo/ 下的测试结果纳入版本管理，其余忽略）
 output/*
