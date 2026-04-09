@@ -9,8 +9,7 @@ import click
 import numpy as np
 from PIL import Image
 
-from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig, get_default_vlm_path
+from semantic_transmission.common.config import get_default_vlm_path
 from semantic_transmission.pipeline.batch_processor import (
     SUPPORTED_IMAGE_EXTS,
     BatchImageDiscoverer,
@@ -18,7 +17,7 @@ from semantic_transmission.pipeline.batch_processor import (
     SampleResult,
     make_sample_output_dir,
 )
-from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
+from semantic_transmission.receiver import create_receiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
@@ -86,12 +85,6 @@ def _make_comparison_image(
 @click.option("--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）")
 @click.option("--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）")
 @click.option(
-    "--receiver-host", default="127.0.0.1", help="接收端 ComfyUI 地址（默认 127.0.0.1）"
-)
-@click.option(
-    "--receiver-port", default=8188, type=int, help="接收端 ComfyUI 端口（默认 8188）"
-)
-@click.option(
     "--seed", default=None, type=int, help="KSampler 随机种子（可选，便于复现）"
 )
 @click.option(
@@ -115,15 +108,13 @@ def batch_demo(
     skip_errors,
     threshold1,
     threshold2,
-    receiver_host,
-    receiver_port,
     seed,
     vlm_model,
     vlm_model_path,
 ):
     """端到端批量演示：目录中所有图片 → 边缘提取 → 语义还原。
 
-    发送端不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
+    发送端使用本地 OpenCV 提取 Canny 边缘，接收端使用 Diffusers 本地推理。
     """
     import builtins
     import functools
@@ -153,7 +144,7 @@ def batch_demo(
     _print(f"  跳过错误: {'是' if skip_errors else '否'}")
     _print()
 
-    _print("[1/4] 扫描目录发现图片...")
+    _print("[1/3] 扫描目录发现图片...")
     discoverer = BatchImageDiscoverer()
     discovery = discoverer.discover(input_dir, recursive=recursive)
 
@@ -167,29 +158,16 @@ def batch_demo(
         _print(f"    {ext}: {count} 张")
     _print()
 
-    # 构造配置和客户端（仅接收端需要）
-    receiver_config = ComfyUIConfig(host=receiver_host, port=receiver_port)
-    receiver_client = ComfyUIClient(receiver_config)
-
-    # 健康检查（仅接收端）
-    _print("[2/4] 检查 ComfyUI 连接（接收端）...")
-    try:
-        receiver_client.check_health()
-        _print(f"  接收端 ({receiver_config.base_url}): OK")
-    except Exception as e:
-        _print(f"  接收端连接失败: {e}")
-        sys.exit(1)
-
     # 初始化本地边缘提取器和接收端
     extractor = LocalCannyExtractor(threshold1=threshold1, threshold2=threshold2)
-    receiver = ComfyUIReceiver(receiver_client)
+    receiver = create_receiver()
 
     # 如果是 auto-prompt 模式，预先加载 VLM 模型
     vlm_sender = None
     if auto_prompt:
         from semantic_transmission.sender.qwen_vl_sender import QwenVLSender
 
-        _print("\n[3/4] 加载 VLM 模型...")
+        _print("\n[2/3] 加载 VLM 模型...")
         vlm_kwargs = {}
         if vlm_model:
             vlm_kwargs["model_name"] = vlm_model
@@ -199,7 +177,7 @@ def batch_demo(
         _print("  VLM 模型加载完成")
 
     # 开始批量处理
-    _print("\n[4/4] 开始批量处理...")
+    _print("\n[3/3] 开始批量处理...")
     _print("-" * 60)
 
     total_start = time.time()

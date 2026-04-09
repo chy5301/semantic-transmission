@@ -1,19 +1,17 @@
 """semantic-tx receiver 子命令：双机演示接收端。"""
 
-import sys
 import time
 from pathlib import Path
 
 import click
 
-from semantic_transmission.common.comfyui_client import ComfyUIClient
-from semantic_transmission.common.config import ComfyUIConfig
 from semantic_transmission.pipeline.relay import SocketRelayReceiver
-from semantic_transmission.receiver.comfyui_receiver import ComfyUIReceiver
+from semantic_transmission.receiver import create_receiver
+from semantic_transmission.receiver.base import BaseReceiver
 
 
 def _process_packet(
-    receiver: ComfyUIReceiver, packet, output_dir: Path, index: int, _print
+    receiver: BaseReceiver, packet, output_dir: Path, index: int, _print
 ):
     """处理接收到的数据包：还原图像并保存。"""
     prompt_text = packet.prompt_text
@@ -60,12 +58,6 @@ def _process_packet(
 )
 @click.option("--relay-port", default=9000, type=int, help="监听端口（默认 9000）")
 @click.option(
-    "--comfyui-host", default="127.0.0.1", help="本机 ComfyUI 地址（默认 127.0.0.1）"
-)
-@click.option(
-    "--comfyui-port", default=8188, type=int, help="本机 ComfyUI 端口（默认 8188）"
-)
-@click.option(
     "--output-dir",
     default=Path("output/received"),
     type=click.Path(path_type=Path),
@@ -77,37 +69,22 @@ def _process_packet(
     default=False,
     help="连续模式：持续监听，每次接收后等待下一次连接",
 )
-def receiver(
-    relay_host, relay_port, comfyui_host, comfyui_port, output_dir, continuous
-):
-    """接收端：监听端口接收数据 → 还原图像。"""
+def receiver(relay_host, relay_port, output_dir, continuous):
+    """接收端：监听端口接收数据 → 还原图像（Diffusers 本地推理）。"""
     import builtins
     import functools
 
     _print = functools.partial(builtins.print, flush=True)
 
-    config = ComfyUIConfig(host=comfyui_host, port=comfyui_port)
-    client = ComfyUIClient(config)
-
     _print("=" * 60)
     _print("  语义传输接收端")
     _print("=" * 60)
     _print(f"  监听地址: {relay_host}:{relay_port}")
-    _print(f"  ComfyUI: {config.base_url}")
     _print(f"  输出目录: {output_dir}")
     _print(f"  模式: {'连续' if continuous else '单次'}")
 
-    # 健康检查
-    _print("\n[检查] ComfyUI 连接...")
-    try:
-        client.check_health()
-        _print(f"  ComfyUI ({config.base_url}): OK")
-    except Exception as e:
-        _print(f"  ComfyUI 连接失败: {e}")
-        sys.exit(1)
-
     output_dir.mkdir(parents=True, exist_ok=True)
-    receiver = ComfyUIReceiver(client)
+    recv = create_receiver()
     index = 1
 
     relay = SocketRelayReceiver(relay_host, relay_port)
@@ -124,7 +101,7 @@ def receiver(
 
             relay.close_connection()
 
-            _, elapsed = _process_packet(receiver, packet, output_dir, index, _print)
+            _, elapsed = _process_packet(recv, packet, output_dir, index, _print)
 
             _print(f"\n  第 {index} 次接收处理完成（还原耗时 {elapsed:.1f}s）")
 

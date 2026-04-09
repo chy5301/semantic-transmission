@@ -1,6 +1,6 @@
 """发送端 Tab：图像上传 → Canny 边缘提取 → VLM 语义描述。
 
-不依赖 ComfyUI，使用本地 OpenCV 提取 Canny 边缘。
+使用本地 OpenCV 提取 Canny 边缘。
 """
 
 import time
@@ -110,12 +110,14 @@ def _run_sender(
 
     send_btn_visible = True
     log += "─" * 30 + "\n"
-    log += "发送端完成！（本地 Canny，不依赖 ComfyUI）\n"
+    log += "发送端完成！（本地 Canny + VLM）\n"
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
 
 def build_sender_tab(config_components: dict) -> dict:
     """构建发送端 Tab 的 UI 组件并绑定事件。"""
+    gr.Markdown("### 单张发送\n上传图像 → 本地提取 Canny 边缘 → VLM 生成语义描述。")
+
     # --- 输入区 ---
     with gr.Row():
         with gr.Column():
@@ -136,22 +138,21 @@ def build_sender_tab(config_components: dict) -> dict:
         )
 
     mode_radio = gr.Radio(
-        choices=[("手动输入", "manual"), ("VLM 自动生成", "auto")],
-        value="manual",
+        choices=[("VLM 自动生成", "auto"), ("手动输入", "manual")],
+        value="auto",
         label="描述模式",
-        elem_classes=["mode-radio"],
     )
     prompt_input = gr.Textbox(
         label="Prompt",
         lines=3,
         placeholder="输入图像描述文本...",
-        visible=True,
+        visible=False,
     )
 
     with gr.Row():
         run_btn = gr.Button("▶ 运行发送端", variant="primary")
         send_to_receiver_btn = gr.Button(
-            "→ 发送到接收端", variant="secondary", visible=False
+            "→ 加入接收端队列", variant="secondary", visible=False
         )
 
     # --- 输出区 ---

@@ -7,7 +7,10 @@ from semantic_transmission.gui.batch_panel import build_batch_tab
 from semantic_transmission.gui.batch_sender_panel import build_batch_sender_tab
 from semantic_transmission.gui.config_panel import build_config_tab
 from semantic_transmission.gui.pipeline_panel import build_pipeline_tab
-from semantic_transmission.gui.receiver_panel import build_receiver_tab
+from semantic_transmission.gui.receiver_panel import (
+    append_external_item,
+    build_receiver_tab,
+)
 from semantic_transmission.gui.sender_panel import build_sender_tab
 from semantic_transmission.gui.theme import CUSTOM_CSS
 
@@ -23,7 +26,7 @@ def create_app() -> gr.Blocks:
         gr.Markdown(
             f"# 语义传输系统 Semantic Transmission\n"
             f"> v{__version__} &nbsp;|&nbsp; "
-            f"基于 ComfyUI + VLM 的语义级图像压缩传输"
+            f"基于 Diffusers + VLM 的语义级图像压缩传输"
         )
 
         with gr.Tabs():
@@ -45,16 +48,17 @@ def create_app() -> gr.Blocks:
             with gr.TabItem("◇ 批量端到端"):
                 build_batch_tab(config_components)
 
-        # Tab 间传递：发送端 → 接收端
+        # Tab 间传递：发送端 → 接收端队列（M-13：append 到接收端 gr.State 队列）
         sender_components["send_to_receiver_btn"].click(
-            fn=lambda edge, prompt: (edge, prompt),
+            fn=append_external_item,
             inputs=[
                 sender_components["edge_output"],
                 sender_components["prompt_result"],
+                receiver_components["queue_state"],
             ],
             outputs=[
-                receiver_components["edge_input"],
-                receiver_components["prompt_input"],
+                receiver_components["queue_state"],
+                receiver_components["queue_display"],
             ],
         )
 

@@ -5,15 +5,16 @@
 ```bash
 uv sync                  # 安装依赖
 uv run pytest            # 运行全部测试
-uv run pytest tests/test_comfyui_client.py  # 运行单个测试文件
+uv run pytest tests/test_diffusers_receiver.py  # 运行单个测试文件
 uv run ruff check .      # 代码检查（与 CI 一致，覆盖 src/ scripts/ tests/）
 uv run ruff format .     # 代码格式化
 uv run ruff format --check .  # 格式化检查（与 CI 一致，仅检查不修改）
-uv run python scripts/demo_e2e.py  # 运行端到端 demo（需 ComfyUI 服务运行中）
 uv run python scripts/evaluate.py --input-dir <输出目录> --original-dir resources/test_images  # 批量评估还原质量
 uv run semantic-tx --help           # 查看 CLI 所有子命令
 uv run semantic-tx demo --image <图片> --prompt "描述文本"  # CLI 方式运行端到端 demo
-uv run semantic-tx check connection  # 检查 ComfyUI 连通性
+uv run semantic-tx check vlm         # 检查发送端 VLM 模型就绪
+uv run semantic-tx check diffusers   # 检查接收端 Diffusers 模型就绪
+uv run semantic-tx check relay --host 127.0.0.1 --port 9000  # 检查双机部署对端 TCP 可达
 uv run semantic-tx download --dry-run  # 查看模型下载计划
 uv run semantic-tx gui               # 启动 Gradio 可视化界面（默认 127.0.0.1:7860）
 ```
@@ -34,29 +35,28 @@ uv run semantic-tx gui               # 启动 Gradio 可视化界面（默认 12
 | 阶段 | 目标 | 状态 |
 |------|------|------|
 | 阶段一：调研与选型 | 论文综述、开源项目评估、技术路线确定 | 已完成 |
-| 阶段二：ComfyUI API 原型 | 基于 ComfyUI API 打通端到端流程 | 进行中 |
-| 阶段三：方案迭代与优化 | 提升还原质量，优化压缩效率 | 待启动 |
-| 阶段四：工程化与脱离 ComfyUI | 构建独立可部署的系统 | 待启动 |
+| 阶段二：ComfyUI API 原型 | 基于 ComfyUI API 打通端到端流程 | 已完成（接收端已完全脱离 ComfyUI，历史材料归档在 `docs/archive/comfyui-prototype/`） |
+| 阶段三：方案迭代与优化 | 提升还原质量，优化压缩效率 | 进行中 |
+| 阶段四：工程化与部署 | 构建独立可部署的系统 | 待启动 |
 
 ## 源码结构
 
 ```
 src/semantic_transmission/
-├── common/          # 公共模块：ComfyUI 客户端、配置、类型定义
+├── common/          # 公共模块：配置、类型定义、模型就绪检测（model_check）
 ├── cli/             # CLI 入口：click 子命令（sender/receiver/demo/check/download/gui）
 ├── gui/             # Gradio 可视化界面（配置面板、发送端、接收端、端到端演示）
 ├── pipeline/        # 端到端管道编排（含 relay 中继转发）
-├── sender/          # 发送端：图像/视频 → 语义描述 + 条件信息
-├── receiver/        # 接收端：语义描述 → 图像/视频还原
+├── sender/          # 发送端：图像/视频 → 语义描述 + 条件信息（本地 Canny + Qwen-VL）
+├── receiver/        # 接收端：语义描述 → 图像/视频还原（Diffusers 本地推理）
 └── evaluation/      # 质量评估：PSNR/SSIM/LPIPS/CLIP Score
 ```
 
 ## 关键资源
 
-- `resources/comfyui/` — ComfyUI 工作流文件（Z-Image-Turbo + ControlNet Union，Canny 边缘控制生成）
 - `docs/ROADMAP.md` — 项目路线图
 - `docs/research/selection-report.md` — 模型/方案选型报告
-- `docs/comfyui-setup.md` — ComfyUI 部署指南
+- `docs/archive/comfyui-prototype/` — Phase 2 ComfyUI 原型历史材料（部署指南、工作流 JSON、原始脚本，已归档不再使用）
 - `docs/workflow/` — structured-workflow 插件产物（agent coding 任务管理，详见"分支与协作约定"）
 - `docs/test-reports/` — 端到端测试报告
 - `docs/collaboration/` — 团队协作指南
@@ -87,18 +87,20 @@ src/semantic_transmission/
 ## 环境前置条件
 
 - Python >= 3.10（CI 使用 3.12）
-- ComfyUI 服务需在本地运行（默认地址 `127.0.0.1:8188`），配置见 `src/semantic_transmission/common/config.py`
 - PyTorch 使用 CUDA 13.0 索引源安装（`pyproject.toml` 中已配置 `pytorch-cu130`）
+- 接收端 Diffusers 需要模型文件：`$MODEL_CACHE_DIR/Z-Image-Turbo/z-image-turbo-Q8_0.gguf`（GGUF transformer）+ `Z-Image-Turbo-Fun-Controlnet-Union.safetensors` + HuggingFace cache 中的 pipeline base 组件（可通过 `semantic-tx check diffusers` 检测）
+- 发送端 VLM auto-prompt 可选：`$MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct`（可通过 `semantic-tx check vlm` 检测）
 
 ## 技术栈
 
 - **工作流管理**：使用 structured-workflow 系统辅助 agent coding，详见下方"分支与协作约定"
-- **ComfyUI API 模式**：通过 HTTP API 调用 ComfyUI 工作流
 - **Python**：主要开发语言，使用 uv 管理依赖
-- **生成模型**：Z-Image-Turbo + ControlNet Union（当前基线），Wan2.x（规划中）
-- **视觉理解模型**：Qwen-VL 等多模态大模型用于图像/视频描述生成
+- **接收端推理**：Diffusers 0.37 + Z-Image-Turbo + ControlNet Union；transformer 使用 GGUF Q8_0 量化（`gguf>=0.18`），分组件加载适配 24 GB 显存
+- **发送端边缘提取**：OpenCV Canny 算子（`LocalCannyExtractor`）
+- **视觉理解模型**：Qwen2.5-VL 多模态大模型用于图像/视频描述生成
+- **中继传输**：`SocketRelaySender` / `SocketRelayReceiver`（TCP 长度前缀协议），用于双机部署
 - **CLI 框架**：click（子命令体系，入口点 `semantic-tx`）
-- **GUI 框架**：Gradio（可视化界面，`semantic-tx gui` 启动）
+- **GUI 框架**：Gradio 5.x（可视化界面，`semantic-tx gui` 启动）
 
 ## 分支与协作约定
 
