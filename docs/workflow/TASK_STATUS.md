@@ -106,6 +106,16 @@
   - **发现 2**：`scripts/run_sender.py`、`scripts/run_receiver.py`、`scripts/demo_e2e.py` 也直接 import 了 `common.comfyui_client` / `ComfyUIConfig` / `comfyui_receiver` / `comfyui_sender`，M-10 之后会 ImportError。M-16 原计划只归档 `scripts/verify_workflows.py` + `scripts/test_comfyui_connection.py` 两个脚本，**遗漏了上述 3 个**。决定不在 M-10 处理（避免范围进一步膨胀），由 M-16 一并归档到 `docs/archive/comfyui-prototype/scripts/`。本次 M-10 commit 同步更新 TASK_PLAN.md 的 M-16 涉及文件清单和约束例外说明
   - **M-10 涉及文件总数**：从 10 → 13（原 10 + sender 3）。与 `common/__init__.py` + `test_config.py` 的超约束理由一致（ComfyUI 底层删除的必要连锁），属于单次例外延伸，不修改 `workflow.json` 的 `maxFilesPerTask`
   - **test_config.py 重写**：原计划"保留 `get_default_vlm_path` 等与 ComfyUI 无关的测试"，但原文件内仅有 ComfyUIConfig/SemanticTransmissionConfig 相关测试。重写为覆盖 `get_default_vlm_path` / `get_default_z_image_path` / `DiffusersReceiverConfig` 的新测试集（10 项）
+- 2026-04-09: [Phase 2.5 阶段回顾] 阶段通过。审计 7 任务（M-10~M-16）无 🔴/🟡 发现。
+  - **完整性**: 所有计划步骤均有对应变更（M-10 `ComfyUIClient`/`ComfyUIConfig`/`ComfyUIReceiver`/`ComfyUISender` 删除 + `model_check.py` 新建；M-11 CLI `--backend` 移除 + check 三子命令重写；M-12 GUI 六 panel 分支清理 + config_panel Diffusers 检测；M-13 receiver_panel 队列模式 + `@gr.render`；M-14 Radio 圆点/默认 auto/Tab 描述；M-15 batch_panel Accordion + 评估；M-16 归档 + 文档 + GUI 文案清理）
+  - **准确性**: 实际变更均对齐任务目标，唯一偏离是实现细节层面的三处：M-11 `check relay` 使用 stdlib socket 代替 `SocketRelaySender`、M-13 `run_queue` 使用 `process` 循环代替 `process_batch`、M-12 `app.py` 验证后确认无需改动。均已在对应交接记录"关键决策"条目说明
+  - **边界**: 所有 commit 仅改动计划涉及文件及合理连锁。M-10 审计期发现 `sender/comfyui_sender.py` 连锁依赖、M-16 审计期发现 `workflow_converter.py` 连锁依赖，均作为"M-10 连锁遗漏"在合理的任务内补救，符合"必要连锁"例外逻辑
+  - **跨任务一致性**: M-10 `common/model_check.py` 被 M-11 CLI 和 M-12 GUI 正确复用；M-10 预留的 `receiver_panel.config_components` 形参被 M-13 重写正确处理；M-12 的 batch_sender_panel 中继配置被 M-14 微调后 M-15 未破坏；M-13 的 `gr.State` 队列设计与 M-15 的 `results_state` 设计风格一致
+  - **审计发现**: 无 🔴 阻断、无 🟡 需修正。🔵 建议三项：① `cli/download.py` 仍使用 ComfyUI 目录结构（独立重构议题，作为 issue 跟踪）；② `docs/user-guide.md` / `project-overview.md` / `development-guide.md` / `gui-design.md` 仍含 ComfyUI 文案（按"最小变更范围"决策不动）；③ `docs/workflow/HANDOFF.md` 过时但保留（2026-04-08 修正 2 既定决策 "降级为历史参考"）
+  - **退出标准逐条验证**: ComfyUI 运行时代码完全移除 ✅（`grep -rn "ComfyUI" src/ --include="*.py"` 仅在 `cli/download.py` 命中，其余为归档目录和 workflow 历史文件）；接收端队列化 ✅（M-13）；批量端到端完整展示 ✅（M-15）；Diffusers 模型检测就绪 ✅（M-12 + M-10）；文档完成归档 ✅（M-16）
+  - **构建与测试**: `uv run pytest` → **188 passed**；`uv run ruff check .` → All checks passed；`uv run ruff format --check .` → 57 files formatted；GUI 烟测 `create_app()` → 6 Tab 正常构建
+  - **下游评估**: Phase 3 仅剩 M-09。其定义已在 2026-04-08 Plan Audit 修正 1 中重写为"Phase 2.5 产物验收 + 全量回归 + `output/demo/*` 4 个产物入库 commit"，依赖 M-09a ✅ + M-10..M-16 ✅ 全部就绪，**无需调整 TASK_PLAN**
+  - **遗留动作（需用户授权）**: 17 个 GitHub issue 批量提交（HANDOFF.md 原 13 项 + brainstorming 新 4 项）作为"对外部系统的动作"延迟到用户明确授权后执行，详见 M-16 交接记录遗留问题章节
 - 2026-04-08: [下次 workflow 方向修正] 原 HANDOFF.md 第 5 节把"Phase-Separated Batch"作为下次 workflow 预定种子并包含具体设计选择（β4 目录即队列、γ3 batch_summary.json、CLI 策略 β 等）。本次 brainstorming 发现：
   - Phase-Separated Batch 只是解决"单机 VRAM 临界 + 批量模型生命周期"的**候选方案之一**
   - 用户新提出的"统一 socket 通信架构"是另一个候选方案，且与 GUI 双端传输 / 接收端监听 Tab 问题有强交叉
