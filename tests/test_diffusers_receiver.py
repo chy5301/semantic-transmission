@@ -112,7 +112,9 @@ class TestLoadUnload:
 class TestProcess:
     @pytest.fixture
     def receiver_with_mock_pipeline(self):
-        receiver = DiffusersReceiver()
+        # 强制 CPU 设备，避免在无 CUDA 驱动的 CI runner 上构造
+        # torch.Generator(device="cuda") 触发 cudaErrorInsufficientDriver。
+        receiver = DiffusersReceiver(DiffusersReceiverConfig(device="cpu"))
         receiver._pipeline = _make_mock_pipeline()
         return receiver
 
@@ -172,7 +174,7 @@ class TestProcess:
 
     def test_auto_loads_if_not_loaded(self, edge_image_path):
         """process 自动触发 load。"""
-        receiver = DiffusersReceiver()
+        receiver = DiffusersReceiver(DiffusersReceiverConfig(device="cpu"))
         mock_pipe = _make_mock_pipeline()
 
         with (
@@ -191,7 +193,8 @@ class TestProcess:
 class TestProcessBatch:
     @pytest.fixture
     def receiver_with_mock_pipeline(self):
-        receiver = DiffusersReceiver()
+        # 同 TestProcess：强制 CPU 设备避免 CI 触发 CUDA 驱动检查。
+        receiver = DiffusersReceiver(DiffusersReceiverConfig(device="cpu"))
         receiver._pipeline = _make_mock_pipeline()
         return receiver
 
