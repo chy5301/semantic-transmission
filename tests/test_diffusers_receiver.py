@@ -9,11 +9,9 @@ import torch
 from PIL import Image
 
 from semantic_transmission.common.config import DiffusersReceiverConfig
+from semantic_transmission.common.model_loader import TORCH_DTYPE_MAP
 from semantic_transmission.receiver.base import BatchOutput, FrameInput
-from semantic_transmission.receiver.diffusers_receiver import (
-    DiffusersReceiver,
-    _TORCH_DTYPE_MAP,
-)
+from semantic_transmission.receiver.diffusers_receiver import DiffusersReceiver
 
 
 def _make_png_bytes() -> bytes:
@@ -23,8 +21,8 @@ def _make_png_bytes() -> bytes:
     return buf.getvalue()
 
 
-def _make_pil_image() -> Image.Image:
-    return Image.new("RGB", (64, 64), color=(200, 100, 50))
+def _make_pil_image(size: tuple[int, int] = (64, 64)) -> Image.Image:
+    return Image.new("RGB", size, color=(200, 100, 50))
 
 
 def _make_mock_pipeline():
@@ -35,6 +33,18 @@ def _make_mock_pipeline():
     pipeline.return_value = result
     pipeline.to.return_value = pipeline
     return pipeline
+
+
+def _receiver_with_mock(
+    device: str = "cpu", size: tuple[int, int] = (64, 64)
+) -> DiffusersReceiver:
+    """创建带 mock loader 的 receiver。"""
+    receiver = DiffusersReceiver(DiffusersReceiverConfig(device=device))
+    mock_pipe = _make_mock_pipeline()
+    # 让 mock pipeline 返回指定尺寸的图
+    mock_pipe.return_value.images = [_make_pil_image(size)]
+    receiver._loader._pipeline = mock_pipe
+    return receiver
 
 
 PROMPT_TEXT = "A desert road with mountains in the background."
@@ -97,7 +107,7 @@ class TestLoadUnload:
 
     def test_unload_releases_pipeline(self):
         receiver = DiffusersReceiver()
-        receiver._pipeline = MagicMock()
+        receiver._loader._pipeline = MagicMock()
         assert receiver.is_loaded
 
         receiver.unload()
@@ -112,11 +122,7 @@ class TestLoadUnload:
 class TestProcess:
     @pytest.fixture
     def receiver_with_mock_pipeline(self):
-        # 强制 CPU 设备，避免在无 CUDA 驱动的 CI runner 上构造
-        # torch.Generator(device="cuda") 触发 cudaErrorInsufficientDriver。
-        receiver = DiffusersReceiver(DiffusersReceiverConfig(device="cpu"))
-        receiver._pipeline = _make_mock_pipeline()
-        return receiver
+        return _receiver_with_mock()
 
     @pytest.fixture
     def edge_image_path(self, tmp_path) -> Path:
@@ -147,7 +153,7 @@ class TestProcess:
         self, receiver_with_mock_pipeline, edge_image_path
     ):
         receiver_with_mock_pipeline.process(edge_image_path, PROMPT_TEXT, seed=42)
-        call_kwargs = receiver_with_mock_pipeline._pipeline.call_args[1]
+        call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
         assert call_kwargs["prompt"] == PROMPT_TEXT
         assert call_kwargs["num_inference_steps"] == 9
         assert call_kwargs["guidance_scale"] == 1.0
@@ -156,7 +162,7 @@ class TestProcess:
 
     def test_seed_zero_is_valid(self, receiver_with_mock_pipeline, edge_image_path):
         receiver_with_mock_pipeline.process(edge_image_path, PROMPT_TEXT, seed=0)
-        call_kwargs = receiver_with_mock_pipeline._pipeline.call_args[1]
+        call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
         generator = call_kwargs["generator"]
         assert isinstance(generator, torch.Generator)
 
@@ -164,13 +170,29 @@ class TestProcess:
         self, receiver_with_mock_pipeline, edge_image_path
     ):
         receiver_with_mock_pipeline.process(edge_image_path, PROMPT_TEXT)
-        call_kwargs = receiver_with_mock_pipeline._pipeline.call_args[1]
+        call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
         assert "generator" in call_kwargs
 
     def test_passes_control_image(self, receiver_with_mock_pipeline, edge_image_path):
         receiver_with_mock_pipeline.process(edge_image_path, PROMPT_TEXT, seed=1)
-        call_kwargs = receiver_with_mock_pipeline._pipeline.call_args[1]
+        call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
         assert isinstance(call_kwargs["control_image"], Image.Image)
+
+    def test_passes_height_width(self, receiver_with_mock_pipeline):
+        """process() 从 condition image 读取 H/W 传给 pipeline（#24 修复）。"""
+        edge = Image.new("RGB", (120, 80))  # W=120, H=80
+        receiver_with_mock_pipeline.process(edge, PROMPT_TEXT, seed=1)
+        call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
+        assert call_kwargs["height"] == 80
+        assert call_kwargs["width"] == 120
+
+    def test_portrait_image_dimensions(self, receiver_with_mock_pipeline):
+        """竖版图（H > W）的 height/width 正确传入。"""
+        edge = Image.new("RGB", (64, 128))  # W=64, H=128
+        receiver_with_mock_pipeline.process(edge, PROMPT_TEXT, seed=1)
+        call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
+        assert call_kwargs["height"] == 128
+        assert call_kwargs["width"] == 64
 
     def test_auto_loads_if_not_loaded(self, edge_image_path):
         """process 自动触发 load。"""
@@ -193,10 +215,7 @@ class TestProcess:
 class TestProcessBatch:
     @pytest.fixture
     def receiver_with_mock_pipeline(self):
-        # 同 TestProcess：强制 CPU 设备避免 CI 触发 CUDA 驱动检查。
-        receiver = DiffusersReceiver(DiffusersReceiverConfig(device="cpu"))
-        receiver._pipeline = _make_mock_pipeline()
-        return receiver
+        return _receiver_with_mock()
 
     def test_returns_batch_output(self, receiver_with_mock_pipeline):
         frames = [
@@ -260,7 +279,7 @@ class TestProcessBatch:
 
     def test_failed_frame_tracked(self, receiver_with_mock_pipeline):
         """单帧失败不影响其他帧处理。"""
-        pipe = receiver_with_mock_pipeline._pipeline
+        pipe = receiver_with_mock_pipeline._loader._pipeline
         call_count = 0
 
         def side_effect(**kwargs):
@@ -294,6 +313,6 @@ class TestProcessBatch:
 
 class TestTorchDtypeMap:
     def test_known_dtypes(self):
-        assert _TORCH_DTYPE_MAP["float16"] == torch.float16
-        assert _TORCH_DTYPE_MAP["bfloat16"] == torch.bfloat16
-        assert _TORCH_DTYPE_MAP["float32"] == torch.float32
+        assert TORCH_DTYPE_MAP["float16"] == torch.float16
+        assert TORCH_DTYPE_MAP["bfloat16"] == torch.bfloat16
+        assert TORCH_DTYPE_MAP["float32"] == torch.float32

@@ -10,11 +10,11 @@
 | 阶段 | 总数 | 完成 | 进行中 | 待开始 |
 |------|------|------|--------|--------|
 | Phase 0: 基础设施 | 2 | 2 | 0 | 0 |
-| Phase 1: receiver 侧垂直切 | 4 | 1 | 0 | 3 |
+| Phase 1: receiver 侧垂直切 | 4 | 2 | 0 | 2 |
 | Phase 2: sender/CLI 侧垂直切 | 3 | 0 | 0 | 3 |
 | Phase 3: GUI 侧垂直切 | 2 | 0 | 0 | 2 |
 | Phase 4: cleanup + 收尾 | 3 | 0 | 0 | 3 |
-| **合计** | **14** | **3** | **0** | **11** |
+| **合计** | **14** | **4** | **0** | **10** |
 
 ## 任务状态
 
@@ -23,7 +23,7 @@
 | R-01 | 创建-ProjectConfig 与 config.toml 体系 | Phase 0 | ✅ | 无 |
 | R-02 | 创建-ModelLoader 抽象基类 | Phase 0 | ✅ | 无 |
 | R-03 | 实现-DiffusersModelLoader | Phase 1 | ✅ | R-01, R-02 |
-| R-04 | 迁移-DiffusersReceiver + 动态尺寸 #24 | Phase 1 | ⬜ | R-03 |
+| R-04 | 迁移-DiffusersReceiver + 动态尺寸 #24 | Phase 1 | ✅ | R-03 |
 | R-05 | 简化-BaseReceiver.process_batch #31 | Phase 1 | ⬜ | R-04 |
 | R-06 | 对齐-采样器参数 #25 | Phase 1 | ⬜ | R-04 |
 | R-07 | 实现-QwenVLModelLoader + 迁移 QwenVLSender | Phase 2 | ⬜ | R-02 |
@@ -119,3 +119,26 @@
 **下一任务**：R-04 迁移 DiffusersReceiver 使用 ModelLoader + 修复动态尺寸 #24
 
 **遗留问题**：无
+
+---
+
+### R-04 交接（2026-04-12）
+
+**完成内容**：DiffusersReceiver 改为持有 DiffusersModelLoader 委托加载，process() 从 control_image 读取 H/W 动态传入 pipeline（修复 #24）。
+
+**修改的文件**：
+- `src/semantic_transmission/receiver/diffusers_receiver.py` — 重写：委托 `_loader` 管理生命周期，`process()` 传 `height`/`width`
+- `src/semantic_transmission/receiver/__init__.py` — `create_receiver()` 新增 `loader` 参数
+- `tests/test_diffusers_receiver.py` — 适配 loader 结构，新增 `test_passes_height_width` 和 `test_portrait_image_dimensions`
+
+**验证结果**：212 passed / ruff 全绿
+
+**关键决策**：
+- `DiffusersReceiver.__init__` 同时支持旧 `config` 参数和新 `loader` 参数，保持向后兼容
+- 不传 `loader` 时从 `config` 字段自动构造 `DiffusersLoaderConfig` → `DiffusersModelLoader`
+- PIL `Image.size` 返回 `(W, H)`，传给 pipeline 时 `height=size[1], width=size[0]`
+
+**下一任务**：R-05 简化 BaseReceiver.process_batch 循环（依赖 R-04 ✅）
+
+**遗留问题**：
+- 竖版图本地 RTX 5090 逼眼验证待 Phase 1 阶段检查点时执行
