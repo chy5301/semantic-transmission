@@ -132,7 +132,29 @@
 - **回滚方案**: `git checkout -- src/semantic_transmission/receiver/`
 - **预估工作量**: L
 
-### [R-05] 对齐-Diffusers 采样器参数与 ComfyUI 基线
+### [R-05] 简化-BaseReceiver.process_batch 循环
+
+- **阶段**: Phase 1 - receiver 侧垂直切
+- **依赖**: R-04
+- **目标**: 消除 `BaseReceiver.process_batch()` 与 CLI `batch_demo.py` 的循环重复，统一走 `pipeline/batch_processor` 的数据结构
+- **背景信息**: `BaseReceiver.process_batch()` (base.py:55-80) 实现了通用的逐帧处理循环（调 `self.process()` + 收集 `SampleResult` → `BatchResult`）。CLI `batch_demo.py` (lines 195-260) 也有几乎相同的循环。GUI `receiver_panel.py` 通过 `DiffusersReceiver.process_batch()` 调用 base 实现。#31 要求消除这种重复。**注意**：`DiffusersReceiver.process_batch()` 在 R-04 中改为委托 loader.load() 后调 `super().process_batch()`，此逻辑需保留；简化的是 base.py 与 CLI 之间的重复。
+- **涉及文件**:
+  - `src/semantic_transmission/receiver/base.py`（可能简化或保留）
+  - `src/semantic_transmission/pipeline/batch_processor.py`（评估是否需要适配）
+- **具体步骤**:
+  1. 审计 `base.py:process_batch()` 与 `batch_processor.py` 的 `BatchResult/SampleResult` 使用方式
+  2. 确认 `receiver_panel.py` 的 queue 处理是否唯一依赖 `process_batch()`
+  3. 如果 base.py 的循环与 batch_processor 的数据结构兼容，保留 base.py 的实现但简化为使用 batch_processor 的 `SampleResult` 构造
+  4. 如果存在不必要的重复逻辑，删除并统一入口
+- **验收标准**:
+  - [ ] `BaseReceiver.process_batch()` 与 CLI 批量逻辑不再重复同一循环模式
+  - [ ] `receiver_panel.py` 的 queue 处理仍正常工作
+  - [ ] `uv run pytest` 全绿
+- **自测方法**: `uv run pytest tests/test_diffusers_receiver.py -v`
+- **回滚方案**: `git checkout -- src/semantic_transmission/receiver/base.py`
+- **预估工作量**: M
+
+### [R-06] 对齐-Diffusers 采样器参数与 ComfyUI 基线
 
 - **阶段**: Phase 1 - receiver 侧垂直切
 - **依赖**: R-04
@@ -157,28 +179,6 @@
 - **自测方法**: `semantic-tx demo --image <测试图>` 生成对比图，目测评估
 - **回滚方案**: `git checkout -- src/semantic_transmission/receiver/diffusers_receiver.py config.toml`
 - **预估工作量**: L
-
-### [R-06] 简化-BaseReceiver.process_batch 循环
-
-- **阶段**: Phase 1 - receiver 侧垂直切
-- **依赖**: R-04
-- **目标**: 消除 `BaseReceiver.process_batch()` 与 CLI `batch_demo.py` 的循环重复，统一走 `pipeline/batch_processor` 的数据结构
-- **背景信息**: `BaseReceiver.process_batch()` (base.py:55-80) 实现了通用的逐帧处理循环（调 `self.process()` + 收集 `SampleResult` → `BatchResult`）。CLI `batch_demo.py` (lines 195-260) 也有几乎相同的循环。GUI `receiver_panel.py` 通过 `DiffusersReceiver.process_batch()` 调用 base 实现。#31 要求消除这种重复。**注意**：`DiffusersReceiver.process_batch()` 在 R-04 中改为委托 loader.load() 后调 `super().process_batch()`，此逻辑需保留；简化的是 base.py 与 CLI 之间的重复。
-- **涉及文件**:
-  - `src/semantic_transmission/receiver/base.py`（可能简化或保留）
-  - `src/semantic_transmission/pipeline/batch_processor.py`（评估是否需要适配）
-- **具体步骤**:
-  1. 审计 `base.py:process_batch()` 与 `batch_processor.py` 的 `BatchResult/SampleResult` 使用方式
-  2. 确认 `receiver_panel.py` 的 queue 处理是否唯一依赖 `process_batch()`
-  3. 如果 base.py 的循环与 batch_processor 的数据结构兼容，保留 base.py 的实现但简化为使用 batch_processor 的 `SampleResult` 构造
-  4. 如果存在不必要的重复逻辑，删除并统一入口
-- **验收标准**:
-  - [ ] `BaseReceiver.process_batch()` 与 CLI 批量逻辑不再重复同一循环模式
-  - [ ] `receiver_panel.py` 的 queue 处理仍正常工作
-  - [ ] `uv run pytest` 全绿
-- **自测方法**: `uv run pytest tests/test_diffusers_receiver.py -v`
-- **回滚方案**: `git checkout -- src/semantic_transmission/receiver/base.py`
-- **预估工作量**: M
 
 ---
 

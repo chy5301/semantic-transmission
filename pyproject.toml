@@ -2,7 +2,7 @@
 name = "semantic-transmission"
 version = "0.1.0"
 description = "语义传输预研项目：基于 AI 模型的视频语义级压缩传输"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "requests",
     "websocket-client",

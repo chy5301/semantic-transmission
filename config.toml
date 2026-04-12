@@ -1,0 +1,28 @@
+# 语义传输项目配置
+# 本地覆盖请创建 config.local.toml（已 gitignore），格式相同。
+# 路径中支持 ${MODEL_CACHE_DIR} 环境变量展开。
+
+[models.diffusers]
+model_name = "Tongyi-MAI/Z-Image-Turbo"
+controlnet_name = "${MODEL_CACHE_DIR}/Z-Image-Turbo/Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
+transformer_path = "${MODEL_CACHE_DIR}/Z-Image-Turbo/z-image-turbo-Q8_0.gguf"
+torch_dtype = "bfloat16"
+device = "cuda"
+
+[models.vlm]
+model_name = "Qwen/Qwen2.5-VL-7B-Instruct"
+model_path = "${MODEL_CACHE_DIR}/Qwen/Qwen2.5-VL-7B-Instruct"
+quantization = "int4"
+max_new_tokens = 512
+
+[inference]
+num_inference_steps = 9
+guidance_scale = 1.0
+
+[sender]
+canny_low_threshold = 100
+canny_high_threshold = 200
+
+[paths]
+model_cache_dir = "${MODEL_CACHE_DIR}"
+output_dir = "output"

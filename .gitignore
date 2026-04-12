@@ -14,6 +14,9 @@ skills-lock.json
 .agents/
 skills-lock.json
 
+# 本地配置覆盖
+config.local.toml
+
 # Temporary files
 .tmp-*/
 .playwright-mcp/
