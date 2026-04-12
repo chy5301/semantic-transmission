@@ -72,7 +72,7 @@ src/semantic_transmission/
 
 ## CI 注意事项
 
-- **编辑代码前必须先创建 feature branch**（`git checkout -b <branch>`），禁止在 main 上直接修改
+- **任何变更（含文档、workflow 文件）前必须先创建工作分支**（`git checkout -b <branch>`），禁止在 main 上直接修改或提交
 - 推送前务必在本地运行 `uv run ruff check .` 和 `uv run ruff format --check .` 确认通过
 - CI 检查范围是整个项目（`.`），不仅限于 `src/`
 
@@ -106,7 +106,7 @@ src/semantic_transmission/
 
 - 所有变更必须走 feature branch → PR → Squash Merge，禁止直接 push main
 - 分支粒度：使用 workflow 时，一个 workflow 对应一个分支/PR；不使用 workflow 时，按独立功能或目的划分
-- 分支名应自描述工作内容（如 `feature/prototype-polish-and-tooling`），不使用 workflow 编号
+- 分支名前缀应匹配任务类型（`feature/`、`refactor/`、`fix/`、`chore/`、`docs/` 等），后接自描述工作内容（如 `refactor/unify-config-and-loader`），不使用 workflow 编号
 - 协作者的 PR 需至少 1 人 approve + CI 通过；管理员的 PR 仅需 CI 通过即可自行合并
 - 管理员合并自己的 PR 时需使用 `gh pr merge <number> --squash --delete-branch --admin`（GitHub 不允许自我 approve，需用 `--admin` 绕过 Rulesets）
 - 分支命名规范见 `docs/collaboration/05-project-conventions.md`
