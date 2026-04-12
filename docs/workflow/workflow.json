@@ -1,0 +1,45 @@
+{
+  "version": "1.1",
+  "initCommit": "b369a712e5b07117e259e64b9b84a2acdaa7f82e",
+  "taskName": "unify-config-and-loader",
+  "primaryType": "refactor",
+  "secondaryTags": ["bugfix", "infrastructure"],
+  "taskPrefix": "R",
+  "constraints": {
+    "maxFilesPerTask": 8,
+    "maxHoursPerTask": 3
+  },
+  "stateFiles": {
+    "analysis": "docs/workflow/TASK_ANALYSIS.md",
+    "plan": "docs/workflow/TASK_PLAN.md",
+    "status": "docs/workflow/TASK_STATUS.md",
+    "dependencyMap": "docs/workflow/DEPENDENCY_MAP.md"
+  },
+  "phases": [
+    {
+      "name": "Phase 0: 基础设施（纯新增不接线）",
+      "exitCriteria": "ProjectConfig + ModelLoader ABC + config.toml 新增完毕，pytest/ruff 全绿，旧代码零变化"
+    },
+    {
+      "name": "Phase 1: receiver 侧垂直切",
+      "exitCriteria": "DiffusersReceiver 迁 loader + #24 动态尺寸 + #25 采样器对齐 + #31 去重，本地 demo 单图跑通并逼眼对比"
+    },
+    {
+      "name": "Phase 2: sender/CLI 侧垂直切",
+      "exitCriteria": "QwenVLSender 迁 loader + #19 CLI 合并 + #27 download.py 接 config，sender 单图/批量均正常"
+    },
+    {
+      "name": "Phase 3: GUI 侧垂直切",
+      "exitCriteria": "#23 生命周期修复，pipeline/batch/receiver/batch_sender 四面板各连续 3 次不出现减速症状"
+    },
+    {
+      "name": "Phase 4: cleanup + 收尾",
+      "exitCriteria": "#22 RGB helper + #33 删除 + 文档最小更新 + issue 关闭 + workflow archive，pytest/ruff 全绿"
+    }
+  ],
+  "projectContext": {
+    "description": "统一配置系统(config.toml) + 模型加载器(ModelLoader) + 修复 P0 demo 缺陷",
+    "buildCommand": "uv sync",
+    "testCommand": "uv run pytest && uv run ruff check . && uv run ruff format --check ."
+  }
+}
