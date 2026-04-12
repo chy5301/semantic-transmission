@@ -10,11 +10,11 @@
 | 阶段 | 总数 | 完成 | 进行中 | 待开始 |
 |------|------|------|--------|--------|
 | Phase 0: 基础设施 | 2 | 2 | 0 | 0 |
-| Phase 1: receiver 侧垂直切 | 4 | 2 | 0 | 2 |
+| Phase 1: receiver 侧垂直切 | 4 | 3 | 0 | 1 |
 | Phase 2: sender/CLI 侧垂直切 | 3 | 0 | 0 | 3 |
 | Phase 3: GUI 侧垂直切 | 2 | 0 | 0 | 2 |
 | Phase 4: cleanup + 收尾 | 3 | 0 | 0 | 3 |
-| **合计** | **14** | **4** | **0** | **10** |
+| **合计** | **14** | **5** | **0** | **9** |
 
 ## 任务状态
 
@@ -24,7 +24,7 @@
 | R-02 | 创建-ModelLoader 抽象基类 | Phase 0 | ✅ | 无 |
 | R-03 | 实现-DiffusersModelLoader | Phase 1 | ✅ | R-01, R-02 |
 | R-04 | 迁移-DiffusersReceiver + 动态尺寸 #24 | Phase 1 | ✅ | R-03 |
-| R-05 | 简化-BaseReceiver.process_batch #31 | Phase 1 | ⬜ | R-04 |
+| R-05 | 简化-BaseReceiver.process_batch #31 | Phase 1 | ✅ | R-04 |
 | R-06 | 对齐-采样器参数 #25 | Phase 1 | ⬜ | R-04 |
 | R-07 | 实现-QwenVLModelLoader + 迁移 QwenVLSender | Phase 2 | ⬜ | R-02 |
 | R-08 | 合并-CLI sender/batch_sender #19 | Phase 2 | ⬜ | R-01, R-07 |
@@ -57,6 +57,7 @@
 | 2026-04-12 | R-05/R-06 编号互换（原 R-06→R-05, 原 R-05→R-06） | process_batch 审计是确定性工作先做，采样器对齐是实验性任务后做 |
 | 2026-04-12 | requires-python 提升到 >=3.12 | 预研项目+CI 3.12+本地 3.12，直接用 stdlib tomllib |
 | 2026-04-12 | Phase 0 阶段回顾通过 | 审计无 🔴/🟡 发现，205 passed，退出标准全满足 |
+| 2026-04-12 | R-05 process_batch 审计结论：保留不合并 | base.py 和 CLI batch_demo 职责不同，合并时机在 R-08 |
 
 ## 交接记录
 
@@ -142,3 +143,25 @@
 
 **遗留问题**：
 - 竖版图本地 RTX 5090 逼眼验证待 Phase 1 阶段检查点时执行
+
+---
+
+### R-05 交接（2026-04-12）
+
+**完成内容**：审计 `BaseReceiver.process_batch()` 与 CLI `batch_demo.py` 的循环关系，结论为两者职责不同，无需合并。
+
+**审计发现**：
+- `base.py:process_batch()` 是纯 receiver 批量处理（逐帧调 `self.process()`），被 GUI `receiver_panel` 使用
+- `batch_demo.py` 是端到端 demo 管道（sender + receiver 串联 + 对比图 + 保存），逻辑完全不同
+- 真正的 CLI 重复（4 个命令共享 options）属于 R-08 Phase 2 范围
+
+**修改的文件**：无代码变更（reviewed, no change needed）
+
+**验证结果**：N/A（无代码变更）
+
+**关键决策**：
+- `BaseReceiver.process_batch()` 保留现有实现，不与 CLI 批量逻辑合并
+
+**下一任务**：R-06 对齐采样器参数（本次执行范围限制不包含 R-06）
+
+**遗留问题**：无
