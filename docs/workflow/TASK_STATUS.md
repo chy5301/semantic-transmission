@@ -9,19 +9,19 @@
 
 | 阶段 | 总数 | 完成 | 进行中 | 待开始 |
 |------|------|------|--------|--------|
-| Phase 0: 基础设施 | 2 | 1 | 0 | 1 |
+| Phase 0: 基础设施 | 2 | 2 | 0 | 0 |
 | Phase 1: receiver 侧垂直切 | 4 | 0 | 0 | 4 |
 | Phase 2: sender/CLI 侧垂直切 | 3 | 0 | 0 | 3 |
 | Phase 3: GUI 侧垂直切 | 2 | 0 | 0 | 2 |
 | Phase 4: cleanup + 收尾 | 3 | 0 | 0 | 3 |
-| **合计** | **14** | **1** | **0** | **13** |
+| **合计** | **14** | **2** | **0** | **12** |
 
 ## 任务状态
 
 | 编号 | 标题 | 阶段 | 状态 | 依赖 |
 |------|------|------|------|------|
 | R-01 | 创建-ProjectConfig 与 config.toml 体系 | Phase 0 | ✅ | 无 |
-| R-02 | 创建-ModelLoader 抽象基类 | Phase 0 | ⬜ | 无 |
+| R-02 | 创建-ModelLoader 抽象基类 | Phase 0 | ✅ | 无 |
 | R-03 | 实现-DiffusersModelLoader | Phase 1 | ⬜ | R-01, R-02 |
 | R-04 | 迁移-DiffusersReceiver + 动态尺寸 #24 | Phase 1 | ⬜ | R-03 |
 | R-05 | 简化-BaseReceiver.process_batch #31 | Phase 1 | ⬜ | R-04 |
@@ -78,5 +78,21 @@
 - `DiffusersReceiverConfig.from_env()` 修复：加了 `from __future__ import annotations` 后 `f.type` 变字符串，改用 `_TYPE_MAP` 字符串查找
 
 **下一任务**：R-02 创建 ModelLoader 抽象基类（无依赖，可直接开始）
+
+**遗留问题**：无
+
+### R-02 交接（2026-04-12）
+
+**完成内容**：创建 `ModelLoader(ABC, Generic[TModel])` 抽象基类，定义统一的模型生命周期接口。
+
+**修改的文件**：
+- `src/semantic_transmission/common/model_loader.py` — 新建，`ModelLoader` ABC + `session()` context manager
+- `tests/test_model_loader.py` — 新建，7 个测试用例覆盖 load/unload/is_loaded/session 正常+异常路径
+
+**验证结果**：7 passed / ruff 全绿
+
+**关键决策**：无
+
+**下一任务**：R-03 实现 DiffusersModelLoader（依赖 R-01 ✅ + R-02 ✅，可开始）
 
 **遗留问题**：无
