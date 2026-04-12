@@ -1,10 +1,13 @@
-"""ModelLoader ABC 单元测试。"""
+"""ModelLoader ABC + DiffusersModelLoader 单元测试。"""
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
-from semantic_transmission.common.model_loader import ModelLoader
+from semantic_transmission.common.config import DiffusersLoaderConfig
+from semantic_transmission.common.model_loader import DiffusersModelLoader, ModelLoader
 
 
 class _FakeLoader(ModelLoader[str]):
@@ -71,4 +74,82 @@ class TestSession:
         loader = _FakeLoader()
         with loader.session():
             pass
+        assert not loader.is_loaded
+
+
+def _make_mock_pipeline():
+    """创建 mock pipeline。"""
+    pipeline = MagicMock()
+    pipeline.to.return_value = pipeline
+    return pipeline
+
+
+class TestDiffusersModelLoader:
+    @pytest.fixture
+    def config(self):
+        return DiffusersLoaderConfig(device="cpu")
+
+    @patch("diffusers.GGUFQuantizationConfig")
+    @patch("diffusers.ZImageControlNetPipeline")
+    @patch("diffusers.ZImageControlNetModel")
+    @patch("diffusers.ZImageTransformer2DModel")
+    def test_load_returns_pipeline(
+        self, mock_xformer, mock_cnet, mock_pipe_cls, mock_quant, config
+    ):
+        mock_pipe = _make_mock_pipeline()
+        mock_pipe_cls.from_pretrained.return_value = mock_pipe
+
+        loader = DiffusersModelLoader(config)
+        pipeline = loader.load()
+
+        assert pipeline is mock_pipe
+        assert loader.is_loaded
+        mock_xformer.from_single_file.assert_called_once()
+        mock_cnet.from_single_file.assert_called_once()
+        mock_pipe_cls.from_pretrained.assert_called_once()
+
+    @patch("diffusers.GGUFQuantizationConfig")
+    @patch("diffusers.ZImageControlNetPipeline")
+    @patch("diffusers.ZImageControlNetModel")
+    @patch("diffusers.ZImageTransformer2DModel")
+    def test_load_idempotent(
+        self, mock_xformer, mock_cnet, mock_pipe_cls, mock_quant, config
+    ):
+        mock_pipe = _make_mock_pipeline()
+        mock_pipe_cls.from_pretrained.return_value = mock_pipe
+
+        loader = DiffusersModelLoader(config)
+        p1 = loader.load()
+        p2 = loader.load()
+
+        assert p1 is p2
+        mock_pipe_cls.from_pretrained.assert_called_once()
+
+    def test_unload_releases_pipeline(self, config):
+        loader = DiffusersModelLoader(config)
+        loader._pipeline = MagicMock()
+        assert loader.is_loaded
+
+        loader.unload()
+        assert not loader.is_loaded
+
+    def test_unload_when_not_loaded(self, config):
+        loader = DiffusersModelLoader(config)
+        loader.unload()  # 空操作
+        assert not loader.is_loaded
+
+    @patch("diffusers.GGUFQuantizationConfig")
+    @patch("diffusers.ZImageControlNetPipeline")
+    @patch("diffusers.ZImageControlNetModel")
+    @patch("diffusers.ZImageTransformer2DModel")
+    def test_session_lifecycle(
+        self, mock_xformer, mock_cnet, mock_pipe_cls, mock_quant, config
+    ):
+        mock_pipe = _make_mock_pipeline()
+        mock_pipe_cls.from_pretrained.return_value = mock_pipe
+
+        loader = DiffusersModelLoader(config)
+        with loader.session() as pipeline:
+            assert pipeline is mock_pipe
+            assert loader.is_loaded
         assert not loader.is_loaded

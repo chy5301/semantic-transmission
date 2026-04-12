@@ -146,6 +146,27 @@ class ProjectConfig:
     model_cache_dir: str = ""
     output_dir: str = "output"
 
+    def to_diffusers_loader_config(self) -> DiffusersLoaderConfig:
+        """从项目配置派生 Diffusers 模型加载配置。"""
+        return DiffusersLoaderConfig(
+            model_name=self.diffusers_model_name,
+            controlnet_name=self.diffusers_controlnet_name,
+            transformer_path=self.diffusers_transformer_path,
+            device=self.diffusers_device,
+            torch_dtype=self.diffusers_torch_dtype,
+        )
+
+
+@dataclass(frozen=True)
+class DiffusersLoaderConfig:
+    """Diffusers 模型加载器配置（从 ProjectConfig 派生，不直接依赖 ProjectConfig）。"""
+
+    model_name: str = "Tongyi-MAI/Z-Image-Turbo"
+    controlnet_name: str = ""
+    transformer_path: str = ""
+    device: str = "cuda"
+    torch_dtype: str = "bfloat16"
+
 
 # TOML 嵌套键 → ProjectConfig 平坦字段名的映射
 _TOML_FIELD_MAP: dict[tuple[str, ...], str] = {

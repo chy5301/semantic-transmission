@@ -10,11 +10,11 @@
 | 阶段 | 总数 | 完成 | 进行中 | 待开始 |
 |------|------|------|--------|--------|
 | Phase 0: 基础设施 | 2 | 2 | 0 | 0 |
-| Phase 1: receiver 侧垂直切 | 4 | 0 | 0 | 4 |
+| Phase 1: receiver 侧垂直切 | 4 | 1 | 0 | 3 |
 | Phase 2: sender/CLI 侧垂直切 | 3 | 0 | 0 | 3 |
 | Phase 3: GUI 侧垂直切 | 2 | 0 | 0 | 2 |
 | Phase 4: cleanup + 收尾 | 3 | 0 | 0 | 3 |
-| **合计** | **14** | **2** | **0** | **12** |
+| **合计** | **14** | **3** | **0** | **11** |
 
 ## 任务状态
 
@@ -22,7 +22,7 @@
 |------|------|------|------|------|
 | R-01 | 创建-ProjectConfig 与 config.toml 体系 | Phase 0 | ✅ | 无 |
 | R-02 | 创建-ModelLoader 抽象基类 | Phase 0 | ✅ | 无 |
-| R-03 | 实现-DiffusersModelLoader | Phase 1 | ⬜ | R-01, R-02 |
+| R-03 | 实现-DiffusersModelLoader | Phase 1 | ✅ | R-01, R-02 |
 | R-04 | 迁移-DiffusersReceiver + 动态尺寸 #24 | Phase 1 | ⬜ | R-03 |
 | R-05 | 简化-BaseReceiver.process_batch #31 | Phase 1 | ⬜ | R-04 |
 | R-06 | 对齐-采样器参数 #25 | Phase 1 | ⬜ | R-04 |
@@ -82,6 +82,8 @@
 
 **遗留问题**：无
 
+---
+
 ### R-02 交接（2026-04-12）
 
 **完成内容**：创建 `ModelLoader(ABC, Generic[TModel])` 抽象基类，定义统一的模型生命周期接口。
@@ -95,5 +97,25 @@
 **关键决策**：无
 
 **下一任务**：R-03 实现 DiffusersModelLoader（依赖 R-01 ✅ + R-02 ✅，可开始）
+
+**遗留问题**：无
+
+---
+
+### R-03 交接（2026-04-12）
+
+**完成内容**：实现 `DiffusersModelLoader(ModelLoader)`，封装 GGUF transformer + ControlNet + base pipeline 分组件加载；新增 `DiffusersLoaderConfig` frozen dataclass 及 `ProjectConfig.to_diffusers_loader_config()` 派生方法。
+
+**修改的文件**：
+- `src/semantic_transmission/common/model_loader.py` — 新增 `DiffusersModelLoader` 类 + `TORCH_DTYPE_MAP` 常量
+- `src/semantic_transmission/common/config.py` — 新增 `DiffusersLoaderConfig` dataclass + `ProjectConfig.to_diffusers_loader_config()`
+- `tests/test_model_loader.py` — 新增 5 个 DiffusersModelLoader mock 测试
+
+**验证结果**：22 passed / ruff 全绿
+
+**关键决策**：
+- `TORCH_DTYPE_MAP` 从 `diffusers_receiver.py` 提升到 `model_loader.py` 公共位置（R-04 迁移 receiver 时会从此处引用）
+
+**下一任务**：R-04 迁移 DiffusersReceiver 使用 ModelLoader + 修复动态尺寸 #24
 
 **遗留问题**：无
