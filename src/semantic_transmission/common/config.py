@@ -48,6 +48,7 @@ class DiffusersReceiverConfig:
     num_inference_steps: int = 9
     guidance_scale: float = 1.0
     torch_dtype: str = "bfloat16"
+    scheduler_shift: float = 3.0
 
     def __post_init__(self):
         if not self.transformer_path:
@@ -137,6 +138,7 @@ class ProjectConfig:
     # [inference]
     num_inference_steps: int = 9
     guidance_scale: float = 1.0
+    scheduler_shift: float = 3.0
 
     # [sender]
     canny_low_threshold: int = 100
@@ -145,6 +147,7 @@ class ProjectConfig:
     # [paths]
     model_cache_dir: str = ""
     output_dir: str = "output"
+    hf_endpoint: str = ""
 
     def to_diffusers_loader_config(self) -> DiffusersLoaderConfig:
         """从项目配置派生 Diffusers 模型加载配置。"""
@@ -154,6 +157,7 @@ class ProjectConfig:
             transformer_path=self.diffusers_transformer_path,
             device=self.diffusers_device,
             torch_dtype=self.diffusers_torch_dtype,
+            scheduler_shift=self.scheduler_shift,
         )
 
 
@@ -166,6 +170,7 @@ class DiffusersLoaderConfig:
     transformer_path: str = ""
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
+    scheduler_shift: float = 3.0
 
 
 # TOML 嵌套键 → ProjectConfig 平坦字段名的映射
@@ -181,10 +186,12 @@ _TOML_FIELD_MAP: dict[tuple[str, ...], str] = {
     ("models", "vlm", "max_new_tokens"): "vlm_max_new_tokens",
     ("inference", "num_inference_steps"): "num_inference_steps",
     ("inference", "guidance_scale"): "guidance_scale",
+    ("inference", "scheduler_shift"): "scheduler_shift",
     ("sender", "canny_low_threshold"): "canny_low_threshold",
     ("sender", "canny_high_threshold"): "canny_high_threshold",
     ("paths", "model_cache_dir"): "model_cache_dir",
     ("paths", "output_dir"): "output_dir",
+    ("paths", "hf_endpoint"): "hf_endpoint",
 }
 
 
@@ -237,4 +244,10 @@ def load_config(path: Path | None = None) -> ProjectConfig:
     if env_cache_dir:
         merged["model_cache_dir"] = env_cache_dir
 
-    return ProjectConfig(**merged)
+    config = ProjectConfig(**merged)
+
+    # 将 HF_ENDPOINT 注入环境变量（huggingface_hub 通过 os.environ 读取）
+    if config.hf_endpoint and not os.environ.get("HF_ENDPOINT"):
+        os.environ["HF_ENDPOINT"] = config.hf_endpoint
+
+    return config

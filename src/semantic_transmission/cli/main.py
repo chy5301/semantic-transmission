@@ -17,6 +17,9 @@ from semantic_transmission.cli.sender import sender
 @click.version_option(version=__version__, prog_name="semantic-tx")
 def cli():
     """语义传输系统 CLI 工具。"""
+    from semantic_transmission.common.config import load_config
+
+    load_config()  # 触发 config.toml 加载 + 环境变量注入（如 HF_ENDPOINT）
 
 
 cli.add_command(sender)

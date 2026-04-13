@@ -10,11 +10,11 @@
 | 阶段 | 总数 | 完成 | 进行中 | 待开始 |
 |------|------|------|--------|--------|
 | Phase 0: 基础设施 | 2 | 2 | 0 | 0 |
-| Phase 1: receiver 侧垂直切 | 4 | 3 | 0 | 1 |
+| Phase 1: receiver 侧垂直切 | 4 | 4 | 0 | 0 |
 | Phase 2: sender/CLI 侧垂直切 | 3 | 0 | 0 | 3 |
 | Phase 3: GUI 侧垂直切 | 2 | 0 | 0 | 2 |
 | Phase 4: cleanup + 收尾 | 3 | 0 | 0 | 3 |
-| **合计** | **14** | **5** | **0** | **9** |
+| **合计** | **14** | **6** | **0** | **8** |
 
 ## 任务状态
 
@@ -25,7 +25,7 @@
 | R-03 | 实现-DiffusersModelLoader | Phase 1 | ✅ | R-01, R-02 |
 | R-04 | 迁移-DiffusersReceiver + 动态尺寸 #24 | Phase 1 | ✅ | R-03 |
 | R-05 | 简化-BaseReceiver.process_batch #31 | Phase 1 | ✅ | R-04 |
-| R-06 | 对齐-采样器参数 #25 | Phase 1 | ⬜ | R-04 |
+| R-06 | 对齐-采样器参数 #25 | Phase 1 | ✅ | R-04 |
 | R-07 | 实现-QwenVLModelLoader + 迁移 QwenVLSender | Phase 2 | ⬜ | R-02 |
 | R-08 | 合并-CLI sender/batch_sender #19 | Phase 2 | ⬜ | R-01, R-07 |
 | R-09 | 重构-download.py + 迁移 demo/batch_demo CLI | Phase 2 | ⬜ | R-01, R-08 |
@@ -58,6 +58,9 @@
 | 2026-04-12 | requires-python 提升到 >=3.12 | 预研项目+CI 3.12+本地 3.12，直接用 stdlib tomllib |
 | 2026-04-12 | Phase 0 阶段回顾通过 | 审计无 🔴/🟡 发现，205 passed，退出标准全满足 |
 | 2026-04-12 | R-05 process_batch 审计结论：保留不合并 | base.py 和 CLI batch_demo 职责不同，合并时机在 R-08 |
+| 2026-04-13 | scheduler_shift=3.0 作为初始值，后续可调 | ComfyUI 基线 AuraFlow shift=3，res_multistep/simple 无需对齐 |
+| 2026-04-13 | 尺寸对齐到 16 的倍数 | pipeline 要求 height/width 必须是 16 的倍数 |
+| 2026-04-13 | config.toml 新增 hf_endpoint | 解决 HF 下载在国内需镜像站的持久化配置问题 |
 
 ## 交接记录
 
@@ -165,3 +168,33 @@
 **下一任务**：R-06 对齐采样器参数（本次执行范围限制不包含 R-06）
 
 **遗留问题**：无
+
+---
+
+### R-06 交接（2026-04-13）
+
+**完成内容**：对齐 Diffusers 采样器参数与 ComfyUI 基线。新增 `scheduler_shift=3.0` 配置，pipeline 加载后调用 `set_shift()`。修复尺寸对齐到 16 倍数。新增 `hf_endpoint` 配置解决镜像站持久化。CLI 入口触发 `load_config()` 注入环境变量。端到端 demo 跑通。
+
+**修改的文件**：
+- `src/semantic_transmission/common/config.py` — `ProjectConfig`/`DiffusersReceiverConfig`/`DiffusersLoaderConfig` 新增 `scheduler_shift` 字段；新增 `hf_endpoint` 字段 + 环境变量注入；`to_diffusers_loader_config()` 传 shift；`_TOML_FIELD_MAP` 新增映射
+- `src/semantic_transmission/common/model_loader.py` — `load()` 末尾调 `scheduler.set_shift()`
+- `src/semantic_transmission/receiver/diffusers_receiver.py` — 构造 loader 时传 `scheduler_shift`；尺寸对齐到 16 倍数
+- `src/semantic_transmission/cli/main.py` — CLI 根命令调 `load_config()` 触发环境变量注入
+- `config.toml` — `[inference]` 新增 `scheduler_shift=3.0`；`[paths]` 新增 `hf_endpoint`
+- `tests/test_model_loader.py` — 新增 scheduler shift 验证测试
+- `tests/test_diffusers_receiver.py` — 更新尺寸测试适配 16 倍数对齐，新增 `test_non_aligned_dimensions`
+
+**验证结果**：214 passed / ruff 全绿 / 端到端 demo 跑通（canyon_jeep.jpg，shift=3.0，9 步，55.2s）
+
+**关键决策**：
+- `scheduler_shift=3.0` 作为初始值，映射自 ComfyUI 的 `ModelSamplingAuraFlow(shift=3)`
+- `res_multistep` sampler 在 diffusers 中无等价，使用默认 Euler step
+- `simple` scheduler 已是 `FlowMatchEulerDiscreteScheduler` 默认行为
+- 尺寸向下对齐到 16 倍数（`w - w % 16`）
+- `hf_endpoint` 注入 `os.environ["HF_ENDPOINT"]`，解决 HF 镜像站持久化（超出 R-06 原始范围，但阻塞了 demo 测试）
+
+**下一任务**：R-07 实现 QwenVLModelLoader + 迁移 QwenVLSender（Phase 2）
+
+**遗留问题**：
+- shift=3.0 的生成质量待用户后续逼眼对比确认，可能需要调参
+- `HF_HUB_DISABLE_XET=1` 环境变量需持久化（hf-mirror 不支持 xet CDN）

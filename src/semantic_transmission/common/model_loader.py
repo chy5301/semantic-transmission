@@ -95,6 +95,8 @@ class DiffusersModelLoader(ModelLoader):
             torch_dtype=dtype,
         ).to(self._config.device)
 
+        self._pipeline.scheduler.set_shift(self._config.scheduler_shift)
+
         return self._pipeline
 
     def unload(self) -> None:

@@ -178,21 +178,29 @@ class TestProcess:
         call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
         assert isinstance(call_kwargs["control_image"], Image.Image)
 
-    def test_passes_height_width(self, receiver_with_mock_pipeline):
-        """process() 从 condition image 读取 H/W 传给 pipeline（#24 修复）。"""
+    def test_passes_height_width_aligned_to_16(self, receiver_with_mock_pipeline):
+        """process() 从 condition image 读取 H/W 并对齐到 16 的倍数（#24 修复）。"""
         edge = Image.new("RGB", (120, 80))  # W=120, H=80
         receiver_with_mock_pipeline.process(edge, PROMPT_TEXT, seed=1)
         call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
-        assert call_kwargs["height"] == 80
-        assert call_kwargs["width"] == 120
+        assert call_kwargs["height"] == 80  # 80 已是 16 的倍数
+        assert call_kwargs["width"] == 112  # 120 → 112 (120 - 120%16)
 
     def test_portrait_image_dimensions(self, receiver_with_mock_pipeline):
-        """竖版图（H > W）的 height/width 正确传入。"""
-        edge = Image.new("RGB", (64, 128))  # W=64, H=128
+        """竖版图（H > W）的 height/width 正确传入并对齐到 16。"""
+        edge = Image.new("RGB", (64, 128))  # W=64, H=128，都是 16 的倍数
         receiver_with_mock_pipeline.process(edge, PROMPT_TEXT, seed=1)
         call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
         assert call_kwargs["height"] == 128
         assert call_kwargs["width"] == 64
+
+    def test_non_aligned_dimensions(self, receiver_with_mock_pipeline):
+        """非 16 倍数的尺寸被正确对齐。"""
+        edge = Image.new("RGB", (100, 100))  # 100 → 96
+        receiver_with_mock_pipeline.process(edge, PROMPT_TEXT, seed=1)
+        call_kwargs = receiver_with_mock_pipeline._loader._pipeline.call_args[1]
+        assert call_kwargs["height"] == 96
+        assert call_kwargs["width"] == 96
 
     def test_auto_loads_if_not_loaded(self, edge_image_path):
         """process 自动触发 load。"""

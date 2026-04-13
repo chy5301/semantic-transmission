@@ -18,6 +18,7 @@ max_new_tokens = 512
 [inference]
 num_inference_steps = 9
 guidance_scale = 1.0
+scheduler_shift = 3.0
 
 [sender]
 canny_low_threshold = 100
@@ -26,3 +27,4 @@ canny_high_threshold = 200
 [paths]
 model_cache_dir = "${MODEL_CACHE_DIR}"
 output_dir = "output"
+hf_endpoint = "https://hf-mirror.com"

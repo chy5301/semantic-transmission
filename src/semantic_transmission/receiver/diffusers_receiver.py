@@ -36,6 +36,7 @@ class DiffusersReceiver(BaseReceiver):
                 transformer_path=self.config.transformer_path,
                 device=self.config.device,
                 torch_dtype=self.config.torch_dtype,
+                scheduler_shift=self.config.scheduler_shift,
             )
             self._loader = DiffusersModelLoader(loader_config)
 
@@ -71,7 +72,10 @@ class DiffusersReceiver(BaseReceiver):
         pipeline = self._loader.load()
 
         condition = self._load_condition_image(edge_image)
-        width, height = condition.size  # PIL size 返回 (W, H)
+        w, h = condition.size  # PIL size 返回 (W, H)
+        # Pipeline 要求尺寸为 16 的倍数
+        width = w - w % 16
+        height = h - h % 16
 
         if seed is None:
             seed = random.randint(0, 2**32 - 1)
