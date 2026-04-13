@@ -61,6 +61,7 @@
 | 2026-04-13 | scheduler_shift=3.0 作为初始值，后续可调 | ComfyUI 基线 AuraFlow shift=3，res_multistep/simple 无需对齐 |
 | 2026-04-13 | 尺寸对齐到 16 的倍数 | pipeline 要求 height/width 必须是 16 的倍数 |
 | 2026-04-13 | config.toml 新增 hf_endpoint | 解决 HF 下载在国内需镜像站的持久化配置问题 |
+| 2026-04-14 | Phase 1 阶段回顾通过 | 审计无 🔴/🟡 发现，214 passed，退出标准全满足，后续阶段无需调整 |
 
 ## 交接记录
 
