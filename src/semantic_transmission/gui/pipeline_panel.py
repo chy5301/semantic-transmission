@@ -13,7 +13,7 @@ import gradio as gr
 import numpy as np
 from PIL import Image
 
-from semantic_transmission.common.config import get_default_vlm_path
+from semantic_transmission.common.config import ProjectConfig, load_config
 from semantic_transmission.receiver import create_receiver
 from semantic_transmission.receiver.base import BaseReceiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
@@ -59,6 +59,7 @@ def _run_e2e(
     vlm_model_name,
     vlm_model_path,
     receiver,
+    project_config: ProjectConfig,
 ):
     """端到端流程 generator，逐步 yield 更新 UI。
 
@@ -147,7 +148,7 @@ def _run_e2e(
             vlm_kwargs = {}
             if vlm_model_name:
                 vlm_kwargs["model_name"] = vlm_model_name
-            vlm_path = vlm_model_path or get_default_vlm_path() or ""
+            vlm_path = vlm_model_path or project_config.vlm_model_path or ""
             if vlm_path:
                 vlm_kwargs["model_path"] = vlm_path
 
@@ -315,8 +316,19 @@ def _run_evaluation(original_path, restored_img):
     return metrics, log
 
 
-def build_pipeline_tab(config_components: dict) -> dict:
-    """构建端到端演示 Tab 的 UI 组件并绑定事件。"""
+def build_pipeline_tab(
+    config_components: dict,
+    project_config: ProjectConfig | None = None,
+) -> dict:
+    """构建端到端演示 Tab 的 UI 组件并绑定事件。
+
+    Args:
+        config_components: 来自 ``build_config_tab`` 的共享组件字典（VLM 控件）。
+        project_config: 项目配置实例，提供 VLM 默认值。``None`` 时调
+            ``load_config()`` 获取。
+    """
+    config = project_config if project_config is not None else load_config()
+
     gr.Markdown(
         "### 端到端演示\n一键完成 边缘提取 → 语义描述 → 还原图像 的全流程，并展示传输统计。"
     )
@@ -406,9 +418,15 @@ def build_pipeline_tab(config_components: dict) -> dict:
         outputs=prompt_input,
     )
 
+    # project_config 通过闭包绑定（Gradio inputs 仅支持组件，不接受普通对象）
+    def _run_e2e_bound(image_path, mode, prompt, seed, vlm_name, vlm_path, receiver):
+        yield from _run_e2e(
+            image_path, mode, prompt, seed, vlm_name, vlm_path, receiver, config
+        )
+
     # --- 运行端到端 ---
     run_btn.click(
-        fn=_run_e2e,
+        fn=_run_e2e_bound,
         inputs=[
             image_input,
             mode_radio,

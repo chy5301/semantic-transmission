@@ -1,6 +1,7 @@
 """批量发送 Tab 面板：双机部署发送端，批量处理目录中所有图片并发送到接收端。
 
 发送端使用本地 OpenCV 提取 Canny 边缘；中继对端地址在本 Tab 内配置。
+Canny 阈值与 VLM 路径默认值从 ``ProjectConfig`` 读取（R-11）。
 """
 
 import json
@@ -13,6 +14,7 @@ import gradio as gr
 import numpy as np
 from PIL import Image
 
+from semantic_transmission.common.config import ProjectConfig, load_config
 from semantic_transmission.pipeline.batch_processor import (
     BatchImageDiscoverer,
     BatchResult,
@@ -53,8 +55,18 @@ def _test_relay_connection(host: str, port: float | int) -> str:
         sock.close()
 
 
-def build_batch_sender_tab(config_components):
-    """构建批量发送 Tab（双机发送端）。"""
+def build_batch_sender_tab(
+    config_components,
+    project_config: ProjectConfig | None = None,
+):
+    """构建批量发送 Tab（双机发送端）。
+
+    Args:
+        config_components: 来自 ``build_config_tab`` 的共享组件字典（VLM 控件）。
+        project_config: 项目配置实例，提供 Canny 阈值与 VLM 默认值。``None``
+            时调 ``load_config()`` 获取。
+    """
+    config = project_config if project_config is not None else load_config()
 
     def run_batch_sender(
         input_dir: str,
@@ -112,14 +124,12 @@ def build_batch_sender_tab(config_components):
         # 加载 VLM 如果需要
         vlm_sender = None
         if prompt_mode == "auto":
-            from semantic_transmission.common.config import get_default_vlm_path
-
             yield log_text + "\n正在加载 VLM 模型...\n"
             time.sleep(0.1)
             vlm_kwargs = {}
             if vlm_model_name:
                 vlm_kwargs["model_name"] = vlm_model_name
-            vlm_path = vlm_model_path or get_default_vlm_path() or ""
+            vlm_path = vlm_model_path or config.vlm_model_path or ""
             if vlm_path:
                 vlm_kwargs["model_path"] = vlm_path
             vlm_sender = QwenVLSender(**vlm_kwargs)
@@ -361,12 +371,12 @@ def build_batch_sender_tab(config_components):
         with gr.Row():
             threshold1 = gr.Number(
                 label="Canny 低阈值",
-                value=100,
+                value=config.canny_low_threshold,
                 precision=0,
             )
             threshold2 = gr.Number(
                 label="Canny 高阈值",
-                value=200,
+                value=config.canny_high_threshold,
                 precision=0,
             )
 

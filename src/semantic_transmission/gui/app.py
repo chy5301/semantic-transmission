@@ -1,8 +1,13 @@
-"""Gradio 主应用：组装各 Tab 面板。"""
+"""Gradio 主应用：组装各 Tab 面板。
+
+启动时调用 ``load_config()`` 获取 ``ProjectConfig`` 实例，传递给各 panel
+作为控件默认值的单一来源，取代分散的硬编码默认值（R-11）。
+"""
 
 import gradio as gr
 
 from semantic_transmission import __version__
+from semantic_transmission.common.config import ProjectConfig, load_config
 from semantic_transmission.gui.batch_panel import build_batch_tab
 from semantic_transmission.gui.batch_sender_panel import build_batch_sender_tab
 from semantic_transmission.gui.config_panel import build_config_tab
@@ -20,8 +25,15 @@ def get_launch_kwargs() -> dict:
     return {"css": CUSTOM_CSS}
 
 
-def create_app() -> gr.Blocks:
-    """创建语义传输系统的 Gradio 应用。"""
+def create_app(project_config: ProjectConfig | None = None) -> gr.Blocks:
+    """创建语义传输系统的 Gradio 应用。
+
+    Args:
+        project_config: 项目配置实例。``None`` 时调用 ``load_config()`` 自动加载。
+            注入此参数主要用于测试场景，正常使用无需显式传入。
+    """
+    config = project_config if project_config is not None else load_config()
+
     with gr.Blocks(title="语义传输系统") as app:
         gr.Markdown(
             f"# 语义传输系统 Semantic Transmission\n"
@@ -31,22 +43,22 @@ def create_app() -> gr.Blocks:
 
         with gr.Tabs():
             with gr.TabItem("⚙ 配置"):
-                config_components = build_config_tab()
+                config_components = build_config_tab(config)
 
             with gr.TabItem("▲ 单张发送"):
-                sender_components = build_sender_tab(config_components)
+                sender_components = build_sender_tab(config_components, config)
 
             with gr.TabItem("📦 批量发送"):
-                build_batch_sender_tab(config_components)
+                build_batch_sender_tab(config_components, config)
 
             with gr.TabItem("▼ 接收端"):
                 receiver_components = build_receiver_tab(config_components)
 
             with gr.TabItem("◆ 端到端演示"):
-                build_pipeline_tab(config_components)
+                build_pipeline_tab(config_components, config)
 
             with gr.TabItem("◇ 批量端到端"):
-                build_batch_tab(config_components)
+                build_batch_tab(config_components, config)
 
         # Tab 间传递：发送端 → 接收端队列（M-13：append 到接收端 gr.State 队列）
         sender_components["send_to_receiver_btn"].click(

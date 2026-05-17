@@ -21,6 +21,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+from semantic_transmission.common.config import ProjectConfig, load_config
 from semantic_transmission.pipeline.batch_processor import (
     BatchImageDiscoverer,
     BatchResult,
@@ -146,8 +147,18 @@ def _make_comparison_image(
     return comparison
 
 
-def build_batch_tab(config_components):
-    """构建批量端到端 Tab。"""
+def build_batch_tab(
+    config_components,
+    project_config: ProjectConfig | None = None,
+):
+    """构建批量端到端 Tab。
+
+    Args:
+        config_components: 来自 ``build_config_tab`` 的共享组件字典（VLM 控件）。
+        project_config: 项目配置实例，提供 VLM 默认值。``None`` 时调
+            ``load_config()`` 获取。
+    """
+    config = project_config if project_config is not None else load_config()
 
     def run_batch_process(
         input_dir: str,
@@ -261,7 +272,6 @@ def build_batch_tab(config_components):
         # 加载 VLM 如果需要（VLM 不跨次复用：调用频次低 + 与原行为一致）
         vlm_sender = None
         if prompt_mode == "auto":
-            from semantic_transmission.common.config import get_default_vlm_path
             from semantic_transmission.sender.qwen_vl_sender import QwenVLSender
 
             yield (
@@ -274,7 +284,7 @@ def build_batch_tab(config_components):
             vlm_kwargs = {}
             if vlm_model_name:
                 vlm_kwargs["model_name"] = vlm_model_name
-            vlm_path = vlm_model_path or get_default_vlm_path() or ""
+            vlm_path = vlm_model_path or config.vlm_model_path or ""
             if vlm_path:
                 vlm_kwargs["model_path"] = vlm_path
             vlm_sender = QwenVLSender(**vlm_kwargs)

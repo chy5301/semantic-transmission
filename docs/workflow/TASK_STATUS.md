@@ -454,3 +454,40 @@
 - 测试: PASS（247 passed，target ≥ 247 已达成）
 - Lint: PASS（ruff check + format --check 全绿）
 
+---
+
+### R-11 交接（2026-05-17）
+
+**完成内容**: GUI 全部 6 个 panel 启动时改为从 `ProjectConfig` 读默认值（VLM 模型名/路径、Canny 阈值），取代分散的硬编码默认值与 `get_default_vlm_path()` 拼接逻辑。`app.create_app()` 启动时调一次 `load_config()` 并把 `ProjectConfig` 实例作为可选参数传给 `build_config_tab` / `build_sender_tab` / `build_batch_sender_tab` / `build_pipeline_tab` / `build_batch_tab`（`build_receiver_tab` 无控件默认值需求，保持原签名）。回调函数（`_run_sender` / `_run_e2e` / `run_batch_sender` / `run_batch_process`）通过闭包绑定 `project_config`，因为 Gradio `click.inputs` 仅接受组件而非普通 Python 对象。
+
+**修改的文件**:
+- `src/semantic_transmission/gui/app.py` — `create_app(project_config=None)` 新签名；启动时 `load_config()`；按层级传给 5 个 build 函数
+- `src/semantic_transmission/gui/config_panel.py` — `build_config_tab(project_config=None)` 新签名；VLM 模型名从 `config.vlm_model_name` 读（旧硬编码 `"Qwen/Qwen2.5-VL-7B-Instruct"`），VLM 路径从 `config.vlm_model_path` 读（旧 `get_default_vlm_path()`）；删除 `get_default_vlm_path` import
+- `src/semantic_transmission/gui/sender_panel.py` — `build_sender_tab(config_components, project_config=None)` 新签名；Canny 阈值从 `config.canny_low_threshold` / `config.canny_high_threshold` 读（旧模块级常量 `DEFAULT_THRESHOLD1=100` / `DEFAULT_THRESHOLD2=200` 已删除）；`_run_sender` 签名新增 `project_config` 入参；VLM 路径 fallback 改为 `project_config.vlm_model_path`；新增 `_run_sender_bound` 闭包绑定
+- `src/semantic_transmission/gui/batch_sender_panel.py` — `build_batch_sender_tab(config_components, project_config=None)` 新签名；Canny 阈值从 `config.canny_low_threshold` / `config.canny_high_threshold` 读（旧硬编码 `100` / `200`）；嵌套 `run_batch_sender` 直接通过闭包捕获 `config`，VLM 路径 fallback 改为 `config.vlm_model_path`；删除 `get_default_vlm_path` 局部 import
+- `src/semantic_transmission/gui/pipeline_panel.py` — `build_pipeline_tab(config_components, project_config=None)` 新签名；`_run_e2e` 签名新增 `project_config` 入参；VLM 路径 fallback 改为 `project_config.vlm_model_path`；删除 `get_default_vlm_path` import；新增 `_run_e2e_bound` 闭包绑定
+- `src/semantic_transmission/gui/batch_panel.py` — `build_batch_tab(config_components, project_config=None)` 新签名；嵌套 `run_batch_process` 通过闭包捕获 `config`，VLM 路径 fallback 改为 `config.vlm_model_path`；删除 `get_default_vlm_path` 局部 import
+
+**验证结果**:
+- 测试: PASS（247 passed in 43.16s，与 R-10 baseline 一致，无回归）
+- Lint: PASS（`ruff check .` All checks passed / `ruff format --check .` 56 files OK，自动 format 应用一次 sender_panel.py + pipeline_panel.py 后通过）
+- 功能: PASS — `import semantic_transmission.gui.app` + `app.create_app()` 成功构造 Gradio Blocks（说明 ProjectConfig 注入路径完整、所有 panel build 签名正确）；`semantic-tx gui --help` 正常显示
+- 功能补充: WARN — GUI 端到端 GPU 验证未跑（spec 自测方法 `semantic-tx gui` 启动 + 观察控件默认值 + config.toml 修改后默认值变化 + 删 config.local.toml 后启动），建议 R-14 PR 前最终冒烟时一并执行
+
+**关键决策**:
+- `create_app()` 签名加可选 `project_config=None` 参数，None 时自动 `load_config()`：保持现有调用方（`cli/gui.py` 中 `app = create_app()`）零改动，同时为单元测试提供注入点
+- 所有 build 函数采用同样 `project_config: ProjectConfig | None = None` + `config = project_config if project_config is not None else load_config()` 范式：每个 panel 都可独立测试，不强制依赖上层 app.py 注入
+- 闭包绑定优于其它方案：Gradio `gr.State` 适合用户运行时数据（如 receiver/lpips 模型），不适合 immutable 配置对象；用 `def _bound(...)` 局部函数包一层把 config 注入闭包，是最简洁的模式
+- 不动 `build_receiver_tab` 签名：该 panel 无 VLM/Canny 默认值需求，且已有 `del config_components` 标注保留参数为未来扩展；强行扩展只会增加无意义的形参噪音
+- VLM 路径 fallback 顺序：`vlm_model_path 用户输入 > config.vlm_model_path > "" 空串`。与 R-09 CLI 模式一致（已删除 `get_default_vlm_path() or ""` 第二级 fallback），现在 config 就是唯一的"环境默认"来源
+- Canny `DEFAULT_THRESHOLD1` / `DEFAULT_THRESHOLD2` 模块级常量已从 sender_panel.py 删除（旧值 `100` / `200`），与 config.toml `[sender]` 默认值一致
+
+**下一任务需关注**（Phase 3 review，下一阶段 R-12 load_as_rgb）:
+- Phase 3 即将进入回顾节点：R-10（GUI 生命周期）+ R-11（GUI config 注入）两项均完成，Phase 3 全部完成
+- R-12 不依赖本任务，但同样涉及 GUI（sender_panel.py / batch_sender_panel.py / pipeline_panel.py / batch_panel.py 中所有 `Image.open(...).convert("RGB")` / `Image.fromarray(...)` 都属于 R-12 替换范围）。R-11 引入的闭包绑定不影响 R-12 替换
+- R-12 / R-13 完成后，建议 R-14 PR 前的最终冒烟同时验证：(1) R-11 控件默认值与 config.toml 一致（删 config.local.toml 重启）+ (2) R-10 receiver 生命周期连续 3 次跑无 16x 减速 + (3) R-04 receiver 还原质量
+
+**遗留问题**:
+- `common/config.py` 中的 `get_default_vlm_path()` / `get_default_z_image_path()` **未删除**：审计发现 GUI 之外仍有 3 处调用方：(1) `common/model_check.py:25` `check_vlm_model` fallback；(2) `common/config.py:55,57` `DiffusersReceiverConfig.__post_init__`；(3) `tests/test_config.py` 4 个单元测试。删除这两个函数需要先迁移这 3 处调用方（含 `check_vlm_model` 改为接 ProjectConfig、`DiffusersReceiverConfig` 改为接 ProjectConfig 派生）—— 涉及 `common/__init__.py` re-export、CLI `check.py`、`receiver/__init__.py` 创建链等多处，**超出 R-11 任务范围**。按 R-11 spec 指引"如果 audit 发现还有调用方且本任务无法迁移完，不要删函数"，本任务保留两个函数定义。建议作为新议题（如 issue #41 或合并到 R-13/R-14 cleanup）独立处理。当前状态：GUI 已不再调用，CLI/common 内部仍依赖
+- `common/__init__.py` 的 `get_default_vlm_path` / `get_default_z_image_path` re-export 一并保留（外部下游若有引用同样不破坏）
+- GUI 真机验证未执行（spec 自测方法需 GPU + Gradio 实启），属可接受妥协；同 R-10 的遗留处理
