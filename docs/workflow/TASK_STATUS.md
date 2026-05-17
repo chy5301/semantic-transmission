@@ -438,3 +438,19 @@
 - pipeline_panel 的"卸载 Receiver 模型"按钮与 batch_panel 的"卸载模型"按钮文案略有差异（前者只卸载 receiver，后者同时含 LPIPS），UI 上是合理区分；如统一文案需求强烈可在后续 GUI polish 阶段对齐
 
 ---
+
+#### R-10 修正记录（code-quality 审计后 第 1 轮 — 2026-05-17）
+
+**触发**: code-quality-reviewer 发现 1 条 Important — unload 函数与 state 复用分支零测试覆盖
+
+**修正内容**:
+1. 针对审计 #1：新增/扩展 GUI panel 单测覆盖 unload 函数 6 个用例（pipeline_panel.unload_receiver × 3 + batch_panel.unload_models × 3）
+
+**修改的文件**:
+- `tests/test_gui_pipeline_panel.py` — 新建（unload_receiver 3 个测试：None state / mock 调用 / 异常路径）
+- `tests/test_gui_batch_panel.py` — 追加（unload_models 3 个测试：两者皆 None / 两者皆释放 / receiver 抛错 lpips 仍释放）
+
+**修正后验证**:
+- 测试: PASS（247 passed，target ≥ 247 已达成）
+- Lint: PASS（ruff check + format --check 全绿）
+

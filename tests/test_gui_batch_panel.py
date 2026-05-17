@@ -4,11 +4,14 @@
 不覆盖 GUI 绑定或 render 逻辑（由 create_app() 烟测间接验证）。
 """
 
+from unittest.mock import MagicMock
+
 from PIL import Image
 
 from semantic_transmission.gui.batch_panel import (
     aggregate_metrics,
     compute_sample_metrics,
+    unload_models,
 )
 from semantic_transmission.pipeline.batch_processor import SampleResult
 
@@ -142,3 +145,48 @@ class TestSampleResultMetricsSerialization:
         s = SampleResult(name="y", status="success")
         assert s.metrics == {}
         assert s.to_dict()["metrics"] == {}
+
+
+class TestUnloadModels:
+    def test_unload_models_when_both_none(self, monkeypatch):
+        """receiver=None & lpips_model=None 时返回 (None, None, "无已加载" 提示)。"""
+        # 屏蔽 CUDA 探测差异（CI 无 CUDA），保持平台无关
+        monkeypatch.setattr(
+            "semantic_transmission.gui.batch_panel.torch.cuda.is_available",
+            lambda: False,
+        )
+        result_receiver, result_lpips, status = unload_models(None, None)
+        assert result_receiver is None
+        assert result_lpips is None
+        assert "无已加载" in status
+
+    def test_unload_models_releases_both(self, monkeypatch):
+        """receiver + lpips 均非 None 时：调用 receiver.unload() 并释放 lpips。"""
+        monkeypatch.setattr(
+            "semantic_transmission.gui.batch_panel.torch.cuda.is_available",
+            lambda: False,
+        )
+        receiver = MagicMock()
+        lpips_model = MagicMock()
+        result_receiver, result_lpips, status = unload_models(receiver, lpips_model)
+        receiver.unload.assert_called_once()
+        assert result_receiver is None
+        assert result_lpips is None
+        assert "Receiver 模型已卸载" in status
+        assert "LPIPS 模型已释放" in status
+
+    def test_unload_models_handles_receiver_unload_exception(self, monkeypatch):
+        """receiver.unload 抛错时 lpips 仍被释放，函数不传播异常。"""
+        monkeypatch.setattr(
+            "semantic_transmission.gui.batch_panel.torch.cuda.is_available",
+            lambda: False,
+        )
+        receiver = MagicMock()
+        receiver.unload.side_effect = RuntimeError("receiver boom")
+        lpips_model = MagicMock()
+        result_receiver, result_lpips, status = unload_models(receiver, lpips_model)
+        assert result_receiver is None
+        # lpips 应仍被释放
+        assert result_lpips is None
+        assert "receiver boom" in status
+        assert "LPIPS 模型已释放" in status
