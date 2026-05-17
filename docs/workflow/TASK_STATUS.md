@@ -296,3 +296,18 @@
 - 文档（`docs/cli-reference.md`、`docs/demo-handbook.md`、`docs/ROADMAP.md`）仍提及 `batch-sender` 命令，本任务不涉及文档（spec 涉及文件中无文档）；属于 R-14 cleanup 范围
 - `cli/batch_demo.py` 中重复的 prompt 校验、VLM 初始化逻辑保留不动，等 R-09 合并 demo 子命令时一并处理
 - `_build_vlm_sender()` 内部使用 `dataclasses.replace()` 对 VLMLoaderConfig 做 CLI override —— 这是 frozen dataclass 的标准做法，但 import 放在函数体内只是局部 alias；如团队不接受可移到顶层 import
+
+#### R-08 修正记录（code-quality 审计后 第 1 轮 — 2026-05-17）
+
+**触发**: code-quality-reviewer 发现 2 条 Important（无 Critical）
+
+**修正内容**:
+1. 针对审计 #1：清理 `_run_batch` 中的自言自语注释（sender.py:582-584），改为简洁 why
+2. 针对审计 #2：`_run_batch` 的 `relay.close()` 错误改为 warn 输出而非静默吞
+
+**修改的文件**:
+- `src/semantic_transmission/cli/sender.py` — 注释清理 + relay.close() 异常加 warn
+
+**修正后验证**:
+- 测试: ✅ (241 passed)
+- Lint: ✅ (ruff check + format --check 全通过)

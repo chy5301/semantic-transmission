@@ -579,10 +579,7 @@ def _run_batch(
 
             continue
 
-    # 卸载 VLM（与原 batch_sender 顺序一致：先发送再卸载？实际上原代码是在 finally 里）
-    # 这里改为先发送再卸载，但提前释放 VLM 显存可以让接收端发送更稳。
-    # 为保持与旧 batch_sender 一致：在 finally 段卸载。
-
+    # VLM 在 relay finally 后卸载：避免 relay 资源占用期间过早释放 VLM 显存导致重入加载
     _print("\n[4/4] 连接接收端并发送...")
     relay: SocketRelaySender | None = None
     try:
@@ -606,8 +603,8 @@ def _run_batch(
         if relay is not None:
             try:
                 relay.close()
-            except Exception:
-                pass
+            except Exception as e:
+                _print(f"  [WARN] relay close 失败: {e}")
         if vlm_sender is not None:
             vlm_sender.unload()
             _print("\n  VLM 模型已卸载，释放 GPU 显存")
