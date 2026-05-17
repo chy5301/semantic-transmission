@@ -11,10 +11,10 @@
 |------|------|------|--------|--------|
 | Phase 0: 基础设施 | 2 | 2 | 0 | 0 |
 | Phase 1: receiver 侧垂直切 | 4 | 4 | 0 | 0 |
-| Phase 2: sender/CLI 侧垂直切 | 3 | 1 | 0 | 2 |
+| Phase 2: sender/CLI 侧垂直切 | 3 | 2 | 0 | 1 |
 | Phase 3: GUI 侧垂直切 | 2 | 0 | 0 | 2 |
 | Phase 4: cleanup + 收尾 | 3 | 0 | 0 | 3 |
-| **合计** | **14** | **7** | **0** | **7** |
+| **合计** | **14** | **8** | **0** | **6** |
 
 ## 任务状态
 
@@ -27,7 +27,7 @@
 | R-05 | 简化-BaseReceiver.process_batch #31 | Phase 1 | ✅ | R-04 |
 | R-06 | 对齐-采样器参数 #25 | Phase 1 | ✅ | R-04 |
 | R-07 | 实现-QwenVLModelLoader + 迁移 QwenVLSender | Phase 2 | ✅ | R-02 |
-| R-08 | 合并-CLI sender/batch_sender #19 | Phase 2 | ⬜ | R-01, R-07 |
+| R-08 | 合并-CLI sender/batch_sender #19 | Phase 2 | ✅ | R-01, R-07 |
 | R-09 | 重构-download.py + 迁移 demo/batch_demo CLI | Phase 2 | ⬜ | R-01, R-08 |
 | R-10 | 修复-GUI 面板生命周期 #23 | Phase 3 | ⬜ | R-04, R-07 |
 | R-11 | 迁移-GUI 面板读 ProjectConfig 默认值 | Phase 3 | ⬜ | R-01, R-10 |
@@ -258,3 +258,41 @@
 - 编译: ✅（直接调 `.venv/Scripts/`，未触发 uv sync）
 - 测试: ✅ 226 passed（与 R-07 baseline 一致；targeted `test_model_loader.py + test_qwen_vl_sender.py` 41 passed）
 - Lint: ✅ `.venv/Scripts/ruff.exe check .` 全绿；`.venv/Scripts/ruff.exe format --check .` 55 files already formatted
+
+---
+
+### R-08 交接（2026-05-17）
+
+**完成内容**：合并 `sender` 与 `batch_sender` CLI 子命令为单一 `sender`，通过互斥选项 `--image` / `--input-dir` 区分单图/批量两条路径。新增共享核心函数 `process_one(image_path, extractor, vlm_sender, prompt, seed) -> SenderResult`，单图路径走扁平输出 + fail-fast，批量路径走 `NN-name/` 子目录 + `batch_summary.json` + continue-on-error。CLI 共享参数（Canny 阈值、VLM 模型/路径）默认值改为运行时读 `load_config()`，CLI options 作为 override。删除 `cli/batch_sender.py`，从 `cli/main.py` 移除注册。
+
+**修改的文件**：
+- `src/semantic_transmission/cli/sender.py` — 重写：吸收 batch_sender 功能；新增 `SenderResult` dataclass + `process_one()` + `_build_vlm_sender()` 辅助函数；引入 `load_config()` 读 ProjectConfig 默认；单图/批量分别走 `_run_single()` / `_run_batch()` 输出适配器
+- `src/semantic_transmission/cli/batch_sender.py` — **删除**
+- `src/semantic_transmission/cli/main.py` — 移除 `from semantic_transmission.cli.batch_sender import batch_sender` 与 `cli.add_command(batch_sender)`
+- `tests/test_cli_sender.py` — **新建**，15 个测试用例：`--help` 覆盖、`batch-sender` 不存在校验（CLI 报错 + 模块不可导入）、互斥校验（4 组）、单图扁平输出验证、批量子目录 + summary 验证、ProjectConfig 默认值 + CLI override 验证（2 个）、`process_one()` 纯逻辑测试（2 个）
+
+**验证结果**：
+- 编译: ✅（直接调 `.venv/Scripts/`，未触发 uv sync）
+- 测试: ✅ 241 passed（R-07 baseline 226 + 15 新增 `test_cli_sender.py`）；`tests/test_cli.py` 18 个原有用例全部仍然通过（无回归）
+- Lint: ✅ `ruff check .` 全绿；`ruff format --check .` 55 files already formatted（自动 format 应用过一次 sender.py + test_cli_sender.py）
+- 功能: ✅ `.venv/Scripts/semantic-tx.exe sender --help` 显示新选项与模式说明；`.venv/Scripts/semantic-tx.exe batch-sender --help` 报 `No such command 'batch-sender'`
+
+**关键决策**：
+- `SenderResult` dataclass 封装单图处理产物（不含落盘文件），由外层 `_run_single` / `_run_batch` 适配器负责实际写文件，符合 spec "两条路径共享 process_one 核心，只在输出适配器和错误策略层分叉"
+- CLI 共享参数默认值通过 `load_config()` 运行时读取（而非 click `default=` callable），原因：click 的 `default=callable` 会在模块 import 时即调用，触发 config 加载副作用；运行时读更安全且与 R-06 `cli/main.py` 根命令的 `load_config()` 复用同一份配置
+- 批量模式必须传 `--output-dir`，单图模式可省略（默认 `output/sender`）—— 与旧 `batch_sender` 行为一致
+- 批量模式 VLM 加载放在 `_run_batch` 入口而非 `process_one` 内部，避免每张图反复构造 loader
+- spec 提到"prompt 校验逻辑 4 处相同"目前仅消除了 `sender` + `batch_sender` 两处（合并入 `sender()` 顶层），余下 `demo` / `batch_demo` 由 R-09 处理
+- spec 提到 ProjectConfig 已有 `canny_low_threshold` / `canny_high_threshold`（R-01 已加），无需新增字段；VLM 字段亦已就位
+- 没有 hardcoded fallback：所有共享默认值都从 `ProjectConfig` 拿，与 spec 一致
+
+**下一任务需关注**（R-09）：
+- 同样的模式应用到 `demo` + `batch_demo` 合并：可复用 `process_one()`（已支持手动 prompt + VLM 两条路径）
+- `cli/main.py` 同步移除 `batch_demo` 注册（如果 R-09 也走合并思路）；本任务保留 `batch_demo` 单独命令直到 R-09 处理
+- R-09 还需重构 `download.py`（按 R-09 spec 描述）
+- 注意：`get_default_vlm_path()` 函数本任务未删除（仍在 `common/config.py`），R-09 处理 `download.py` 时再视情况清理
+
+**遗留问题**：
+- 文档（`docs/cli-reference.md`、`docs/demo-handbook.md`、`docs/ROADMAP.md`）仍提及 `batch-sender` 命令，本任务不涉及文档（spec 涉及文件中无文档）；属于 R-14 cleanup 范围
+- `cli/batch_demo.py` 中重复的 prompt 校验、VLM 初始化逻辑保留不动，等 R-09 合并 demo 子命令时一并处理
+- `_build_vlm_sender()` 内部使用 `dataclasses.replace()` 对 VLMLoaderConfig 做 CLI override —— 这是 frozen dataclass 的标准做法，但 import 放在函数体内只是局部 alias；如团队不接受可移到顶层 import

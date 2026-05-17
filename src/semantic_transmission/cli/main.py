@@ -4,7 +4,6 @@ import click
 
 from semantic_transmission import __version__
 from semantic_transmission.cli.batch_demo import batch_demo
-from semantic_transmission.cli.batch_sender import batch_sender
 from semantic_transmission.cli.check import check
 from semantic_transmission.cli.demo import demo
 from semantic_transmission.cli.download import download
@@ -26,7 +25,6 @@ cli.add_command(sender)
 cli.add_command(receiver)
 cli.add_command(demo)
 cli.add_command(batch_demo)
-cli.add_command(batch_sender)
 cli.add_command(check)
 cli.add_command(download)
 cli.add_command(gui)
