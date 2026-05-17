@@ -12,9 +12,9 @@
 | Phase 0: 基础设施 | 2 | 2 | 0 | 0 |
 | Phase 1: receiver 侧垂直切 | 4 | 4 | 0 | 0 |
 | Phase 2: sender/CLI 侧垂直切 | 3 | 3 | 0 | 0 |
-| Phase 3: GUI 侧垂直切 | 2 | 0 | 0 | 2 |
+| Phase 3: GUI 侧垂直切 | 2 | 1 | 0 | 1 |
 | Phase 4: cleanup + 收尾 | 3 | 0 | 0 | 3 |
-| **合计** | **14** | **9** | **0** | **5** |
+| **合计** | **14** | **10** | **0** | **4** |
 
 ## 任务状态
 
@@ -29,7 +29,7 @@
 | R-07 | 实现-QwenVLModelLoader + 迁移 QwenVLSender | Phase 2 | ✅ | R-02 |
 | R-08 | 合并-CLI sender/batch_sender #19 | Phase 2 | ✅ | R-01, R-07 |
 | R-09 | 重构-download.py + 迁移 demo/batch_demo CLI | Phase 2 | ✅ | R-01, R-08 |
-| R-10 | 修复-GUI 面板生命周期 #23 | Phase 3 | ⬜ | R-04, R-07 |
+| R-10 | 修复-GUI 面板生命周期 #23 | Phase 3 | ✅ | R-04, R-07 |
 | R-11 | 迁移-GUI 面板读 ProjectConfig 默认值 | Phase 3 | ⬜ | R-01, R-10 |
 | R-12 | 创建-load_as_rgb + 替换 core 模块 #22 | Phase 4 | ⬜ | R-04, R-07 |
 | R-13 | 替换-CLI + GUI 模块 RGB 散落 #22 续 | Phase 4 | ⬜ | R-12 |
