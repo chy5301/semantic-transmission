@@ -11,10 +11,10 @@
 |------|------|------|--------|--------|
 | Phase 0: 基础设施 | 2 | 2 | 0 | 0 |
 | Phase 1: receiver 侧垂直切 | 4 | 4 | 0 | 0 |
-| Phase 2: sender/CLI 侧垂直切 | 3 | 0 | 0 | 3 |
+| Phase 2: sender/CLI 侧垂直切 | 3 | 1 | 0 | 2 |
 | Phase 3: GUI 侧垂直切 | 2 | 0 | 0 | 2 |
 | Phase 4: cleanup + 收尾 | 3 | 0 | 0 | 3 |
-| **合计** | **14** | **6** | **0** | **8** |
+| **合计** | **14** | **7** | **0** | **7** |
 
 ## 任务状态
 
@@ -26,7 +26,7 @@
 | R-04 | 迁移-DiffusersReceiver + 动态尺寸 #24 | Phase 1 | ✅ | R-03 |
 | R-05 | 简化-BaseReceiver.process_batch #31 | Phase 1 | ✅ | R-04 |
 | R-06 | 对齐-采样器参数 #25 | Phase 1 | ✅ | R-04 |
-| R-07 | 实现-QwenVLModelLoader + 迁移 QwenVLSender | Phase 2 | ⬜ | R-02 |
+| R-07 | 实现-QwenVLModelLoader + 迁移 QwenVLSender | Phase 2 | ✅ | R-02 |
 | R-08 | 合并-CLI sender/batch_sender #19 | Phase 2 | ⬜ | R-01, R-07 |
 | R-09 | 重构-download.py + 迁移 demo/batch_demo CLI | Phase 2 | ⬜ | R-01, R-08 |
 | R-10 | 修复-GUI 面板生命周期 #23 | Phase 3 | ⬜ | R-04, R-07 |
