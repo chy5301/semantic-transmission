@@ -13,8 +13,8 @@
 | Phase 1: receiver 侧垂直切 | 4 | 4 | 0 | 0 |
 | Phase 2: sender/CLI 侧垂直切 | 3 | 3 | 0 | 0 |
 | Phase 3: GUI 侧垂直切 | 2 | 2 | 0 | 0 |
-| Phase 4: cleanup + 收尾 | 3 | 1 | 0 | 2 |
-| **合计** | **14** | **12** | **0** | **2** |
+| Phase 4: cleanup + 收尾 | 3 | 2 | 0 | 1 |
+| **合计** | **14** | **13** | **0** | **1** |
 
 ## 任务状态
 
@@ -32,7 +32,7 @@
 | R-10 | 修复-GUI 面板生命周期 #23 | Phase 3 | ✅ | R-04, R-07 |
 | R-11 | 迁移-GUI 面板读 ProjectConfig 默认值 | Phase 3 | ✅ | R-01, R-10 |
 | R-12 | 创建-load_as_rgb + 替换 core 模块 #22 | Phase 4 | ✅ | R-04, R-07 |
-| R-13 | 替换-CLI + GUI 模块 RGB 散落 #22 续 | Phase 4 | ⬜ | R-12 |
+| R-13 | 替换-CLI + GUI 模块 RGB 散落 #22 续 | Phase 4 | ✅ | R-12 |
 | R-14 | 删除-LocalRelay #33 + 文档更新 + issue 关闭 | Phase 4 | ⬜ | R-08, R-13 |
 
 状态图例: ⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ⏸️ 暂停 | ❌ 已取消 | 🔀 已拆分
