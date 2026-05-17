@@ -64,6 +64,8 @@
 | 2026-04-14 | Phase 1 阶段回顾通过 | 审计无 🔴/🟡 发现，214 passed，退出标准全满足，后续阶段无需调整 |
 | 2026-05-17 | Phase 2 阶段回顾通过 | 审计无 🔴/🟡 发现，241 passed，退出标准 3 项 PASS + 1 项 PARTIAL（真机 GPU 端到端未跑），3 条 🔵 建议已合并到 R-11/R-13/R-14 |
 | 2026-05-18 | Phase 3 阶段回顾通过 | 审计无 🔴/🟡 发现，247 passed（R-10 +6 GUI panel unload 测试），退出标准代码层 PASS、真机层 PARTIAL（需 GPU 实跑）；2 项必须级下游调整合并到 R-14（`get_default_*` 残留 3 调用方清理 + GUI 端到端 GPU 冒烟），R-14 工作量从 M 上调至 L |
+| 2026-05-18 | Phase 4 阶段回顾通过 | 审计无 🔴/🟡 发现，256 passed（R-13 baseline 264 − 8：tests/test_config.py 删 4 用例 + tests/test_relay.py 删 4 用例，与 R-14 spec 完全一致），ruff check + format 全绿；退出标准 #22/#33/文档/pytest/ruff 5 项 PASS，issue 关闭 PENDING（PR 合并时由 commit message Closes #19 #20 #21 #22 #23 #24 #25 #27 #31 触发），workflow archive DELEGATED 至 coordinator；4 项延后项（city96 GPU 实测 + GUI GPU 冒烟 → 用户 PR 前；/workflow-archive + memory 更新 → coordinator）已记入 R-14 交接 |
+| 2026-05-18 | unify-config-and-loader workflow 完成 | 14 task 全 ✅（Phase 0-4 全部退出标准代码层达成），共 33 commit（从 init 856f928 到收尾 66a7178），测试数 R-01 baseline 198 → 当前 256（+58 净增，覆盖 ProjectConfig/ModelLoader/动态尺寸/CLI 合并/GUI 生命周期/image_io 等新模块），ruff/pytest 全绿；GPU 真机冒烟（R-04 动态尺寸 / R-10 面板生命周期 / R-11 ProjectConfig 注入 / city96 仓库实测）+ workflow archive + memory 更新由 coordinator/用户后续处理；PR commit message 与 issue #17 评论文案已在 R-14 交接记录中待命 |
 
 ## 交接记录
 
