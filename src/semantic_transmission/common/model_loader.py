@@ -134,6 +134,11 @@ class QwenVLModelLoader(ModelLoader[QwenVLBundle]):
         self._config = config
         self._bundle: QwenVLBundle | None = None
 
+    @property
+    def config(self) -> VLMLoaderConfig:
+        """暴露只读 loader 配置，供调用方读取派生字段（model_name 等）。"""
+        return self._config
+
     def load(self) -> QwenVLBundle:
         """加载 Qwen-VL 模型与处理器。幂等：已加载时直接返回。"""
         if self._bundle is not None:
@@ -143,6 +148,7 @@ class QwenVLModelLoader(ModelLoader[QwenVLBundle]):
 
         quantization_config = None
         actual_quantization = self._config.quantization
+        used_torchao = False
 
         if self._config.quantization == "int4":
             # 优先尝试 torchao INT4（仅 Linux 推荐）
@@ -150,7 +156,8 @@ class QwenVLModelLoader(ModelLoader[QwenVLBundle]):
                 from torchao.quantization import TorchAoConfig
 
                 quantization_config = TorchAoConfig("int4_weight_only", group_size=128)
-            except (ImportError, Exception) as e:
+                used_torchao = True
+            except ImportError as e:
                 print(f"  提示：torchao INT4 不可用（{e}），尝试 bitsandbytes 4-bit...")
                 # 回退到 bitsandbytes 4-bit（Windows 友好）
                 try:
@@ -163,19 +170,13 @@ class QwenVLModelLoader(ModelLoader[QwenVLBundle]):
                         bnb_4bit_compute_dtype=torch.float16,
                     )
                     actual_quantization = "bitsandbytes-4bit"
-                except (ImportError, Exception) as e2:
+                except ImportError as e2:
                     print(
                         f"  警告：bitsandbytes 4-bit 也不可用（{e2}），回退到 float16"
                     )
                     actual_quantization = "float16"
 
-        dtype = torch.float16
-        if quantization_config is None:
-            dtype = torch.float16
-        elif hasattr(quantization_config, "__class__") and "TorchAoConfig" in str(
-            quantization_config.__class__
-        ):
-            dtype = torch.bfloat16
+        dtype = torch.bfloat16 if used_torchao else torch.float16
 
         # 优先使用本地路径，其次使用 HuggingFace Hub ID
         model_id = self._config.model_path or self._config.model_name

@@ -208,12 +208,15 @@ def _patch_transformers(monkeypatch, processor=None, model=None):
 
 
 def _patch_torchao_unavailable(monkeypatch):
-    """让 ``from torchao.quantization import TorchAoConfig`` 报 ImportError。"""
-    fake_torchao = MagicMock()
-    fake_quant = MagicMock(spec=[])  # 没有 TorchAoConfig 属性
-    fake_torchao.quantization = fake_quant
-    monkeypatch.setitem(sys.modules, "torchao", fake_torchao)
-    monkeypatch.setitem(sys.modules, "torchao.quantization", fake_quant)
+    """让 ``from torchao.quantization import TorchAoConfig`` 真正抛 ImportError。
+
+    在 ``sys.modules`` 中将目标模块设为 ``None``，Python 在 import 时遇到
+    ``None`` 占位会主动抛 ``ImportError``。比 ``MagicMock(spec=[])``（抛
+    ``AttributeError``）更贴近"包未装"的真实场景，因此能被收紧后的
+    ``except ImportError`` 子句正确捕获。
+    """
+    monkeypatch.setitem(sys.modules, "torchao", None)
+    monkeypatch.setitem(sys.modules, "torchao.quantization", None)
 
 
 class TestQwenVLModelLoader:

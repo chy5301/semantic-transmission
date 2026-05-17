@@ -236,3 +236,25 @@
 **遗留问题**：
 - `QwenVLSender` 的 4 个兼容性 property 访问 `self._loader._config.<field>` 违反封装，待 Phase 2 收尾或 R-14 cleanup 一并清理（若旧测试不再依赖这些字段，可直接删 property）
 - venv 重建原因未查清：可能是 `.python-version` 新加（untracked，值为 `3.12`）触发 uv 重建。`.python-version` 是否要提交进版本控制待后续 phase-review 时决策
+
+---
+
+#### R-07 修正记录（code-quality 审计后 第 1 轮 — 2026-05-17）
+
+**触发**: code-quality-reviewer 发现 5 条 Important（详见审计清单）
+
+**修正内容**:
+1. 针对审计 #1：将 `except (ImportError, Exception) as e:` 收紧为 `except ImportError as e:`（model_loader.py 两处 cascade），避免吞噬 AttributeError/TypeError 等逻辑错误
+2. 针对审计 #2/#3：用本地 `used_torchao` 布尔变量替代脆弱的 `"TorchAoConfig" in str(quantization_config.__class__)` 字符串匹配，dtype 简化为单行三元 `torch.bfloat16 if used_torchao else torch.float16`
+3. 针对审计 #4：在 `QwenVLModelLoader` 新增 `@property config` 公共 accessor；`QwenVLSender` 的 4 个兼容 property 改读 `self._loader.config.<field>`，消除跨越 loader 私有 `_config` 的访问（遗留问题里的封装违反点同时解决）
+4. 针对审计 #5：重写 `_patch_torchao_unavailable`，改为 `monkeypatch.setitem(sys.modules, "torchao", None)` + `... "torchao.quantization", None)`，让 import 真正抛 `ImportError`（原来的 `MagicMock(spec=[])` 抛 AttributeError，在 catch 收紧后会无声失效）；`_patch_bnb_unavailable` 不存在，bnb 不可用场景已用内联 `MagicMock(side_effect=ImportError(...))` 正确处理
+
+**修改的文件**:
+- `src/semantic_transmission/common/model_loader.py` — except 收紧为 ImportError（两处）/ dtype 探测改用 `used_torchao` 本地布尔 / 新增 `QwenVLModelLoader.config` 公共 property
+- `src/semantic_transmission/sender/qwen_vl_sender.py` — 4 个兼容 property 改读 `loader.config.<field>`
+- `tests/test_model_loader.py` — `_patch_torchao_unavailable` 改为 `sys.modules[...] = None` 使 import 真正抛 ImportError
+
+**修正后验证**:
+- 编译: ✅（直接调 `.venv/Scripts/`，未触发 uv sync）
+- 测试: ✅ 226 passed（与 R-07 baseline 一致；targeted `test_model_loader.py + test_qwen_vl_sender.py` 41 passed）
+- Lint: ✅ `.venv/Scripts/ruff.exe check .` 全绿；`.venv/Scripts/ruff.exe format --check .` 55 files already formatted

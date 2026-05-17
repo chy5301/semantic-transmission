@@ -70,22 +70,22 @@ class QwenVLSender(BaseSender):
     @property
     def _model_name(self) -> str:
         """对外暴露当前 loader 使用的 model_name（保留旧字段访问形式）。"""
-        return self._loader._config.model_name
+        return self._loader.config.model_name
 
     @property
     def _quantization(self) -> str:
         """对外暴露 loader 配置的 quantization。"""
-        return self._loader._config.quantization
+        return self._loader.config.quantization
 
     @property
     def _max_new_tokens(self) -> int:
         """对外暴露 loader 配置的 max_new_tokens。"""
-        return self._loader._config.max_new_tokens
+        return self._loader.config.max_new_tokens
 
     @property
     def _model_path(self) -> str | None:
         """对外暴露 loader 配置的 model_path（保持旧 None 语义）。"""
-        return self._loader._config.model_path or None
+        return self._loader.config.model_path or None
 
     @property
     def is_loaded(self) -> bool:
