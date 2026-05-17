@@ -63,6 +63,7 @@
 | 2026-04-13 | config.toml 新增 hf_endpoint | 解决 HF 下载在国内需镜像站的持久化配置问题 |
 | 2026-04-14 | Phase 1 阶段回顾通过 | 审计无 🔴/🟡 发现，214 passed，退出标准全满足，后续阶段无需调整 |
 | 2026-05-17 | Phase 2 阶段回顾通过 | 审计无 🔴/🟡 发现，241 passed，退出标准 3 项 PASS + 1 项 PARTIAL（真机 GPU 端到端未跑），3 条 🔵 建议已合并到 R-11/R-13/R-14 |
+| 2026-05-18 | Phase 3 阶段回顾通过 | 审计无 🔴/🟡 发现，247 passed（R-10 +6 GUI panel unload 测试），退出标准代码层 PASS、真机层 PARTIAL（需 GPU 实跑）；2 项必须级下游调整合并到 R-14（`get_default_*` 残留 3 调用方清理 + GUI 端到端 GPU 冒烟），R-14 工作量从 M 上调至 L |
 
 ## 交接记录
 
@@ -491,3 +492,53 @@
 - `common/config.py` 中的 `get_default_vlm_path()` / `get_default_z_image_path()` **未删除**：审计发现 GUI 之外仍有 3 处调用方：(1) `common/model_check.py:25` `check_vlm_model` fallback；(2) `common/config.py:55,57` `DiffusersReceiverConfig.__post_init__`；(3) `tests/test_config.py` 4 个单元测试。删除这两个函数需要先迁移这 3 处调用方（含 `check_vlm_model` 改为接 ProjectConfig、`DiffusersReceiverConfig` 改为接 ProjectConfig 派生）—— 涉及 `common/__init__.py` re-export、CLI `check.py`、`receiver/__init__.py` 创建链等多处，**超出 R-11 任务范围**。按 R-11 spec 指引"如果 audit 发现还有调用方且本任务无法迁移完，不要删函数"，本任务保留两个函数定义。建议作为新议题（如 issue #41 或合并到 R-13/R-14 cleanup）独立处理。当前状态：GUI 已不再调用，CLI/common 内部仍依赖
 - `common/__init__.py` 的 `get_default_vlm_path` / `get_default_z_image_path` re-export 一并保留（外部下游若有引用同样不破坏）
 - GUI 真机验证未执行（spec 自测方法需 GPU + Gradio 实启），属可接受妥协；同 R-10 的遗留处理
+
+---
+
+#### Phase 3 (GUI 侧垂直切) — 回顾记录
+
+**回顾时间**: 2026-05-18
+
+**执行摘要**:
+- 计划 task 数：2（R-10 / R-11）
+- 完成数（✅）：2
+- 阻塞 / 跳过数：0
+- 关键决策：5 项（state 持久化 + 显式 unload 按钮 / receiver 加载 vs 推理失败分支处理 / LPIPS del+gc+empty_cache 释放 / VLM try/finally 不跨次复用 / build_*_tab 闭包绑定 ProjectConfig）
+- 计划变更：0（Phase 3 内部，R-10 → R-11 按 PLAN 顺序执行）
+- 遗留问题：2 项（`get_default_*` 残留 3 调用方未清理 / GUI 真机连续 3 次跑未执行）
+
+**变更审计**:
+- 审计 task 数：2
+- 变更文件数：9（src/gui/ 6 文件 + tests/test_gui_* 2 文件 + docs/workflow/TASK_STATUS.md）
+- 总 diff：+700 / -306 行（其中 batch_panel.py 净增 ~330 行最大宗，主因 receiver+LPIPS 双 state + unload 函数 + 闭包重构）
+- 🔴 阻断：0
+- 🟡 需修正：0
+- 🔵 建议：0
+
+**审计结论**:
+- 完整性：R-10/R-11 每个任务的 spec 步骤均有对应变更，无漏项；R-10 已通过第 1 轮 code-quality 修正补足 unload 单测覆盖（6 个新增用例），R-11 sender_panel 的 DEFAULT_THRESHOLD 模块常量已正确删除
+- 准确性：变更文件与 PLAN "涉及文件" 一致；R-10 引入 state 持久化（方案 B）而非 try/finally（方案 A），交接记录详细说明了 55s 端到端开销下的决策依据，合理；R-11 引入闭包绑定（_run_sender_bound / _run_e2e_bound）是 Gradio inputs 仅接受组件的必要妥协
+- 边界：未发现偷跑或范围外修改。R-11 按 spec 指引保留了 `get_default_*` 函数（因 GUI 之外还有 3 处调用方），无越权清理
+- 跨任务一致性：R-10 加的 unload 函数 + R-11 加的 ProjectConfig 注入完全互不接触（unload 只触发 `loader.unload()`，ProjectConfig 只填默认值），无冲突；R-11 调用 `create_receiver()` 工厂仍走 R-04 后的 loader 委托路径
+
+**退出标准验证**:
+- #23 生命周期修复 — 代码层: ✅ PASS — `pipeline_panel._run_e2e()` + `batch_panel.run_batch_process()` 均改为 `gr.State` 持久化 receiver / LPIPS 跨次复用，配套 `unload_receiver` / `unload_models` 函数 + 显式按钮（pipeline_panel.py:35,453 / batch_panel.py:36,679）；样板对齐 `receiver_panel.unload_model()`；`batch_sender_panel` / `sender_panel` 维持原有 VLM try/finally 模式（spec 标记已正确，本次未触动）
+- #23 生命周期修复 — 真机层: ⚠️ PARTIAL — 四面板连续 3 次跑无减速的真机验证需 GPU + Gradio 实启，本次会话受限未执行。代码层完全到位 + 单测覆盖（247 passed）说明逻辑正确；真机验证已合并到 R-14 GUI 端到端 GPU 冒烟必须步骤
+
+**构建 / 测试 integration 验证**:
+- 编译: SKIPPED (venv ready, 3.6G 依赖完整无需 sync)
+- 测试: ✅ PASS — 247 passed in 24.54s（R-09 baseline 241 → R-10 第 1 轮修正 +6 GUI panel unload 测试 = 247）
+- Lint: ✅ PASS — `ruff check .` All checks passed / `ruff format --check .` 56 files already formatted
+
+**下游影响评估**:
+- [必须] R-14 步骤补充：`get_default_vlm_path` / `get_default_z_image_path` + 3 处调用方清理（`common/model_check.py:25` / `common/config.py:55,57` / `common/__init__.py` re-export + `tests/test_config.py` 4 用例改写）。R-11 已迁移所有 GUI/CLI 调用方，Phase 4 cleanup 是该清理工作的自然归宿，已合并到 R-14 step 8（必须级），R-14 工作量从 M 上调至 L
+- [必须] R-14 步骤补充：GUI 端到端 GPU 冒烟必须包含 R-10 退出标准（四面板连续 3 次无 16x 减速 + 卸载按钮显存释放）+ R-11 控件默认值验证（删 config.local.toml 重启 + 改 config.toml 同步）+ R-04 还原质量；已合并到 R-14 step 9（必须级）
+- [建议] R-13 步骤补充：phase-2 review 已加 R-08 重写后 `sender.py` 新增 RGB 调用点；R-10 在 `pipeline_panel.py` / `batch_panel.py` 新增的代码块不涉及 RGB 处理（仅 unload + state 持久化），不影响 R-13 grep 范围（已确认）；R-11 闭包绑定不影响 R-13 替换（已确认）
+- [可选] `batch_panel._run_eval=True` 路径下 LPIPS 释放走 `del + gc.collect + torch.cuda.empty_cache`：实际显存回收行为依赖引用计数，若未来 Gradio 内部缓存 lpips 引用可能失效，但当前测试覆盖足够（test_gui_batch_panel.py:test_lpips_unload_released_when_passed），仅作为知识记录
+
+**Phase 4 依赖准确性**:
+- R-12 (依赖 R-04 + R-07)：image_io 未被 R-10/R-11 触动，准确；GUI panel 内 RGB 调用点未变，仍按 phase-2 review 给定范围
+- R-13 (依赖 R-12)：GUI panel 行数膨胀（pipeline_panel 净增 ~75 行 / batch_panel 净增 ~330 行）主要是 state + unload + 闭包，未触 RGB 调用点；R-13 替换范围与 phase-2 review 给定一致
+- R-14 (依赖 R-08 + R-13)：本次已补充 `get_default_*` 清理 + GUI GPU 冒烟两项必须步骤；与 phase-2 review 已加的 city96 仓库实测 / 文档 batch-sender 残留检查并存，无冲突
+
+**结论**: ✅ 通过

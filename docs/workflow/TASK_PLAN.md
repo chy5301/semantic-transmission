@@ -381,6 +381,10 @@
 - **背景信息**: `LocalRelay` 类无业务调用方（#33），纯 dead code。CLI 合并后 `docs/cli-reference.md` 和 `docs/user-guide.md` 中的 `batch-sender` 引用需更新。PR commit message 需含 `Closes #19 #20 #21 #22 #23 #24 #25 #27 #31` + `Refs #33 #13 #17`。
 - **涉及文件**:
   - `src/semantic_transmission/pipeline/relay.py`（或 LocalRelay 所在文件，删除 class）
+  - `src/semantic_transmission/common/config.py`（删除 `get_default_vlm_path` / `get_default_z_image_path`，迁移 `DiffusersReceiverConfig.__post_init__` fallback）
+  - `src/semantic_transmission/common/model_check.py`（`check_vlm_model` 改读 `ProjectConfig.vlm_model_path`）
+  - `src/semantic_transmission/common/__init__.py`（移除两个函数的 re-export）
+  - `tests/test_config.py`（删除 / 改写 4 个依赖被删函数的用例，新增 `ProjectConfig` fallback 等价用例）
   - `docs/cli-reference.md`（更新 CLI 合并）
   - `docs/user-guide.md`（更新 CLI 合并）
 - **具体步骤**:
@@ -391,16 +395,30 @@
   5. 检查 #13（日志冗余）是否已在 Phase 3 顺带修掉，如未修则简单清理
   6. 在 #17 下追加评论：指向本 workflow 的 ModelLoader 量化策略统一
   7. **Phase 2 回顾补充 — PR 前最终冒烟**：（建议级，可选）在 RTX 5090 环境实测 `semantic-tx download` 真实下载流程，验证 `_SINGLE_FILE_SOURCES` 中 `city96/Z-Image-Turbo-gguf` 仓库 ID 正确（R-09 dry-run 跳过未实测）；若发现仓库 ID 不准确，需修复 `cli/download.py` 中的 `_SINGLE_FILE_SOURCES` map
-  8. 准备 PR commit message
-  9. `docs/workflow/` archive（使用 `/workflow-archive`）
-  10. 更新 memory：`project_pending_issues.md` / `project_next_workflow_seed.md`
+  8. **Phase 3 回顾补充 — `get_default_*` 函数清理（必须）**：R-11 已迁移所有 GUI/CLI 调用方到 `ProjectConfig`，目前仅剩 3 处内部调用方：
+     - `common/model_check.py:25` `check_vlm_model(model_path)` fallback → 改为 `model_path or load_config().vlm_model_path`
+     - `common/config.py:55,57` `DiffusersReceiverConfig.__post_init__` 默认 transformer / controlnet 路径 → 改为读 `ProjectConfig.diffusers_transformer_path` / `diffusers_controlnet_name`（注意保留对 `MODEL_CACHE_DIR` 环境变量的兼容，由 `ProjectConfig` 自动解析）
+     - `common/__init__.py:3,4,15,16` re-export → 直接移除
+     - `tests/test_config.py` 4 个依赖被删函数的用例 → 改写为针对 `ProjectConfig.vlm_model_path` 行为的等价测试
+     - 完成后 `grep -r get_default_vlm_path get_default_z_image_path` 在 src/ + tests/ 应为零
+  9. **Phase 3 回顾补充 — GUI 端到端 GPU 冒烟（必须）**：在 RTX 5090 上启动 `semantic-tx gui`，分别验证：
+     - R-10 退出标准：pipeline / batch / receiver / batch_sender 四面板各连续 3 次运行不出现 16x 减速；点击"卸载模型"按钮后 GPU 显存释放
+     - R-11 控件默认值：删 `config.local.toml` 后启动，所有面板控件值与 `config.toml` 一致；修改 `config.toml` 后控件值同步变化
+     - R-04 还原质量：竖版图还原后宽高比与原图一致
+  10. 准备 PR commit message
+  11. `docs/workflow/` archive（使用 `/workflow-archive`）
+  12. 更新 memory：`project_pending_issues.md` / `project_next_workflow_seed.md`
 - **验收标准**:
   - [ ] LocalRelay class 已删除，grep 无残留引用
+  - [ ] `get_default_vlm_path` / `get_default_z_image_path` 已删除，src/ + tests/ grep 无残留
+  - [ ] `check_vlm_model` 与 `DiffusersReceiverConfig.__post_init__` 改为读 `ProjectConfig`
+  - [ ] `tests/test_config.py` 改写后仍覆盖等价行为
   - [ ] `docs/cli-reference.md` 不含 `batch-sender`
+  - [ ] GUI 端到端 GPU 冒烟（R-10 / R-11 / R-04）通过
   - [ ] PR commit message 正确引用所有 issue
   - [ ] `docs/workflow/` 无活跃文件（archive 完成）
   - [ ] `uv run pytest` 全绿
   - [ ] `uv run ruff check . && uv run ruff format --check .` 通过
-- **自测方法**: `uv run pytest` + `uv run ruff check .` + grep LocalRelay 确认无残留
-- **回滚方案**: `git checkout -- src/semantic_transmission/pipeline/ docs/`
-- **预估工作量**: M
+- **自测方法**: `uv run pytest` + `uv run ruff check .` + grep `LocalRelay` / `get_default_vlm_path` / `get_default_z_image_path` 确认无残留 + GUI GPU 冒烟
+- **回滚方案**: `git checkout -- src/semantic_transmission/pipeline/ src/semantic_transmission/common/ tests/test_config.py docs/`
+- **预估工作量**: L（从 M 上调，因新增 `get_default_*` 清理 + GUI GPU 冒烟）
