@@ -1,13 +1,22 @@
-"""ModelLoader ABC + DiffusersModelLoader 单元测试。"""
+"""ModelLoader ABC + DiffusersModelLoader + QwenVLModelLoader 单元测试。"""
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from semantic_transmission.common.config import DiffusersLoaderConfig
-from semantic_transmission.common.model_loader import DiffusersModelLoader, ModelLoader
+from semantic_transmission.common.config import (
+    DiffusersLoaderConfig,
+    VLMLoaderConfig,
+)
+from semantic_transmission.common.model_loader import (
+    DiffusersModelLoader,
+    ModelLoader,
+    QwenVLBundle,
+    QwenVLModelLoader,
+)
 
 
 class _FakeLoader(ModelLoader[str]):
@@ -171,3 +180,177 @@ class TestDiffusersModelLoader:
         loader.load()
 
         mock_pipe.scheduler.set_shift.assert_called_once_with(5.0)
+
+
+# ---------------------------------------------------------------------------
+# QwenVLModelLoader
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def vlm_config():
+    return VLMLoaderConfig(model_name="Qwen/Qwen2.5-VL-7B-Instruct")
+
+
+def _patch_transformers(monkeypatch, processor=None, model=None):
+    """构造 transformers 子模块的 patcher，让 import 命中 mock。"""
+    fake_module = MagicMock()
+    fake_model_cls = MagicMock()
+    fake_model_cls.from_pretrained.return_value = model or MagicMock()
+    fake_processor_cls = MagicMock()
+    fake_processor_cls.from_pretrained.return_value = processor or MagicMock()
+    fake_module.Qwen2_5_VLForConditionalGeneration = fake_model_cls
+    fake_module.AutoProcessor = fake_processor_cls
+    # 保留 BitsAndBytesConfig 占位（cascade 测试用）
+    fake_module.BitsAndBytesConfig = MagicMock()
+    monkeypatch.setitem(sys.modules, "transformers", fake_module)
+    return fake_module, fake_model_cls, fake_processor_cls
+
+
+def _patch_torchao_unavailable(monkeypatch):
+    """让 ``from torchao.quantization import TorchAoConfig`` 报 ImportError。"""
+    fake_torchao = MagicMock()
+    fake_quant = MagicMock(spec=[])  # 没有 TorchAoConfig 属性
+    fake_torchao.quantization = fake_quant
+    monkeypatch.setitem(sys.modules, "torchao", fake_torchao)
+    monkeypatch.setitem(sys.modules, "torchao.quantization", fake_quant)
+
+
+class TestQwenVLModelLoader:
+    def test_load_returns_bundle(self, vlm_config, monkeypatch):
+        fake_model = MagicMock()
+        fake_processor = MagicMock()
+        _, _, _ = _patch_transformers(
+            monkeypatch, processor=fake_processor, model=fake_model
+        )
+
+        loader = QwenVLModelLoader(vlm_config)
+        bundle = loader.load()
+
+        assert isinstance(bundle, QwenVLBundle)
+        assert bundle.model is fake_model
+        assert bundle.processor is fake_processor
+        assert loader.is_loaded
+
+    def test_load_idempotent(self, vlm_config, monkeypatch):
+        _, fake_model_cls, _ = _patch_transformers(monkeypatch)
+
+        loader = QwenVLModelLoader(vlm_config)
+        b1 = loader.load()
+        b2 = loader.load()
+
+        assert b1 is b2
+        fake_model_cls.from_pretrained.assert_called_once()
+
+    def test_unload_releases_bundle(self, vlm_config):
+        loader = QwenVLModelLoader(vlm_config)
+        loader._bundle = QwenVLBundle(
+            model=MagicMock(), processor=MagicMock(), actual_quantization="int4"
+        )
+        assert loader.is_loaded
+
+        loader.unload()
+        assert not loader.is_loaded
+
+    def test_unload_when_not_loaded(self, vlm_config):
+        loader = QwenVLModelLoader(vlm_config)
+        loader.unload()  # 空操作
+        assert not loader.is_loaded
+
+    def test_session_lifecycle(self, vlm_config, monkeypatch):
+        _patch_transformers(monkeypatch)
+
+        loader = QwenVLModelLoader(vlm_config)
+        with loader.session() as bundle:
+            assert isinstance(bundle, QwenVLBundle)
+            assert loader.is_loaded
+        assert not loader.is_loaded
+
+    def test_quantization_cascade_falls_back_to_bnb(self, vlm_config, monkeypatch):
+        """torchao 不可用时应回退到 bitsandbytes 4-bit。"""
+        _patch_torchao_unavailable(monkeypatch)
+        fake_module, _, _ = _patch_transformers(monkeypatch)
+
+        loader = QwenVLModelLoader(vlm_config)
+        bundle = loader.load()
+
+        # bnb 配置被构造说明走到了第二级
+        fake_module.BitsAndBytesConfig.assert_called_once()
+        assert bundle.actual_quantization == "bitsandbytes-4bit"
+
+    def test_quantization_cascade_falls_back_to_float16(self, vlm_config, monkeypatch):
+        """torchao + bitsandbytes 都不可用时应回退到 float16。"""
+        _patch_torchao_unavailable(monkeypatch)
+
+        # 构造 transformers 但让 BitsAndBytesConfig 抛错
+        fake_module, fake_model_cls, fake_processor_cls = _patch_transformers(
+            monkeypatch
+        )
+        fake_module.BitsAndBytesConfig = MagicMock(
+            side_effect=ImportError("bnb not available")
+        )
+
+        loader = QwenVLModelLoader(vlm_config)
+        bundle = loader.load()
+
+        assert bundle.actual_quantization == "float16"
+
+    def test_non_int4_quantization_skips_cascade(self, monkeypatch):
+        """quantization 非 int4 时不应进入 cascade，直接走 float16。"""
+        fake_module, fake_model_cls, _ = _patch_transformers(monkeypatch)
+        # 即使 BitsAndBytesConfig 存在也不应该被调用
+        bnb_call_tracker = MagicMock()
+        fake_module.BitsAndBytesConfig = bnb_call_tracker
+
+        config = VLMLoaderConfig(quantization="float16")
+        loader = QwenVLModelLoader(config)
+        bundle = loader.load()
+
+        bnb_call_tracker.assert_not_called()
+        assert bundle.actual_quantization == "float16"
+        # quantization_config 应为 None
+        kwargs = fake_model_cls.from_pretrained.call_args.kwargs
+        assert kwargs["quantization_config"] is None
+
+    def test_model_path_takes_priority_over_model_name(self, monkeypatch):
+        """model_path 非空时应作为 model_id 传给 from_pretrained。"""
+        fake_module, fake_model_cls, fake_processor_cls = _patch_transformers(
+            monkeypatch
+        )
+        config = VLMLoaderConfig(model_name="ignored/name", model_path="/local/qwen-vl")
+        loader = QwenVLModelLoader(config)
+        loader.load()
+
+        args, _ = fake_model_cls.from_pretrained.call_args
+        assert args[0] == "/local/qwen-vl"
+        args2, _ = fake_processor_cls.from_pretrained.call_args
+        assert args2[0] == "/local/qwen-vl"
+
+
+class TestProjectConfigToVLMLoader:
+    """ProjectConfig.to_vlm_loader_config() 派生测试。"""
+
+    def test_derives_from_defaults(self):
+        from semantic_transmission.common.config import ProjectConfig
+
+        cfg = ProjectConfig()
+        vlm_cfg = cfg.to_vlm_loader_config()
+        assert vlm_cfg.model_name == "Qwen/Qwen2.5-VL-7B-Instruct"
+        assert vlm_cfg.model_path == ""
+        assert vlm_cfg.quantization == "int4"
+        assert vlm_cfg.max_new_tokens == 512
+
+    def test_derives_from_custom(self):
+        from semantic_transmission.common.config import ProjectConfig
+
+        cfg = ProjectConfig(
+            vlm_model_name="custom/model",
+            vlm_model_path="/custom/path",
+            vlm_quantization="float16",
+            vlm_max_new_tokens=1024,
+        )
+        vlm_cfg = cfg.to_vlm_loader_config()
+        assert vlm_cfg.model_name == "custom/model"
+        assert vlm_cfg.model_path == "/custom/path"
+        assert vlm_cfg.quantization == "float16"
+        assert vlm_cfg.max_new_tokens == 1024

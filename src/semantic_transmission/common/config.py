@@ -160,6 +160,15 @@ class ProjectConfig:
             scheduler_shift=self.scheduler_shift,
         )
 
+    def to_vlm_loader_config(self) -> VLMLoaderConfig:
+        """从项目配置派生 VLM 模型加载配置。"""
+        return VLMLoaderConfig(
+            model_name=self.vlm_model_name,
+            model_path=self.vlm_model_path,
+            quantization=self.vlm_quantization,
+            max_new_tokens=self.vlm_max_new_tokens,
+        )
+
 
 @dataclass(frozen=True)
 class DiffusersLoaderConfig:
@@ -171,6 +180,16 @@ class DiffusersLoaderConfig:
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
     scheduler_shift: float = 3.0
+
+
+@dataclass(frozen=True)
+class VLMLoaderConfig:
+    """Qwen2.5-VL 模型加载器配置（从 ProjectConfig 派生，不直接依赖 ProjectConfig）。"""
+
+    model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+    model_path: str = ""
+    quantization: str = "int4"
+    max_new_tokens: int = 512
 
 
 # TOML 嵌套键 → ProjectConfig 平坦字段名的映射

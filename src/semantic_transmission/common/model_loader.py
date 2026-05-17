@@ -1,4 +1,4 @@
-"""模型加载器：抽象基类 + Diffusers 具体实现。"""
+"""模型加载器：抽象基类 + Diffusers / Qwen-VL 具体实现。"""
 
 from __future__ import annotations
 
@@ -6,12 +6,16 @@ import contextlib
 import gc
 from abc import ABC, abstractmethod
 from collections.abc import Generator
-from typing import TYPE_CHECKING, Generic, TypeVar
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import torch
 
 if TYPE_CHECKING:
-    from semantic_transmission.common.config import DiffusersLoaderConfig
+    from semantic_transmission.common.config import (
+        DiffusersLoaderConfig,
+        VLMLoaderConfig,
+    )
 
 TModel = TypeVar("TModel")
 
@@ -112,3 +116,95 @@ class DiffusersModelLoader(ModelLoader):
     def is_loaded(self) -> bool:
         """Pipeline 是否已加载。"""
         return self._pipeline is not None
+
+
+@dataclass
+class QwenVLBundle:
+    """Qwen-VL 加载结果：model + processor + 实际生效的量化策略。"""
+
+    model: Any
+    processor: Any
+    actual_quantization: str
+
+
+class QwenVLModelLoader(ModelLoader[QwenVLBundle]):
+    """Qwen2.5-VL 加载器：含 torchao → bitsandbytes → float16 量化 cascade。"""
+
+    def __init__(self, config: VLMLoaderConfig) -> None:
+        self._config = config
+        self._bundle: QwenVLBundle | None = None
+
+    def load(self) -> QwenVLBundle:
+        """加载 Qwen-VL 模型与处理器。幂等：已加载时直接返回。"""
+        if self._bundle is not None:
+            return self._bundle
+
+        from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+
+        quantization_config = None
+        actual_quantization = self._config.quantization
+
+        if self._config.quantization == "int4":
+            # 优先尝试 torchao INT4（仅 Linux 推荐）
+            try:
+                from torchao.quantization import TorchAoConfig
+
+                quantization_config = TorchAoConfig("int4_weight_only", group_size=128)
+            except (ImportError, Exception) as e:
+                print(f"  提示：torchao INT4 不可用（{e}），尝试 bitsandbytes 4-bit...")
+                # 回退到 bitsandbytes 4-bit（Windows 友好）
+                try:
+                    from transformers import BitsAndBytesConfig
+
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_quant_type="nf4",
+                        bnb_4bit_compute_dtype=torch.float16,
+                    )
+                    actual_quantization = "bitsandbytes-4bit"
+                except (ImportError, Exception) as e2:
+                    print(
+                        f"  警告：bitsandbytes 4-bit 也不可用（{e2}），回退到 float16"
+                    )
+                    actual_quantization = "float16"
+
+        dtype = torch.float16
+        if quantization_config is None:
+            dtype = torch.float16
+        elif hasattr(quantization_config, "__class__") and "TorchAoConfig" in str(
+            quantization_config.__class__
+        ):
+            dtype = torch.bfloat16
+
+        # 优先使用本地路径，其次使用 HuggingFace Hub ID
+        model_id = self._config.model_path or self._config.model_name
+
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            model_id,
+            torch_dtype=dtype,
+            device_map="auto",
+            quantization_config=quantization_config,
+        )
+        processor = AutoProcessor.from_pretrained(model_id)
+
+        self._bundle = QwenVLBundle(
+            model=model,
+            processor=processor,
+            actual_quantization=actual_quantization,
+        )
+        return self._bundle
+
+    def unload(self) -> None:
+        """卸载模型，释放 GPU 显存。"""
+        if self._bundle is None:
+            return
+        self._bundle = None
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    @property
+    def is_loaded(self) -> bool:
+        """模型是否已加载。"""
+        return self._bundle is not None

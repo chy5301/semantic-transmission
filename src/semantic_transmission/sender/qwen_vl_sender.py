@@ -1,5 +1,7 @@
 """基于 Qwen2.5-VL 的发送端：自动生成结构化图像描述。"""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +9,8 @@ from numpy.typing import NDArray
 from PIL import Image
 from qwen_vl_utils import process_vision_info
 
+from semantic_transmission.common.config import VLMLoaderConfig
+from semantic_transmission.common.model_loader import QwenVLModelLoader
 from semantic_transmission.common.types import SenderOutput
 from semantic_transmission.sender.base import BaseSender
 
@@ -32,8 +36,8 @@ Focus on visual attributes that help reconstruct the image accurately."""
 class QwenVLSender(BaseSender):
     """基于 Qwen2.5-VL 的发送端：自动生成结构化图像描述。
 
-    使用 transformers 原生推理，支持 torchao INT4 量化。
-    模型在首次调用 describe() 时延迟加载。
+    模型生命周期由 ``QwenVLModelLoader`` 管理；首次调用 ``describe()`` 时延迟加载。
+    支持双入口构造：传 ``loader=`` 复用已有 loader，或传 kwargs 自动构造 loader。
     """
 
     DEFAULT_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
@@ -47,67 +51,46 @@ class QwenVLSender(BaseSender):
         quantization: str = DEFAULT_QUANTIZATION,
         max_new_tokens: int = DEFAULT_MAX_TOKENS,
         system_prompt: str | None = None,
+        *,
+        loader: QwenVLModelLoader | None = None,
     ) -> None:
-        self._model_name = model_name
-        self._model_path = str(model_path) if model_path else None
-        self._quantization = quantization
-        self._max_new_tokens = max_new_tokens
         self._system_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
-        self._model = None
-        self._processor = None
+        if loader is not None:
+            self._loader = loader
+        else:
+            self._loader = QwenVLModelLoader(
+                VLMLoaderConfig(
+                    model_name=model_name,
+                    model_path=str(model_path) if model_path else "",
+                    quantization=quantization,
+                    max_new_tokens=max_new_tokens,
+                )
+            )
 
-    def _load_model(self) -> None:
-        """延迟加载模型和处理器（首次 describe 时调用）。"""
-        import torch
-        from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+    @property
+    def _model_name(self) -> str:
+        """对外暴露当前 loader 使用的 model_name（保留旧字段访问形式）。"""
+        return self._loader._config.model_name
 
-        quantization_config = None
-        actual_quantization = self._quantization
+    @property
+    def _quantization(self) -> str:
+        """对外暴露 loader 配置的 quantization。"""
+        return self._loader._config.quantization
 
-        if self._quantization == "int4":
-            # 优先尝试 torchao INT4（仅 Linux 推荐）
-            try:
-                from torchao.quantization import TorchAoConfig
+    @property
+    def _max_new_tokens(self) -> int:
+        """对外暴露 loader 配置的 max_new_tokens。"""
+        return self._loader._config.max_new_tokens
 
-                quantization_config = TorchAoConfig("int4_weight_only", group_size=128)
-            except (ImportError, Exception) as e:
-                print(f"  提示：torchao INT4 不可用（{e}），尝试 bitsandbytes 4-bit...")
-                # 回退到 bitsandbytes 4-bit（Windows 友好）
-                try:
-                    from transformers import BitsAndBytesConfig
+    @property
+    def _model_path(self) -> str | None:
+        """对外暴露 loader 配置的 model_path（保持旧 None 语义）。"""
+        return self._loader._config.model_path or None
 
-                    quantization_config = BitsAndBytesConfig(
-                        load_in_4bit=True,
-                        bnb_4bit_use_double_quant=True,
-                        bnb_4bit_quant_type="nf4",
-                        bnb_4bit_compute_dtype=torch.float16,
-                    )
-                    actual_quantization = "bitsandbytes-4bit"
-                except (ImportError, Exception) as e2:
-                    print(
-                        f"  警告：bitsandbytes 4-bit 也不可用（{e2}），回退到 float16"
-                    )
-                    actual_quantization = "float16"
-
-        dtype = torch.float16
-        if quantization_config is None:
-            dtype = torch.float16
-        elif hasattr(quantization_config, "__class__") and "TorchAoConfig" in str(
-            quantization_config.__class__
-        ):
-            dtype = torch.bfloat16
-
-        # 优先使用本地路径，其次使用 HuggingFace Hub ID
-        model_id = self._model_path or self._model_name
-
-        self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model_id,
-            torch_dtype=dtype,
-            device_map="auto",
-            quantization_config=quantization_config,
-        )
-        self._processor = AutoProcessor.from_pretrained(model_id)
-        self._actual_quantization = actual_quantization
+    @property
+    def is_loaded(self) -> bool:
+        """模型是否已加载。"""
+        return self._loader.is_loaded
 
     def describe(self, image: NDArray[np.uint8]) -> SenderOutput:
         """对输入图像生成结构化文本描述。
@@ -118,8 +101,9 @@ class QwenVLSender(BaseSender):
         Returns:
             SenderOutput: 包含文本描述和元数据。
         """
-        if self._model is None:
-            self._load_model()
+        bundle = self._loader.load()
+        model = bundle.model
+        processor = bundle.processor
 
         pil_image = Image.fromarray(image)
 
@@ -140,22 +124,22 @@ class QwenVLSender(BaseSender):
             },
         ]
 
-        text = self._processor.apply_chat_template(
+        text = processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
         image_inputs, video_inputs = process_vision_info(messages)
-        inputs = self._processor(
+        inputs = processor(
             text=[text],
             images=image_inputs,
             videos=video_inputs,
             padding=True,
             return_tensors="pt",
-        ).to(self._model.device)
+        ).to(model.device)
 
         import torch
 
         with torch.inference_mode():
-            generated_ids = self._model.generate(
+            generated_ids = model.generate(
                 **inputs, max_new_tokens=self._max_new_tokens
             )
 
@@ -163,7 +147,7 @@ class QwenVLSender(BaseSender):
             out_ids[len(in_ids) :]
             for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
         ]
-        output_text = self._processor.batch_decode(
+        output_text = processor.batch_decode(
             generated_ids_trimmed,
             skip_special_tokens=True,
             clean_up_tokenization_spaces=False,
@@ -173,22 +157,10 @@ class QwenVLSender(BaseSender):
             text=output_text,
             metadata={
                 "model": self._model_name,
-                "quantization": self._actual_quantization,
+                "quantization": bundle.actual_quantization,
             },
         )
 
     def unload(self) -> None:
         """释放模型和 GPU 显存。"""
-        import gc
-
-        self._model = None
-        self._processor = None
-        gc.collect()
-
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
+        self._loader.unload()

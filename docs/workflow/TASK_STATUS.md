@@ -199,3 +199,40 @@
 **遗留问题**：
 - shift=3.0 的生成质量待用户后续逼眼对比确认，可能需要调参
 - `HF_HUB_DISABLE_XET=1` 环境变量需持久化（hf-mirror 不支持 xet CDN）
+
+---
+
+### R-07 交接（2026-05-17）
+
+**完成内容**：新增 `QwenVLModelLoader(ModelLoader[QwenVLBundle])` 封装 Qwen2.5-VL 模型加载与量化 cascade（torchao → bitsandbytes → float16），新增 `VLMLoaderConfig` frozen dataclass 与 `ProjectConfig.to_vlm_loader_config()` 派生方法；`QwenVLSender` 改为持有 loader 实例并通过 `loader.load()` 获取 model/processor，移除原 `_load_model()` 私有方法。
+
+**修改的文件**：
+- `src/semantic_transmission/common/config.py` — 新增 `VLMLoaderConfig` dataclass + `ProjectConfig.to_vlm_loader_config()` 派生方法
+- `src/semantic_transmission/common/model_loader.py` — 新增 `QwenVLBundle` dataclass + `QwenVLModelLoader` 类（保留 cascade 顺序与回退逻辑）
+- `src/semantic_transmission/sender/qwen_vl_sender.py` — 重构：`__init__` 双入口（loader= 或 kwargs），`describe()` 委托 `loader.load()`，新增 `is_loaded` 属性，删除 `_load_model()`
+- `tests/test_model_loader.py` — 新增 11 个 QwenVLModelLoader/VLMLoaderConfig 测试（cascade 回退、idempotent、unload、session、ProjectConfig 派生）
+- `tests/test_qwen_vl_sender.py` — 适配 loader 结构，新增 `test_accepts_loader_directly` 等用例
+
+**验证结果**：
+- 编译: ✅ `uv sync` 完成（venv 由 R-06 后被重建为空，本次 sync 拉满 3.6G 依赖）
+- 测试: ✅ 226 passed（R-06 是 214 passed，+12 来自 R-07 新增 mock 测试）
+- 功能: ✅ 符合验收标准（QwenVLModelLoader 实现 load/unload/is_loaded/session；QwenVLSender 不再有 `_load_model`；量化 cascade 保留在 loader 中）
+- Lint: ✅ `ruff check .` 全绿；`ruff format` 对 `tests/test_model_loader.py` 应用一次自动 reformat 后 `format --check .` 全绿
+
+**关键决策**：
+- `QwenVLSender.__init__` 同时支持 `loader=` 和旧 kwargs（向后兼容，与 R-04 `DiffusersReceiver` 的双入口模式对齐）
+- 引入 `QwenVLBundle` dataclass 封装 `(model, processor, actual_quantization)`，避免 loader 返回值类型不一致
+- 保留 cascade 顺序：torchao → bitsandbytes → float16，与原 `_load_model()` 一致
+- 量化 dtype 选择：torchao 用 `bfloat16`，其余 `float16`（与原逻辑一致）
+- `model_path` 默认值用空串 `""` 而非 `None`（dataclass frozen + 兼容旧 None 语义通过 property 转换）
+
+**Coordinator 接管说明**：implementer subagent 写完代码后卡在第 4 步验证 —— 当时 `.venv` 是空的（由 R-06 后某次操作重建），`uv sync` 需要拉 ~3.6G 依赖耗时过长，subagent 超时无回应。Coordinator 接管完成验证（pytest/ruff/format）+ 一次自动 ruff format + 交接记录 + commit。后续 spec-reviewer 与 code-quality-reviewer 链照常派遣。
+
+**下一任务需关注**（R-08）：
+- CLI options 默认值改读 `ProjectConfig`，参考本任务 `VLMLoaderConfig` 派生模式
+- `sender.py` 和 `batch_sender.py` 合并时，VLM 初始化逻辑应改为 `QwenVLSender(loader=QwenVLModelLoader(config.to_vlm_loader_config()))` 形式
+- 注意 `QwenVLSender` 的 `_model_name` / `_quantization` 等 property 现在访问 `self._loader._config.<field>`（双下划线进入 loader 私有 `_config`）—— 这是过渡兼容代码，R-08 重写 CLI 时可考虑改为直接读 loader.config 公共字段
+
+**遗留问题**：
+- `QwenVLSender` 的 4 个兼容性 property 访问 `self._loader._config.<field>` 违反封装，待 Phase 2 收尾或 R-14 cleanup 一并清理（若旧测试不再依赖这些字段，可直接删 property）
+- venv 重建原因未查清：可能是 `.python-version` 新加（untracked，值为 `3.12`）触发 uv 重建。`.python-version` 是否要提交进版本控制待后续 phase-review 时决策
