@@ -405,3 +405,36 @@
 **结论**: ✅ 通过
 
 ---
+
+### R-10 交接（2026-05-17）
+
+**完成内容**: 修复 #23 — `pipeline_panel.py` 与 `batch_panel.py` 的 receiver / LPIPS 模型生命周期泄漏。两个面板均改为 `gr.State` 持久化跨次复用（与 `receiver_panel.py` 已有的样板模式对齐），并新增显式"卸载模型"按钮。VLM 在两个面板中均通过 try/finally 确保异常路径也卸载（VLM 单次性使用不跨次复用，与原行为一致）。
+
+**修改的文件**:
+- `src/semantic_transmission/gui/pipeline_panel.py` — `_run_e2e()` 签名新增 `receiver` 入参与 yield 输出；首次运行创建 receiver，后续复用；加载失败清空 state，推理失败保留 state；新增 `unload_receiver()` 函数和"卸载 Receiver 模型"按钮；VLM 加 try/finally 保证 describe() 异常路径也调 unload
+- `src/semantic_transmission/gui/batch_panel.py` — `run_batch_process()` 签名新增 `receiver` + `lpips_model` 入参与 yield 输出；receiver 首次创建后跨次复用，LPIPS 同理（仅 `run_eval=True` 路径加载）；VLM 用 try/finally 在循环结束/异常时卸载；新增 `unload_models()` 函数（同时释放 receiver via `unload()` + LPIPS via `del/gc.collect()/torch.cuda.empty_cache()`）和"卸载模型"按钮
+
+**验证结果**:
+- 测试: ✅ 241 passed（与 R-09 baseline 一致，无回归）；`test_gui_batch_panel.py` 9 个 + `test_gui_receiver_panel.py` 25 个均通过
+- Lint: ✅ `ruff check .` All checks passed / `ruff format --check .` 55 files already formatted（自动 format 应用一次 `batch_panel.py`）
+- 功能: ⚠️ PARTIAL — GUI 端到端连续 3 次跑无回归与显存释放验证需 GPU 环境，本任务限于 mock 单测 + 静态代码审查 + 模块 import 烟测；spec 自测方法（本地 GUI 连续跑 3 次观察）需用户在合并前于真机执行
+
+**关键决策**:
+- 方案选择 **B（state 持久化 + 显式 unload 按钮）** 而非 A（try/finally + 每次跑完 unload）：pipeline_panel 跑一次端到端 ~55s（R-06 验证），方案 A 每次重加载 receiver 会额外增加 30+ 秒到首次跑（连续 3 次则总开销 +90s 而无收益），方案 B 与 `receiver_panel.py` / `batch_sender_panel.py` 样板一致，保持用户体验
+- pipeline_panel 失败路径分两段：receiver **加载失败**清空 state（避免半 init 状态污染下次）；receiver **推理失败**保留 state（失败可能是 prompt/seed/边缘图问题，不应重加载模型）
+- batch_panel 的 LPIPS 卸载用 `del + gc.collect() + torch.cuda.empty_cache()`，因 `lpips.LPIPS` 没有官方 unload 接口（`load_lpips_model()` 返回 `nn.Module`，靠引用计数 + CUDA cache 清理触发 GPU 显存回收）
+- VLM 仍按"每次跑加载，跑完卸载"模式（不跨次复用），因 VLM 仅 prompt_mode=auto 时使用，频次低；try/finally 保证 describe()/循环异常路径也卸载，消除显存遗漏
+- yield tuple 加入 receiver/lpips 是 Gradio state 跨次持久化的唯一路径（gr.State.value 通过 outputs 写回），无法用纯函数替代
+- 两个面板的 `unload_*` 函数遵循 `receiver_panel.unload_model()` 一致风格：`getattr(receiver, "unload", None)` 防御性检查 + 失败时仍返回 None 清空 state
+
+**下一任务需关注**（R-11）:
+- R-11 spec "迁移 GUI 面板读 ProjectConfig 默认值"，本任务两个面板的 receiver 加载都走 `create_receiver()` 工厂（已自动读 config）；GUI 显式传入的 `vlm_model_name` / `vlm_model_path` 由 `config_components` 提供，已在 R-08/R-09 中部分接入，R-11 需验证 GUI 默认值与 CLI 一致
+- R-11 同时需清理 `get_default_vlm_path` 残留：本任务沿用 `from semantic_transmission.common.config import get_default_vlm_path` 旧引用（pipeline_panel 与 batch_panel 都有），如 R-11 决定彻底删该函数，需同步替换为 `load_config()` 取值
+- 两个面板新增的 `gr.State(value=None)` 在 `create_app()` 重启时会自动归零，无需额外清理逻辑
+
+**遗留问题**:
+- GUI 真机连续 3 次跑验证未执行（需 GPU + Gradio 实跑），属可接受妥协；建议 R-14 PR 前最终冒烟时执行 spec 自测方法（pipeline / batch 面板各连续跑 3 次，观察推理速度无 16x 减速）
+- batch_panel 的 `Image.open(image_path).convert("RGB")` 与 `Image.fromarray(edge_np)` 等 RGB 散落点本次未触动，属 R-13 范围
+- pipeline_panel 的"卸载 Receiver 模型"按钮与 batch_panel 的"卸载模型"按钮文案略有差异（前者只卸载 receiver，后者同时含 LPIPS），UI 上是合理区分；如统一文案需求强烈可在后续 GUI polish 阶段对齐
+
+---

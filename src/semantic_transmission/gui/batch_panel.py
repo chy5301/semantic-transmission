@@ -5,8 +5,12 @@ M-15 在 M-12 清理后进一步改造结果展示层：
   通过 ``@gr.render`` 动态渲染为独立的 Accordion 折叠块
 - 勾选"运行质量评估"时逐样本计算 PSNR/SSIM/LPIPS，
   结束后汇总总体平均展示
+
+R-10 修复 #23：receiver 和 LPIPS 模型走 ``gr.State`` 持久化跨次复用，
+避免每次 ``run_batch_process`` 重新加载（连续跑 3 次 16x 减速）。
 """
 
+import gc
 import json
 import time
 from pathlib import Path
@@ -14,6 +18,7 @@ from typing import Any, Iterator
 
 import gradio as gr
 import numpy as np
+import torch
 from PIL import Image
 
 from semantic_transmission.pipeline.batch_processor import (
@@ -23,7 +28,40 @@ from semantic_transmission.pipeline.batch_processor import (
     make_sample_output_dir,
 )
 from semantic_transmission.receiver import create_receiver
+from semantic_transmission.receiver.base import BaseReceiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
+
+
+def unload_models(
+    receiver: BaseReceiver | None,
+    lpips_model: Any | None,
+) -> tuple[None, None, str]:
+    """显式释放 receiver + LPIPS 模型，释放 GPU 显存。
+
+    LPIPS 模型没有官方 unload 接口，靠 del + gc.collect() + torch.cuda.empty_cache()
+    触发显存回收。receiver 调 unload()（DiffusersReceiver 委托给 ModelLoader）。
+    """
+    msgs: list[str] = []
+    if receiver is not None:
+        try:
+            unload = getattr(receiver, "unload", None)
+            if callable(unload):
+                unload()
+            msgs.append("Receiver 模型已卸载")
+        except Exception as e:
+            msgs.append(f"Receiver 卸载出错：{e}")
+    if lpips_model is not None:
+        try:
+            del lpips_model
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            msgs.append("LPIPS 模型已释放")
+        except Exception as e:
+            msgs.append(f"LPIPS 释放出错：{e}")
+    if not msgs:
+        return None, None, "当前无已加载模型"
+    return None, None, "；".join(msgs)
 
 
 def compute_sample_metrics(
@@ -122,30 +160,62 @@ def build_batch_tab(config_components):
         run_eval: bool,
         vlm_model_name: str,
         vlm_model_path: str,
-    ) -> Iterator[tuple[str, list[dict], list[list[str]]]]:
+        receiver: BaseReceiver | None,
+        lpips_model: Any | None,
+    ) -> Iterator[
+        tuple[
+            str,
+            list[dict],
+            list[list[str]],
+            BaseReceiver | None,
+            Any | None,
+        ]
+    ]:
         """运行批量端到端处理。
 
+        ``receiver`` 和 ``lpips_model`` 通过 ``gr.State`` 跨次持久化，
+        避免每次重建（修复 #23：连续跑 3 次 16x 减速）。
+
         Yields:
-            ``(log_text, results_list, overall_metrics_rows)``
+            ``(log_text, results_list, overall_metrics_rows, receiver, lpips_model)``
             - ``results_list``：每项含 original_path / edge_path / restored_path /
               prompt / metrics，供 Accordion 动态渲染
             - ``overall_metrics_rows``：总体平均 metrics 表格行
+            - ``receiver`` / ``lpips_model``：state 透传，保留模型引用以便下次复用
         """
         results: list[dict] = []
         overall_rows: list[list[str]] = []
 
         if not input_dir or not output_dir:
-            yield "请填写输入目录和输出目录", results, overall_rows
+            yield (
+                "请填写输入目录和输出目录",
+                results,
+                overall_rows,
+                receiver,
+                lpips_model,
+            )
             return
 
         input_path = Path(input_dir)
         output_path = Path(output_dir)
 
         if prompt_mode == "manual" and not manual_prompt:
-            yield "请输入手动 prompt 或选择自动模式", results, overall_rows
+            yield (
+                "请输入手动 prompt 或选择自动模式",
+                results,
+                overall_rows,
+                receiver,
+                lpips_model,
+            )
             return
 
-        yield f"开始扫描目录: {input_path}\n", results, overall_rows
+        yield (
+            f"开始扫描目录: {input_path}\n",
+            results,
+            overall_rows,
+            receiver,
+            lpips_model,
+        )
 
         # 扫描目录
         discoverer = BatchImageDiscoverer()
@@ -156,32 +226,51 @@ def build_batch_tab(config_components):
                 f"在 {input_path} 中没有找到支持的图片文件",
                 results,
                 overall_rows,
+                receiver,
+                lpips_model,
             )
             return
 
         log_text = f"发现图片: {discovery.total_count} 张\n"
         for ext, count in discovery.formats_detected.items():
             log_text += f"  {ext}: {count} 张\n"
-        yield log_text, results, overall_rows
+        yield log_text, results, overall_rows, receiver, lpips_model
 
         # 创建输出目录
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # 初始化发送端（本地 Canny 提取）和接收端
+        # 初始化发送端（本地 Canny 提取）；接收端复用 state（首次创建）
         extractor = LocalCannyExtractor()
-        receiver = create_receiver()
-        log_text += "\n发送端：本地 Canny 提取\n接收端：Diffusers 本地推理\n"
+        if receiver is None:
+            log_text += "\n发送端：本地 Canny 提取\n接收端：Diffusers 本地推理（首次加载约 1~2 分钟）\n"
+            yield log_text, results, overall_rows, receiver, lpips_model
+            try:
+                receiver = create_receiver()
+            except Exception as e:
+                log_text += f"⚠ 接收端模型加载失败: {e}\n"
+                yield log_text, results, overall_rows, None, lpips_model
+                return
+        else:
+            log_text += (
+                "\n发送端：本地 Canny 提取\n接收端：复用已加载的 Diffusers 模型\n"
+            )
         if run_eval:
             log_text += "质量评估：已启用（每组 PSNR/SSIM/LPIPS + 总体平均）\n"
-        yield log_text, results, overall_rows
+        yield log_text, results, overall_rows, receiver, lpips_model
 
-        # 加载 VLM 如果需要
+        # 加载 VLM 如果需要（VLM 不跨次复用：调用频次低 + 与原行为一致）
         vlm_sender = None
         if prompt_mode == "auto":
             from semantic_transmission.common.config import get_default_vlm_path
             from semantic_transmission.sender.qwen_vl_sender import QwenVLSender
 
-            yield log_text + "\n正在加载 VLM 模型...\n", results, overall_rows
+            yield (
+                log_text + "\n正在加载 VLM 模型...\n",
+                results,
+                overall_rows,
+                receiver,
+                lpips_model,
+            )
             vlm_kwargs = {}
             if vlm_model_name:
                 vlm_kwargs["model_name"] = vlm_model_name
@@ -190,11 +279,10 @@ def build_batch_tab(config_components):
                 vlm_kwargs["model_path"] = vlm_path
             vlm_sender = QwenVLSender(**vlm_kwargs)
             log_text += "✓ VLM 模型加载完成\n"
-            yield log_text, results, overall_rows
+            yield log_text, results, overall_rows, receiver, lpips_model
 
-        # 加载 LPIPS 模型（如启用评估）
-        lpips_model = None
-        if run_eval:
+        # 加载 LPIPS 模型（如启用评估且 state 中未加载）
+        if run_eval and lpips_model is None:
             try:
                 from semantic_transmission.evaluation import load_lpips_model
 
@@ -202,152 +290,177 @@ def build_batch_tab(config_components):
                     log_text + "\n正在加载 LPIPS 评估模型...\n",
                     results,
                     overall_rows,
+                    receiver,
+                    lpips_model,
                 )
                 lpips_model = load_lpips_model()
                 log_text += "✓ LPIPS 模型加载完成\n"
-                yield log_text, results, overall_rows
+                yield log_text, results, overall_rows, receiver, lpips_model
             except Exception as e:
                 log_text += f"⚠ LPIPS 加载失败（将跳过 LPIPS 指标）: {e}\n"
-                yield log_text, results, overall_rows
+                yield log_text, results, overall_rows, receiver, lpips_model
+        elif run_eval and lpips_model is not None:
+            log_text += "✓ 复用已加载的 LPIPS 评估模型\n"
+            yield log_text, results, overall_rows, receiver, lpips_model
 
-        # 开始批量处理
+        # 开始批量处理。VLM 用 try/finally 确保异常路径也会卸载（VLM 不跨次复用）。
         total_start = time.time()
         batch_result = BatchResult(total=discovery.total_count)
 
-        for idx, image_path in enumerate(discovery.images, 1):
-            image_name = image_path.stem
-            rel_path = image_path.relative_to(input_path)
+        try:
+            for idx, image_path in enumerate(discovery.images, 1):
+                image_name = image_path.stem
+                rel_path = image_path.relative_to(input_path)
 
-            current_log = log_text
-            current_log += f"\n[{idx}/{discovery.total_count}] 处理: {rel_path}\n"
-            yield current_log, results, overall_rows
+                current_log = log_text
+                current_log += f"\n[{idx}/{discovery.total_count}] 处理: {rel_path}\n"
+                yield current_log, results, overall_rows, receiver, lpips_model
 
-            # 创建输出子目录
-            sample_output_dir = make_sample_output_dir(output_path, idx, image_name)
+                # 创建输出子目录
+                sample_output_dir = make_sample_output_dir(output_path, idx, image_name)
 
-            try:
-                # 提取边缘图（本地 OpenCV）
-                original_image = Image.open(image_path).convert("RGB")
-                image_array = np.array(original_image)
-                start = time.time()
-                edge_np = extractor.extract(image_array)
-                sender_elapsed = time.time() - start
-                edge_image = Image.fromarray(edge_np)
+                try:
+                    # 提取边缘图（本地 OpenCV）
+                    original_image = Image.open(image_path).convert("RGB")
+                    image_array = np.array(original_image)
+                    start = time.time()
+                    edge_np = extractor.extract(image_array)
+                    sender_elapsed = time.time() - start
+                    edge_image = Image.fromarray(edge_np)
 
-                edge_path = sample_output_dir / "edge.png"
-                edge_image.save(edge_path)
-                current_log += f"  ✓ 边缘提取完成 ({edge_image.size[0]}x{edge_image.size[1]}) 耗时 {sender_elapsed:.1f}s\n"
-                yield current_log, results, overall_rows
+                    edge_path = sample_output_dir / "edge.png"
+                    edge_image.save(edge_path)
+                    current_log += f"  ✓ 边缘提取完成 ({edge_image.size[0]}x{edge_image.size[1]}) 耗时 {sender_elapsed:.1f}s\n"
+                    yield current_log, results, overall_rows, receiver, lpips_model
 
-                # 获取 prompt
-                vlm_elapsed = 0.0
-                if prompt_mode == "auto" and vlm_sender is not None:
-                    start_vlm = time.time()
-                    sender_output = vlm_sender.describe(image_array)
-                    vlm_elapsed = time.time() - start_vlm
-                    prompt_text = sender_output.text
-                    current_log += f"  ✓ VLM 生成完成 ({len(prompt_text)} 字符) 耗时 {vlm_elapsed:.1f}s\n"
-                    yield current_log, results, overall_rows
-                else:
-                    prompt_text = manual_prompt
-                    current_log += "  ✓ 使用手动 prompt\n"
-
-                # 保存 prompt
-                prompt_path = sample_output_dir / "prompt.txt"
-                prompt_path.write_text(prompt_text, encoding="utf-8")
-
-                # 还原图像
-                start = time.time()
-                restored_image = receiver.process(edge_image, prompt_text, seed=seed)
-                receiver_elapsed = time.time() - start
-
-                restored_path = sample_output_dir / "restored.png"
-                restored_image.save(restored_path)
-                current_log += f"  ✓ 还原完成 ({restored_image.size[0]}x{restored_image.size[1]}) 耗时 {receiver_elapsed:.1f}s\n"
-                yield current_log, results, overall_rows
-
-                # 可选质量评估
-                sample_metrics: dict[str, float] = {}
-                if run_eval:
-                    try:
-                        start_eval = time.time()
-                        sample_metrics = compute_sample_metrics(
-                            original_image, restored_image, lpips_model=lpips_model
+                    # 获取 prompt
+                    vlm_elapsed = 0.0
+                    if prompt_mode == "auto" and vlm_sender is not None:
+                        start_vlm = time.time()
+                        sender_output = vlm_sender.describe(image_array)
+                        vlm_elapsed = time.time() - start_vlm
+                        prompt_text = sender_output.text
+                        current_log += f"  ✓ VLM 生成完成 ({len(prompt_text)} 字符) 耗时 {vlm_elapsed:.1f}s\n"
+                        yield (
+                            current_log,
+                            results,
+                            overall_rows,
+                            receiver,
+                            lpips_model,
                         )
-                        eval_elapsed = time.time() - start_eval
-                        parts = [
-                            f"PSNR={sample_metrics['psnr']:.2f}dB",
-                            f"SSIM={sample_metrics['ssim']:.4f}",
-                        ]
-                        if "lpips" in sample_metrics:
-                            parts.append(f"LPIPS={sample_metrics['lpips']:.4f}")
-                        current_log += f"  ✓ 评估完成 ({', '.join(parts)}) 耗时 {eval_elapsed:.1f}s\n"
-                    except Exception as eval_err:
-                        current_log += f"  ⚠ 评估失败: {eval_err}\n"
+                    else:
+                        prompt_text = manual_prompt
+                        current_log += "  ✓ 使用手动 prompt\n"
 
-                # 生成对比图
-                start = time.time()
-                comparison = _make_comparison_image(
-                    original_image, edge_image, restored_image
-                )
-                comparison_path = sample_output_dir / "comparison.png"
-                comparison.save(comparison_path)
-                comparison_elapsed = time.time() - start
+                    # 保存 prompt
+                    prompt_path = sample_output_dir / "prompt.txt"
+                    prompt_path.write_text(prompt_text, encoding="utf-8")
 
-                # 记录结果
-                sample_result = SampleResult(
-                    name=str(rel_path),
-                    status="success",
-                    timings={
-                        "sender": sender_elapsed,
-                        "vlm": vlm_elapsed,
-                        "receiver": receiver_elapsed,
-                        "comparison": comparison_elapsed,
-                    },
-                    metrics=sample_metrics,
-                )
-                batch_result.add_sample(sample_result)
+                    # 还原图像
+                    start = time.time()
+                    restored_image = receiver.process(
+                        edge_image, prompt_text, seed=seed
+                    )
+                    receiver_elapsed = time.time() - start
 
-                # 保存元数据
-                metadata = sample_result.to_dict()
-                metadata_path = sample_output_dir / "metadata.json"
-                with open(metadata_path, "w", encoding="utf-8") as f:
-                    json.dump(metadata, f, indent=2, ensure_ascii=False)
+                    restored_path = sample_output_dir / "restored.png"
+                    restored_image.save(restored_path)
+                    current_log += f"  ✓ 还原完成 ({restored_image.size[0]}x{restored_image.size[1]}) 耗时 {receiver_elapsed:.1f}s\n"
+                    yield current_log, results, overall_rows, receiver, lpips_model
 
-                # 追加到展示结果
-                results.append(
-                    {
-                        "name": str(rel_path),
-                        "original_path": str(image_path),
-                        "edge_path": str(edge_path),
-                        "restored_path": str(restored_path),
-                        "prompt": prompt_text,
-                        "metrics": sample_metrics,
-                    }
-                )
-                current_log += "  ✓ 所有步骤完成\n"
-                yield current_log, results, overall_rows
+                    # 可选质量评估
+                    sample_metrics: dict[str, float] = {}
+                    if run_eval:
+                        try:
+                            start_eval = time.time()
+                            sample_metrics = compute_sample_metrics(
+                                original_image,
+                                restored_image,
+                                lpips_model=lpips_model,
+                            )
+                            eval_elapsed = time.time() - start_eval
+                            parts = [
+                                f"PSNR={sample_metrics['psnr']:.2f}dB",
+                                f"SSIM={sample_metrics['ssim']:.4f}",
+                            ]
+                            if "lpips" in sample_metrics:
+                                parts.append(f"LPIPS={sample_metrics['lpips']:.4f}")
+                            current_log += f"  ✓ 评估完成 ({', '.join(parts)}) 耗时 {eval_elapsed:.1f}s\n"
+                        except Exception as eval_err:
+                            current_log += f"  ⚠ 评估失败: {eval_err}\n"
 
-            except Exception as e:
-                error_msg = str(e)
-                current_log += f"  ✗ 处理失败: {error_msg}\n"
-                sample_result = SampleResult(
-                    name=str(rel_path),
-                    status="failed",
-                    error=error_msg,
-                )
-                batch_result.add_sample(sample_result)
+                    # 生成对比图
+                    start = time.time()
+                    comparison = _make_comparison_image(
+                        original_image, edge_image, restored_image
+                    )
+                    comparison_path = sample_output_dir / "comparison.png"
+                    comparison.save(comparison_path)
+                    comparison_elapsed = time.time() - start
 
-                if not skip_errors:
-                    yield current_log, results, overall_rows
-                    break
+                    # 记录结果
+                    sample_result = SampleResult(
+                        name=str(rel_path),
+                        status="success",
+                        timings={
+                            "sender": sender_elapsed,
+                            "vlm": vlm_elapsed,
+                            "receiver": receiver_elapsed,
+                            "comparison": comparison_elapsed,
+                        },
+                        metrics=sample_metrics,
+                    )
+                    batch_result.add_sample(sample_result)
 
-                yield current_log, results, overall_rows
-                continue
+                    # 保存元数据
+                    metadata = sample_result.to_dict()
+                    metadata_path = sample_output_dir / "metadata.json"
+                    with open(metadata_path, "w", encoding="utf-8") as f:
+                        json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-        # 汇总
-        if vlm_sender is not None:
-            vlm_sender.unload()
+                    # 追加到展示结果
+                    results.append(
+                        {
+                            "name": str(rel_path),
+                            "original_path": str(image_path),
+                            "edge_path": str(edge_path),
+                            "restored_path": str(restored_path),
+                            "prompt": prompt_text,
+                            "metrics": sample_metrics,
+                        }
+                    )
+                    current_log += "  ✓ 所有步骤完成\n"
+                    yield current_log, results, overall_rows, receiver, lpips_model
+
+                except Exception as e:
+                    error_msg = str(e)
+                    current_log += f"  ✗ 处理失败: {error_msg}\n"
+                    sample_result = SampleResult(
+                        name=str(rel_path),
+                        status="failed",
+                        error=error_msg,
+                    )
+                    batch_result.add_sample(sample_result)
+
+                    if not skip_errors:
+                        yield (
+                            current_log,
+                            results,
+                            overall_rows,
+                            receiver,
+                            lpips_model,
+                        )
+                        break
+
+                    yield current_log, results, overall_rows, receiver, lpips_model
+                    continue
+        finally:
+            # VLM 不跨次复用：循环结束（含异常路径）后立刻卸载，避免遗留显存
+            if vlm_sender is not None:
+                try:
+                    vlm_sender.unload()
+                except Exception:
+                    pass
 
         total_time = time.time() - total_start
         batch_result.total_time = total_time
@@ -371,11 +484,12 @@ def build_batch_tab(config_components):
             f"总耗时: {batch_result.total_time:.1f}s\n"
             f"单张平均: {batch_result.total_time / batch_result.total:.1f}s\n"
             f"\n汇总保存: {summary_path}\n"
-            f"输出目录: {output_path}/"
+            f"输出目录: {output_path}/\n"
+            f'\nReceiver / LPIPS 模型保持加载；如需释放显存请点击"卸载模型"'
         )
 
         final_log = log_text + "\n" + summary_text
-        yield final_log, results, overall_rows
+        yield final_log, results, overall_rows, receiver, lpips_model
         return
 
     with gr.Column():
@@ -434,7 +548,14 @@ def build_batch_tab(config_components):
             info="留空使用随机种子",
         )
 
-        run_btn = gr.Button("开始批量处理", variant="primary")
+        # receiver 与 LPIPS 跨次复用，避免每次重建（修复 #23 连续跑 16x 减速）
+        receiver_state = gr.State(value=None)
+        lpips_state = gr.State(value=None)
+
+        with gr.Row():
+            run_btn = gr.Button("开始批量处理", variant="primary")
+            unload_btn = gr.Button("卸载模型", variant="secondary")
+        unload_status = gr.Markdown("")
 
         output_log = gr.Textbox(
             label="处理日志",
@@ -531,8 +652,23 @@ def build_batch_tab(config_components):
                 run_eval_checkbox,
                 config_components["vlm_model_name"],
                 config_components["vlm_model_path"],
+                receiver_state,
+                lpips_state,
             ],
-            outputs=[output_log, results_state, overall_metrics_df],
+            outputs=[
+                output_log,
+                results_state,
+                overall_metrics_df,
+                receiver_state,
+                lpips_state,
+            ],
+        )
+
+        # 显式卸载 receiver + LPIPS
+        unload_btn.click(
+            fn=unload_models,
+            inputs=[receiver_state, lpips_state],
+            outputs=[receiver_state, lpips_state, unload_status],
         )
 
     return {

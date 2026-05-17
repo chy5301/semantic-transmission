@@ -1,4 +1,9 @@
-"""端到端演示 Tab：一键完成发送 → 传输 → 接收全流程。"""
+"""端到端演示 Tab：一键完成发送 → 传输 → 接收全流程。
+
+receiver 模型走 ``gr.State`` 持久化（与 ``receiver_panel.py`` 模式一致）：
+首次运行加载后保留引用，下次运行复用，避免每次重建模型带来 30s+ 延迟。
+显式"卸载模型"按钮用于释放显存。修复 #23（连续跑 3 次 16x 减速）。
+"""
 
 import io
 import os
@@ -10,6 +15,7 @@ from PIL import Image
 
 from semantic_transmission.common.config import get_default_vlm_path
 from semantic_transmission.receiver import create_receiver
+from semantic_transmission.receiver.base import BaseReceiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
@@ -26,6 +32,25 @@ def _format_steps(steps, current_idx):
     return "\n".join(lines)
 
 
+def unload_receiver(
+    receiver: BaseReceiver | None,
+) -> tuple[BaseReceiver | None, str]:
+    """显式卸载 receiver 模型，释放 GPU 显存。
+
+    与 ``receiver_panel.unload_model`` 行为一致：失败时仍清空 state，
+    避免泄漏的引用阻碍 GC。
+    """
+    if receiver is None:
+        return None, "当前无已加载模型"
+    try:
+        unload = getattr(receiver, "unload", None)
+        if callable(unload):
+            unload()
+        return None, "Receiver 模型已卸载"
+    except Exception as e:
+        return None, f"卸载过程出错：{e}"
+
+
 def _run_e2e(
     image_path,
     mode,
@@ -33,9 +58,16 @@ def _run_e2e(
     seed,
     vlm_model_name,
     vlm_model_path,
+    receiver,
 ):
-    """端到端流程 generator，逐步 yield 更新 UI。"""
-    # 输出槽位: original, edge, restored, steps, prompt_result, stats, log
+    """端到端流程 generator，逐步 yield 更新 UI。
+
+    ``receiver`` 通过 ``gr.State`` 跨次调用持久化。首次运行（receiver=None）
+    创建并保留引用；后续运行复用同一 receiver，避免重复加载（修复 #23）。
+    失败时清空 receiver state（除非失败发生在 receiver 创建之后，此时保留
+    引用以便用户通过"卸载模型"按钮显式释放）。
+    """
+    # 输出槽位: receiver, original, edge, restored, steps, prompt_result, stats, log
     empty_stats = []
     steps = [
         ("[1/4] 提取边缘图", ""),
@@ -49,24 +81,37 @@ def _run_e2e(
     restored_img = None
     prompt_result = ""
 
+    def _yield(step_idx, stats_val=None):
+        return (
+            receiver,
+            original_img,
+            edge_img,
+            restored_img,
+            _format_steps(steps, step_idx),
+            prompt_result,
+            stats_val if stats_val is not None else empty_stats,
+            log,
+        )
+
     if not image_path:
         log = "错误：请先上传图像\n"
-        yield original_img, edge_img, restored_img, "", prompt_result, empty_stats, log
+        yield (
+            receiver,
+            original_img,
+            edge_img,
+            restored_img,
+            "",
+            prompt_result,
+            empty_stats,
+            log,
+        )
         return
 
     original_img = Image.open(image_path)
     original_bytes = os.path.getsize(image_path)
 
     # --- [1/4] 提取边缘图（本地 OpenCV） ---
-    yield (
-        original_img,
-        edge_img,
-        restored_img,
-        _format_steps(steps, 0),
-        prompt_result,
-        empty_stats,
-        log,
-    )
+    yield _yield(0)
 
     log += "[1/4] 本地提取 Canny 边缘图...\n"
     try:
@@ -84,41 +129,17 @@ def _run_e2e(
         steps[0] = ("[1/4] 提取边缘图", f"{sender_elapsed:.1f}s")
     except Exception as e:
         log += f"  失败: {e}\n"
-        yield (
-            original_img,
-            edge_img,
-            restored_img,
-            _format_steps(steps, 4),
-            prompt_result,
-            empty_stats,
-            log,
-        )
+        yield _yield(4)
         return
 
-    yield (
-        original_img,
-        edge_img,
-        restored_img,
-        _format_steps(steps, 1),
-        prompt_result,
-        empty_stats,
-        log,
-    )
+    yield _yield(1)
 
     # --- [2/4] 获取语义描述 ---
     vlm_elapsed = 0.0
     log += "[2/4] 获取语义描述...\n"
     if mode == "auto":
         log += "  正在加载 VLM 模型...\n"
-        yield (
-            original_img,
-            edge_img,
-            restored_img,
-            _format_steps(steps, 1),
-            prompt_result,
-            empty_stats,
-            log,
-        )
+        yield _yield(1)
 
         try:
             from semantic_transmission.sender.qwen_vl_sender import QwenVLSender
@@ -131,13 +152,23 @@ def _run_e2e(
                 vlm_kwargs["model_path"] = vlm_path
 
             vlm_sender = QwenVLSender(**vlm_kwargs)
-            img_rgb = original_img.convert("RGB")
-            img_array = np.array(img_rgb)
-            t0 = time.time()
-            sender_output = vlm_sender.describe(img_array)
-            vlm_elapsed = time.time() - t0
-            prompt_result = sender_output.text
-            vlm_sender.unload()
+            try:
+                img_rgb = original_img.convert("RGB")
+                img_array = np.array(img_rgb)
+                t0 = time.time()
+                sender_output = vlm_sender.describe(img_array)
+                vlm_elapsed = time.time() - t0
+                prompt_result = sender_output.text
+            finally:
+                # VLM 不跨次复用（每次 e2e 演示按 fresh load 行为，
+                # 与原实现一致）；try/finally 确保异常路径也卸载，避免
+                # describe() 失败时遗留 VLM 占用显存
+                vlm_unload = getattr(vlm_sender, "unload", None)
+                if callable(vlm_unload):
+                    try:
+                        vlm_unload()
+                    except Exception:
+                        pass
 
             char_count = len(prompt_result)
             byte_count = len(prompt_result.encode("utf-8"))
@@ -148,15 +179,7 @@ def _run_e2e(
             steps[1] = ("[2/4] 获取语义描述", f"{vlm_elapsed:.1f}s (VLM)")
         except Exception as e:
             log += f"  VLM 失败: {e}\n"
-            yield (
-                original_img,
-                edge_img,
-                restored_img,
-                _format_steps(steps, 4),
-                prompt_result,
-                empty_stats,
-                log,
-            )
+            yield _yield(4)
             return
     else:
         prompt_result = prompt or ""
@@ -165,31 +188,28 @@ def _run_e2e(
         log += f"  手动 Prompt ({len(prompt_result)} 字符)\n"
         steps[1] = ("[2/4] 获取语义描述", "手动")
 
-    yield (
-        original_img,
-        edge_img,
-        restored_img,
-        _format_steps(steps, 2),
-        prompt_result,
-        empty_stats,
-        log,
-    )
+    yield _yield(2)
 
     # --- [3/4] 还原图像 ---
     log += "[3/4] 接收端还原图像（diffusers）...\n"
-    yield (
-        original_img,
-        edge_img,
-        restored_img,
-        _format_steps(steps, 2),
-        prompt_result,
-        empty_stats,
-        log,
-    )
+    if receiver is None:
+        log += "  正在加载 Diffusers 接收端模型（首次约 1~2 分钟）...\n"
+    else:
+        log += "  复用已加载的接收端模型\n"
+    yield _yield(2)
 
     seed_int = int(seed) if seed is not None and seed != "" else None
+    # receiver 加载与单帧推理分两段保护：加载失败清空 state、推理失败保留 state
+    if receiver is None:
+        try:
+            receiver = create_receiver()
+        except Exception as e:
+            log += f"  模型加载失败: {e}\n"
+            receiver = None
+            yield _yield(4)
+            return
+
     try:
-        receiver = create_receiver()
         buf = io.BytesIO()
         edge_pil.save(buf, format="PNG")
         edge_bytes = buf.getvalue()
@@ -201,27 +221,12 @@ def _run_e2e(
         log += f"  完成 ({restored_pil.size[0]}x{restored_pil.size[1]}, {receiver_elapsed:.1f}s)\n"
         steps[2] = ("[3/4] 还原图像", f"{receiver_elapsed:.1f}s")
     except Exception as e:
-        log += f"  失败: {e}\n"
-        yield (
-            original_img,
-            edge_img,
-            restored_img,
-            _format_steps(steps, 4),
-            prompt_result,
-            empty_stats,
-            log,
-        )
+        log += f"  推理失败: {e}\n"
+        # 保留 receiver state：失败不一定是模型问题，避免下一次又要重加载
+        yield _yield(4)
         return
 
-    yield (
-        original_img,
-        edge_img,
-        restored_img,
-        _format_steps(steps, 3),
-        prompt_result,
-        empty_stats,
-        log,
-    )
+    yield _yield(3)
 
     # --- [4/4] 对比图 + 统计 ---
     log += "[4/4] 生成对比图与统计...\n"
@@ -249,16 +254,9 @@ def _run_e2e(
     steps[3] = ("[4/4] 生成对比图", f"{comp_elapsed:.1f}s")
     log += "─" * 30 + "\n"
     log += f"端到端完成！总耗时 {total_elapsed:.1f}s，压缩比 {original_bytes / total_tx:.2f}x\n"
+    log += 'Receiver 模型保持加载；如需释放显存请点击"卸载 Receiver 模型"\n'
 
-    yield (
-        original_img,
-        edge_img,
-        restored_img,
-        _format_steps(steps, 4),
-        prompt_result,
-        stats,
-        log,
-    )
+    yield _yield(4, stats_val=stats)
 
 
 def _run_evaluation(original_path, restored_img):
@@ -323,6 +321,9 @@ def build_pipeline_tab(config_components: dict) -> dict:
         "### 端到端演示\n一键完成 边缘提取 → 语义描述 → 还原图像 的全流程，并展示传输统计。"
     )
 
+    # receiver 跨次复用，避免每次 _run_e2e 重新加载（修复 #23 连续跑 16x 减速）
+    receiver_state = gr.State(value=None)
+
     # --- 输入区 ---
     with gr.Row():
         with gr.Column(scale=1):
@@ -341,7 +342,10 @@ def build_pipeline_tab(config_components: dict) -> dict:
             )
             seed_input = gr.Number(label="随机种子（可选）", precision=0, value=None)
 
-    run_btn = gr.Button("▶ 运行端到端演示", variant="primary")
+    with gr.Row():
+        run_btn = gr.Button("▶ 运行端到端演示", variant="primary")
+        unload_btn = gr.Button("卸载 Receiver 模型", variant="secondary")
+    unload_status = gr.Markdown("")
 
     # --- 进度区 ---
     steps_display = gr.Textbox(
@@ -412,8 +416,10 @@ def build_pipeline_tab(config_components: dict) -> dict:
             seed_input,
             config_components["vlm_model_name"],
             config_components["vlm_model_path"],
+            receiver_state,
         ],
         outputs=[
+            receiver_state,
             original_display,
             edge_display,
             restored_display,
@@ -422,6 +428,13 @@ def build_pipeline_tab(config_components: dict) -> dict:
             stats_table,
             log_output,
         ],
+    )
+
+    # --- 卸载 receiver 模型 ---
+    unload_btn.click(
+        fn=unload_receiver,
+        inputs=[receiver_state],
+        outputs=[receiver_state, unload_status],
     )
 
     # --- 质量评估 ---
