@@ -6,10 +6,10 @@ from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
-from PIL import Image
 from qwen_vl_utils import process_vision_info
 
 from semantic_transmission.common.config import VLMLoaderConfig
+from semantic_transmission.common.image_io import load_as_rgb
 from semantic_transmission.common.model_loader import QwenVLModelLoader
 from semantic_transmission.common.types import SenderOutput
 from semantic_transmission.sender.base import BaseSender
@@ -105,7 +105,7 @@ class QwenVLSender(BaseSender):
         model = bundle.model
         processor = bundle.processor
 
-        pil_image = Image.fromarray(image)
+        pil_image = load_as_rgb(image)
 
         messages = [
             {

@@ -542,3 +542,37 @@
 - R-14 (依赖 R-08 + R-13)：本次已补充 `get_default_*` 清理 + GUI GPU 冒烟两项必须步骤；与 phase-2 review 已加的 city96 仓库实测 / 文档 batch-sender 残留检查并存，无冲突
 
 **结论**: ✅ 通过
+
+---
+
+### R-12 交接（2026-05-18）
+
+**完成内容**: 新建 `common/image_io.py`，提供 `load_as_rgb(source)` / `image_to_numpy(source)` 两个统一图像入口，支持 `str | Path | bytes | numpy.ndarray | PIL.Image.Image` 五种输入；替换 receiver/sender/evaluation/scripts 四个 core 模块中的散落 `Image.open().convert("RGB")` 与 `Image.fromarray()` 调用；新增 17 个针对性单测覆盖所有输入分支与异常路径。
+
+**修改的文件**:
+- `src/semantic_transmission/common/image_io.py`（**新建**, 106 行）— `load_as_rgb` + `image_to_numpy` + 私有 `_ndarray_to_pil` helper；模块级 docstring 说明与 `evaluation/utils.to_numpy` 的职责互补（load_as_rgb 负责"加载"，to_numpy 负责"指标计算前的归一化"）
+- `src/semantic_transmission/receiver/diffusers_receiver.py` — 删除 staticmethod `_load_condition_image`（19 行），调用点 `self._load_condition_image(edge_image)` 改为 `load_as_rgb(edge_image)`；移除不再使用的 `import io`
+- `src/semantic_transmission/sender/qwen_vl_sender.py` — `Image.fromarray(image)` → `load_as_rgb(image)`；移除不再使用的 `from PIL import Image`
+- `src/semantic_transmission/evaluation/semantic_metrics.py` — `Image.fromarray(arr)` → `load_as_rgb(arr)`；移除不再使用的 `from PIL import Image`
+- `src/semantic_transmission/evaluation/utils.py` — `to_numpy()` 重构：保留 ndarray (H,W,3) 零拷贝快速路径，其他分支统一委托 `load_as_rgb`，消除与 image_io 的重复 mode/shape 判断逻辑
+- `scripts/evaluate.py` — `Image.open(path).convert("RGB")` + `np.array(...)` 两步合并为 `np.asarray(load_as_rgb(path))`；移除不再使用的 `from PIL import Image`
+- `tests/test_image_io.py`（**新建**, 158 行）— 17 个用例覆盖 str/Path/bytes/ndarray/PIL 五类输入 + RGBA→RGB / L→RGB 转换 + TypeError/ValueError 异常路径 + `image_to_numpy` 三个 roundtrip 用例
+
+**验证结果**:
+- 测试: ✅ PASS — 264 passed in 25.74s（R-11 baseline 247 + 新增 17 image_io 用例 = 264，与预期一致）
+- Lint: ✅ PASS — `ruff check .` All checks passed / `ruff format --check .` 58 files already formatted
+- 功能: ✅ 静态验证 core 模块（receiver/sender/evaluation/scripts）的 `Image.open(...).convert("RGB")` 与 `Image.fromarray(` 调用均为 0 命中（仅 `common/image_io.py` docstring 中保留作为对比说明）
+
+**关键决策**:
+- **to_numpy() 复用 vs 替代**：选择"复用 + 内部委托"。to_numpy() 已被 evaluation 三个 metric 模块（pixel/perceptual/semantic）+ scripts/evaluate.py + tests 大量使用并通过测试，签名 `(NDArray | PIL.Image) -> NDArray` 与 image_to_numpy 的 `(ImageSource) -> NDArray` 范围不同（不接受 str/Path/bytes，因为指标计算阶段输入永远是已加载好的对象），保留并让其内部委托 load_as_rgb 既避免重复实现又不破坏现有签名/导入；image_to_numpy 作为新姊妹函数提供更宽输入面，供未来逐步替代场景
+- **删除 `_load_condition_image` staticmethod**：未被测试 mock，逻辑与 load_as_rgb 完全等价，直接删除而非保留 thin wrapper，避免双入口困惑
+- **scripts/evaluate.py 进一步简化**：原 `Image.open().convert("RGB")` 后立即 `np.array()`，合并为 `np.asarray(load_as_rgb())` 一行
+- **不修改 PIL.Image type annotation**：receiver 的 `_run_one` 仍接 `Image.Image | bytes | str | Path`，保持公共 API 类型签名稳定
+
+**下一任务需关注**（R-13）:
+- R-13 范围（GUI/CLI 8 个文件）仍有 ~17 处 `Image.open(...).convert("RGB")` 与 `Image.fromarray(...)` 待替换，调用模式已被 load_as_rgb 完全覆盖（含 numpy.ndarray 这一 Gradio 默认输入类型），R-13 直接替换即可
+- 若需要"从任意输入加载为 ndarray"，优先用 `image_to_numpy`；若需要 PIL.Image（如喂给 ControlPipeline 或 CLIPProcessor），用 `load_as_rgb`
+- `evaluation/utils.py::to_numpy()` 现在内部依赖 `common/image_io.load_as_rgb`，注意循环导入风险：image_io 不能反向 import evaluation/* 任何符号（当前已遵守）
+
+**遗留问题**:
+- 无。所有验收标准达成，全套测试通过，lint 全绿

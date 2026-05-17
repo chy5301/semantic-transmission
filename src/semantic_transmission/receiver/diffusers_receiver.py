@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import random
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from semantic_transmission.common.config import (
     DiffusersLoaderConfig,
     DiffusersReceiverConfig,
 )
+from semantic_transmission.common.image_io import load_as_rgb
 from semantic_transmission.common.model_loader import DiffusersModelLoader
 from semantic_transmission.receiver.base import BaseReceiver, BatchOutput, FrameInput
 
@@ -71,7 +71,7 @@ class DiffusersReceiver(BaseReceiver):
         """
         pipeline = self._loader.load()
 
-        condition = self._load_condition_image(edge_image)
+        condition = load_as_rgb(edge_image)
         w, h = condition.size  # PIL size 返回 (W, H)
         # Pipeline 要求尺寸为 16 的倍数
         width = w - w % 16
@@ -96,18 +96,3 @@ class DiffusersReceiver(BaseReceiver):
         """批量处理帧序列，模型常驻 GPU 不反复加载。"""
         self._loader.load()
         return super().process_batch(frames)
-
-    @staticmethod
-    def _load_condition_image(
-        edge_image: Image.Image | bytes | str | Path,
-    ) -> Image.Image:
-        """将各种输入格式统一转为 RGB PIL.Image。"""
-        if isinstance(edge_image, Image.Image):
-            img = edge_image
-        elif isinstance(edge_image, bytes):
-            img = Image.open(io.BytesIO(edge_image))
-        else:
-            img = Image.open(edge_image)
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-        return img
