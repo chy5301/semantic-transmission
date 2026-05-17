@@ -311,3 +311,40 @@
 **修正后验证**:
 - 测试: ✅ (241 passed)
 - Lint: ✅ (ruff check + format --check 全通过)
+
+---
+
+### R-09 交接（2026-05-17）
+
+**完成内容**: 重构 `cli/download.py` 移除硬编码 `COMFYUI_MODELS` 与 `--comfyui-dir`，改为从 `ProjectConfig.models.diffusers` + `ProjectConfig.models.vlm` 派生下载清单；`cli/demo.py` 与 `cli/batch_demo.py` 的 click options 默认值改为 `None`，函数体内 `load_config()` fallback（与 R-08 sender.py 模式一致）；`cli/receiver.py` 的 finally 块新增 `recv.unload()` 释放 GPU 显存。
+
+**修改的文件**:
+- `src/semantic_transmission/cli/download.py` — 重写：删除 `COMFYUI_MODELS` / `DEFAULT_COMFYUI_DIR` / `--comfyui-dir` option；新增 `_SingleFileTarget` / `_RepoTarget` dataclass + `_SINGLE_FILE_SOURCES` 文件名→仓库 映射；`_derive_single_file_targets()` 从 `ProjectConfig.diffusers_transformer_path`/`diffusers_controlnet_name` 派生 GGUF 与 ControlNet；`_derive_repo_targets()` 从 `vlm_model_name`/`vlm_model_path` 派生 VLM 仓库目标
+- `src/semantic_transmission/cli/demo.py` — `--threshold1/--threshold2/--vlm-model/--vlm-model-path` 默认值改 `None`；函数体加 `load_config()` fallback；help 文本指向 config.toml；删除 `get_default_vlm_path` 引用
+- `src/semantic_transmission/cli/batch_demo.py` — 同 demo.py 处理
+- `src/semantic_transmission/cli/receiver.py` — finally 块新增 `if hasattr(recv, "unload"): recv.unload()` + 异常 warn
+- `tests/test_cli.py` — `TestDownloadCommand::test_help` 改为断言 `--comfyui-dir not in result.output`
+
+**验证结果**:
+- 测试: ✅ 241 passed（与 R-08 baseline 一致，无回归）
+- Lint: ✅ `ruff check .` + `ruff format --check .` 全绿（自动 format 应用一次 `download.py`）
+- 功能: ✅ `semantic-tx download --dry-run` 输出**不再**列出 ComfyUI 模型，仅 Diffusers 单文件 + HF VLM 仓库；`semantic-tx demo --help` / `batch-demo --help` 显示新的 "默认读 config.toml" 文案，未阻塞
+
+**关键决策**:
+- `download.py` 的"文件名→仓库"映射用模块级常量 `_SINGLE_FILE_SOURCES`：`ProjectConfig` 仅给出本地落盘路径（无仓库信息），不在 ProjectConfig 加新字段（避免越权，spec 明确要求"不要给 ProjectConfig 加新字段"）。映射用 basename 匹配，与文件名解耦于 cache 路径
+- `z-image-turbo-Q8_0.gguf` 仓库改为 `city96/Z-Image-Turbo-gguf`（旧 `COMFYUI_MODELS` 的 `Comfy-Org/z_image_turbo` 是 ComfyUI 专用的 fp8 拆分版本，GGUF Q8_0 文件在 `city96` 的镜像仓库下，与 R-04 之后的实际 transformer 加载路径一致）
+- ControlNet 来源保持 ModelScope `PAI/Z-Image-Turbo-Fun-Controlnet-Union`（与旧 `COMFYUI_MODELS` 一致）
+- demo/batch_demo 的 `QwenVLSender(**vlm_kwargs)` 旧 kwargs 入口保留不动，因 R-07 兼容入口仍然可用；只把 kwargs 的来源从 `get_default_vlm_path` 改为 `ProjectConfig`
+- `receiver.py` 的 unload 用 `hasattr` 防御性检查，因 `BaseReceiver` 抽象类未定义 `unload`（仅 `DiffusersReceiver` 实现），未来若新增其他后端无 unload 时不会阻塞退出
+- VLM 目标目录派生：`vlm_model_path` 已给完整路径时直接用；为空时回退到 `cache_dir / repo_id`（兼容旧行为，不强制依赖 config.toml）
+
+**下一任务需关注**（R-10 GUI 面板生命周期 #23）:
+- R-09 的 receiver.py finally unload 模式可参考迁移到 GUI receiver_panel（若该面板存在类似生命周期问题）
+- demo/batch_demo CLI 已不再用 `get_default_vlm_path()`；GUI 若仍引用该函数可在 R-11 一并清理
+- `cli/main.py` 仍注册 `batch_demo` 单独命令，若 R-14 cleanup 希望合并到 `demo`（如 R-08 处理 sender 的模式），可考虑下一阶段
+- `_SINGLE_FILE_SOURCES` 是模块级映射常量，若未来支持多 transformer 量化或多 ControlNet 变体，需扩展此 map（或考虑迁移到 config.toml 的扩展字段）
+
+**遗留问题**:
+- `common/config.py` 中的 `get_default_vlm_path()` / `get_default_z_image_path()` 仍存在但 demo/batch_demo CLI 已不再调用；GUI 模块是否还在用、是否可在 R-11/R-13 cleanup 中清理待 audit
+- `download.py` 通过 basename 匹配仓库来源是脆弱设计：若 `config.toml` 改了 ControlNet 文件名或换 transformer 量化版本会触发"未知目标文件 [WARN]"。属可接受妥协（避免在 ProjectConfig 加 `repo_id` 字段越权）
+- `_SINGLE_FILE_SOURCES` 中的 GGUF 仓库来源 (`city96/Z-Image-Turbo-gguf`) 是基于 README 记录推断，实际首次下载时需要验证仓库 ID 与文件路径正确（本地已有该文件，本任务 dry-run 跳过下载，无法实测）

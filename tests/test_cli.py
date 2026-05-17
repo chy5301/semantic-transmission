@@ -185,7 +185,8 @@ class TestDownloadCommand:
         runner = CliRunner()
         result = runner.invoke(cli, ["download", "--help"])
         assert result.exit_code == 0
-        assert "--comfyui-dir" in result.output
+        # R-09: --comfyui-dir 已移除，模型清单从 ProjectConfig 派生
+        assert "--comfyui-dir" not in result.output
         assert "--proxy" in result.output
         assert "--no-mirror" in result.output
         assert "--cache-dir" in result.output

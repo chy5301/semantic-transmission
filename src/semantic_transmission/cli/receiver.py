@@ -115,3 +115,9 @@ def receiver(relay_host, relay_port, output_dir, continuous):
         _print("\n\n接收端已停止")
     finally:
         relay.close()
+        if hasattr(recv, "unload"):
+            try:
+                recv.unload()
+                _print("  Diffusers 模型已卸载，释放 GPU 显存")
+            except Exception as e:
+                _print(f"  [WARN] receiver.unload() 失败: {e}")
