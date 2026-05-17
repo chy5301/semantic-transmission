@@ -1,7 +1,7 @@
 """配置 Tab：VLM 与 Diffusers 接收端模型就绪检测。
 
 VLM 控件默认值（模型名/本地路径）从 ``ProjectConfig`` 读取（R-11），
-取代旧的硬编码字符串与 ``get_default_vlm_path()`` 拼接逻辑。
+取代旧的硬编码字符串与基于 ``MODEL_CACHE_DIR`` 的路径拼接逻辑。
 """
 
 import gradio as gr

@@ -10,35 +10,15 @@ from pathlib import Path
 import tomllib
 
 
-def get_default_vlm_path() -> str | None:
-    """获取 VLM 模型默认本地路径。
-
-    基于环境变量 MODEL_CACHE_DIR 拼接 Qwen2.5-VL-7B-Instruct 路径。
-    未设置 MODEL_CACHE_DIR 时返回 None。
-    """
-    cache_dir = os.environ.get("MODEL_CACHE_DIR")
-    if cache_dir:
-        return os.path.join(cache_dir, "Qwen", "Qwen2.5-VL-7B-Instruct")
-    return None
-
-
-def get_default_z_image_path(filename: str) -> str:
-    """获取 Z-Image-Turbo 模型文件默认本地路径。
-
-    基于环境变量 MODEL_CACHE_DIR 拼接路径。
-    未设置 MODEL_CACHE_DIR 时返回文件名本身。
-    """
-    cache_dir = os.environ.get("MODEL_CACHE_DIR")
-    if cache_dir:
-        return os.path.join(cache_dir, "Z-Image-Turbo", filename)
-    return filename
-
-
 @dataclass
 class DiffusersReceiverConfig:
     """Diffusers 接收端模型配置。
 
     支持通过环境变量 DIFFUSERS_MODEL_NAME / DIFFUSERS_CONTROLNET_NAME 等覆盖默认值。
+
+    ``__post_init__`` 中空的 ``transformer_path`` / ``controlnet_name`` 会回退到
+    ``ProjectConfig`` 的对应字段（含 ``MODEL_CACHE_DIR`` 环境变量经 ``config.toml``
+    展开的最终绝对路径）。
     """
 
     model_name: str = "Tongyi-MAI/Z-Image-Turbo"
@@ -51,12 +31,12 @@ class DiffusersReceiverConfig:
     scheduler_shift: float = 3.0
 
     def __post_init__(self):
-        if not self.transformer_path:
-            self.transformer_path = get_default_z_image_path("z-image-turbo-Q8_0.gguf")
-        if not self.controlnet_name:
-            self.controlnet_name = get_default_z_image_path(
-                "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
-            )
+        if not self.transformer_path or not self.controlnet_name:
+            project_config = load_config()
+            if not self.transformer_path:
+                self.transformer_path = project_config.diffusers_transformer_path
+            if not self.controlnet_name:
+                self.controlnet_name = project_config.diffusers_controlnet_name
 
     @classmethod
     def from_env(cls) -> "DiffusersReceiverConfig":

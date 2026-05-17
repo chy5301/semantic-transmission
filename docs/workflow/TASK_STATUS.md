@@ -612,3 +612,82 @@
 
 **遗留问题**:
 - 无。所有验收标准达成（代码层），真机 GPU 冒烟按计划归入 R-14。
+
+---
+
+### R-14 交接（2026-05-18）
+
+**完成内容**：删除 `LocalRelay` dead code（含 `pipeline/__init__.py` 导出与 `tests/test_relay.py::TestLocalRelay` 4 用例）；彻底清理 `get_default_vlm_path()` / `get_default_z_image_path()` 两个旧默认路径函数：`DiffusersReceiverConfig.__post_init__` 改读 `ProjectConfig.diffusers_transformer_path` / `diffusers_controlnet_name`，`check_vlm_model()` 改读 `ProjectConfig.vlm_model_path`，`common/__init__.py` 移除两函数 re-export，`tests/test_config.py` 删除 4 个相关用例并新增 `ProjectConfig`-fallback 等价用例；4 个目标文档（`cli-reference.md` / `user-guide.md` / `demo-handbook.md` / `ROADMAP.md`）的 `batch-sender` 引用 audit 结果均已为零（R-08/R-09 已同步处理）；`docs/development-guide.md` 与 `docs/ROADMAP.md` 中残留的 LocalRelay 文本引用一并更新；GUI `sender_panel.py` / `config_panel.py` docstring 中的 `get_default_vlm_path()` 文本引用同步清理。
+
+**修改的文件**:
+- `src/semantic_transmission/common/config.py` — 删除 `get_default_vlm_path()` / `get_default_z_image_path()`；`DiffusersReceiverConfig.__post_init__` 重写为读 `ProjectConfig`；新增类 docstring 说明回退行为
+- `src/semantic_transmission/common/model_check.py` — import 改为 `load_config`；`check_vlm_model()` fallback 改为 `load_config().vlm_model_path`；错误消息改为指向 `config.toml [models.vlm].model_path`
+- `src/semantic_transmission/common/__init__.py` — 移除 `get_default_vlm_path` / `get_default_z_image_path` re-export
+- `src/semantic_transmission/pipeline/relay.py` — 删除 `LocalRelay` 类（13 行）；移除 `import queue`；模块 docstring 改为仅描述 Socket 传输
+- `src/semantic_transmission/pipeline/__init__.py` — 移除 `LocalRelay` 导入与 `__all__` 项
+- `src/semantic_transmission/gui/sender_panel.py` — docstring 替换 `get_default_vlm_path()` 文字引用
+- `src/semantic_transmission/gui/config_panel.py` — 同上
+- `tests/test_config.py` — 全文重写：删除 `TestGetDefaultVlmPath` + `TestGetDefaultZImagePath` 两个测试类（共 4 用例）；`TestDiffusersReceiverConfigDefaults` 中两个 fallback 用例改写为通过 `ProjectConfig`（即 `config.toml` 注入）验证 `transformer_path` / `controlnet_name` 自动填充；总用例数 10 → 6
+- `tests/test_relay.py` — 移除 `LocalRelay` import 与 `TestLocalRelay` 4 个测试用例；模块 import 顺序保持
+- `docs/development-guide.md` — `中继传输（LocalRelay / SocketRelay）` → `SocketRelaySender / SocketRelayReceiver`
+- `docs/ROADMAP.md` — 已完成项与交付物列表中两处 LocalRelay 引用更新（保留历史 + 标注已删除）
+- `docs/workflow/TASK_STATUS.md` — 本交接记录（仅追加，未动顶部进度总览与任务状态表）
+
+**验证结果**:
+- 测试: ✅ PASS — 256 passed in 24.17s（R-13 baseline 264 → -8：`tests/test_config.py` 删除 4 用例 + `tests/test_relay.py` 删除 4 用例，与预期完全一致；无新失败）
+- Lint: ✅ PASS — `ruff check .` All checks passed / `ruff format --check .` 58 files already formatted
+- 静态 grep: ✅ ALL_ZERO — `src/` + `tests/` 下 `LocalRelay` / `get_default_vlm_path` / `get_default_z_image_path` 全部 0 命中；目标 4 个 docs 的 `batch-sender` / `batch_sender` 全部 0 命中
+- 功能: ✅ import 烟测 `from semantic_transmission import common` 通过且 `dir(common)` 不暴露 `get_default_*`；`from semantic_transmission.pipeline import LocalRelay` 如预期 ImportError；CLI 烟测 `semantic-tx sender/demo/batch-demo/download --help` 全部成功
+- 功能: ⚠️ GUI GPU 端到端冒烟延后（spec step 9，需 GPU，详见"延后项"）
+
+**关键决策**:
+- **`DiffusersReceiverConfig.__post_init__` 单次 `load_config()`**：合并 `if not transformer_path or not controlnet_name` 守卫，仅当至少一个字段为空时才调用一次 `load_config()`，避免多次磁盘读 `config.toml`。读取本身已被 `load_config` 缓存层缺失的事实约束（每次调用都重读 TOML），合并守卫是当前可做的最小成本优化；后续若 `load_config` 引入 LRU 缓存，本守卫仍正确
+- **未引入循环导入**：`common/config.py` 内 `DiffusersReceiverConfig.__post_init__` 调用模块同文件的 `load_config()`，无跨模块依赖，dataclass `__post_init__` 在实例化时（晚于模块加载完成）调用，安全
+- **行为等价性的微小偏差（已确认）**：原 `get_default_z_image_path(filename)` 在 `MODEL_CACHE_DIR` 未设置时返回**裸文件名**（如 `"z-image-turbo-Q8_0.gguf"`），而新行为通过 `config.toml` 字面值返回 `"${MODEL_CACHE_DIR}/Z-Image-Turbo/z-image-turbo-Q8_0.gguf"`（变量未展开保留原文）。这是合理改善：未设置 `MODEL_CACHE_DIR` 时本来就无法工作，未展开的字面路径反而提供更明确的诊断信号
+- **`tests/test_config.py` 等价改写**：删掉 `monkeypatch.delenv("MODEL_CACHE_DIR", ...)` + `endswith("z-image-turbo-Q8_0.gguf")` 的旧断言，改为不操作环境变量直接断言 `endswith()`——因为 `config.toml` 默认值在 `${MODEL_CACHE_DIR}` 展开与否两种情形下都满足后缀断言（前者得到 `<cache>/.../z-image-turbo-Q8_0.gguf`，后者得到 `${MODEL_CACHE_DIR}/Z-Image-Turbo/z-image-turbo-Q8_0.gguf`），等价覆盖且测试更稳健
+- **#13 日志冗余 — 未发现实际冗余**：grep `src/` 下 `[DEBUG]` 与独立 `print(` 调用，`download.py` 中大量 `print` 是 CLI 进度反馈（必要交互），`model_loader.py:161/174` 是 INT4 量化降级提示（必要诊断），`gui/*` 中 `print` 多为面板异常日志（必要追踪）。Phase 3 GUI 重构（R-10/R-11）已间接简化部分日志路径，本任务未做额外改动；标记 `Refs #13` 解释为"已无明确冗余项可清理"
+- **ROADMAP.md 历史项处理**：选择"保留历史 + 显式标注已删除"而非全删（如 `LocalRelay + SocketRelay → SocketRelaySender / SocketRelayReceiver；早期实验性 LocalRelay 已于 cleanup 阶段删除`），便于读者理解架构演进
+- **不删除 BaseRelay 抽象基类**：虽然只剩 `SocketRelaySender` / `SocketRelayReceiver`，但 `BaseRelay` 是清晰的接口定义且零运行时成本，保留为未来扩展点（如 WebSocket / gRPC relay）
+
+**延后项**（coordinator/用户做）:
+1. **PR 前 city96 仓库 ID GPU 实测**（建议级，spec step 7）—— 现 `download.py` 中 `_SINGLE_FILE_SOURCES` 配置的 city96 仓库 ID 在 R-09 后未实测下载流程，PR 前可由用户在 RTX 5090 上跑一次 `semantic-tx download --dry-run` 与小样本实下载确认
+2. **GUI GPU 端到端冒烟**（必须级，spec step 9）—— 覆盖 Phase 3+4 累积 PARTIAL 项：
+   - sender_panel：单张图 → Canny + VLM auto-prompt 端到端
+   - pipeline_panel：端到端 demo 含 `_run_evaluation()` 路径
+   - batch_panel：批量端到端 + comparison 图生成
+   - batch_sender_panel：批量发送（含/不含 VLM）
+   - 同时验证 R-04（动态尺寸 + 16 倍数对齐）、R-10（面板生命周期 unload）、R-11（ProjectConfig 注入）三组改动在 GPU 上无回归
+3. **/workflow-archive**（coordinator 在 phase-review-4 通过后做，spec step 11）
+4. **memory 更新**（coordinator 做，spec step 12）
+
+**PR 准备（commit message 文案，由用户在合并 PR 时使用）**:
+
+```
+refactor(workflow): unify-config-and-loader 完成 — 配置 + 模型加载器统一 + GUI 修复 + cleanup
+
+将分散在各模块的模型路径/参数从环境变量与 ad-hoc 默认函数（get_default_vlm_path / get_default_z_image_path）统一为 ProjectConfig + config.toml 单一数据源，并引入 ModelLoader 抽象（DiffusersModelLoader / QwenVLModelLoader）将"模型生命周期"与"业务推理"解耦，便于 GUI 面板的 load/unload 精确控制。
+
+主要变化:
+- Phase 0: 建立 ProjectConfig（dataclass + tomllib，4 层加载优先级）与 ModelLoader[TModel] 抽象基类
+- Phase 1: DiffusersReceiver 委托 DiffusersModelLoader；修复动态尺寸 + 16 倍数对齐 #24；简化 BaseReceiver.process_batch #31；采样器参数对齐 #25
+- Phase 2: 合并 CLI sender/batch_sender 为单一 sender 子命令 #19；QwenVLSender 委托 QwenVLModelLoader；重构 download.py 从 config.toml 派生下载清单；demo/batch_demo 迁移到 ProjectConfig
+- Phase 3: 修复 GUI 面板生命周期 #23；6 个 GUI 面板默认值统一从 ProjectConfig 读取
+- Phase 4: 新建 common/image_io.py 统一 load_as_rgb / image_to_numpy 入口替换 17 处散落的 Image.open().convert("RGB") #22；删除 LocalRelay dead code #33；删除 get_default_vlm_path / get_default_z_image_path 旧默认函数
+
+Closes #19 #20 #21 #22 #23 #24 #25 #27 #31
+Refs #33 #13 #17
+```
+
+**Issue #17 准备评论文案**（PR 合并后由用户在 #17 下追加）:
+
+```
+unify-config-and-loader workflow（PR #<合并后填编号>）已合并，本 issue 涉及的量化策略统一已生效：
+
+- Diffusers transformer：Z-Image-Turbo GGUF Q8_0（city96 量化），通过 DiffusersModelLoader 加载，配置项 [models.diffusers].transformer_path
+- VLM：Qwen2.5-VL-7B-Instruct，默认 int4（bitsandbytes 4-bit）量化，可通过 [models.vlm].quantization 切换（int4/bf16/fp16），通过 QwenVLModelLoader 加载
+
+后续如需调整量化策略，仅需修改 config.toml（或 config.local.toml）即可，无需改代码。
+```
+
+**遗留问题**:
+- 无。所有本会话范围内验收标准达成（代码层 + 静态 grep + 测试 + lint），真机 GPU 冒烟与 workflow 归档按 spec 移交 coordinator/用户。

@@ -1,35 +1,15 @@
-"""common.config 模块单元测试。"""
+"""common.config 模块单元测试。
 
-import os
+涵盖 ``DiffusersReceiverConfig`` 的默认值/``__post_init__`` 回退到 ``ProjectConfig``
+的等价行为，以及 ``DiffusersReceiverConfig.from_env()`` 环境变量解析。
 
-from semantic_transmission.common.config import (
-    DiffusersReceiverConfig,
-    get_default_vlm_path,
-    get_default_z_image_path,
-)
+``ProjectConfig`` / ``load_config`` 本身的加载层级与 TOML 解析在
+``tests/test_project_config.py`` 覆盖；本文件聚焦消费侧的派生与回退。
+"""
 
+import pytest
 
-class TestGetDefaultVlmPath:
-    def test_returns_none_when_env_unset(self, monkeypatch):
-        monkeypatch.delenv("MODEL_CACHE_DIR", raising=False)
-        assert get_default_vlm_path() is None
-
-    def test_returns_joined_path_when_env_set(self, monkeypatch):
-        monkeypatch.setenv("MODEL_CACHE_DIR", os.path.join("D:", "Models"))
-        result = get_default_vlm_path()
-        assert result is not None
-        assert result.endswith(os.path.join("Qwen", "Qwen2.5-VL-7B-Instruct"))
-
-
-class TestGetDefaultZImagePath:
-    def test_returns_filename_when_env_unset(self, monkeypatch):
-        monkeypatch.delenv("MODEL_CACHE_DIR", raising=False)
-        assert get_default_z_image_path("foo.gguf") == "foo.gguf"
-
-    def test_returns_joined_path_when_env_set(self, monkeypatch):
-        monkeypatch.setenv("MODEL_CACHE_DIR", os.path.join("D:", "Models"))
-        result = get_default_z_image_path("foo.gguf")
-        assert result.endswith(os.path.join("Z-Image-Turbo", "foo.gguf"))
+from semantic_transmission.common.config import DiffusersReceiverConfig
 
 
 class TestDiffusersReceiverConfigDefaults:
@@ -41,13 +21,17 @@ class TestDiffusersReceiverConfigDefaults:
         assert config.guidance_scale == 1.0
         assert config.torch_dtype == "bfloat16"
 
-    def test_post_init_fills_transformer_path(self, monkeypatch):
-        monkeypatch.delenv("MODEL_CACHE_DIR", raising=False)
+    def test_post_init_fills_transformer_path_from_project_config(self):
+        """空 transformer_path 时回退到 ProjectConfig.diffusers_transformer_path。
+
+        config.toml 默认 ``${MODEL_CACHE_DIR}/Z-Image-Turbo/z-image-turbo-Q8_0.gguf``，
+        无论 MODEL_CACHE_DIR 是否设置，结果都应以 ``z-image-turbo-Q8_0.gguf`` 结尾。
+        """
         config = DiffusersReceiverConfig()
         assert config.transformer_path.endswith("z-image-turbo-Q8_0.gguf")
 
-    def test_post_init_fills_controlnet_name(self, monkeypatch):
-        monkeypatch.delenv("MODEL_CACHE_DIR", raising=False)
+    def test_post_init_fills_controlnet_name_from_project_config(self):
+        """空 controlnet_name 时回退到 ProjectConfig.diffusers_controlnet_name。"""
         config = DiffusersReceiverConfig()
         assert config.controlnet_name.endswith(
             "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
@@ -76,7 +60,6 @@ class TestDiffusersReceiverConfigFromEnv:
 
     def test_invalid_int_raises_value_error(self, monkeypatch):
         monkeypatch.setenv("DIFFUSERS_NUM_INFERENCE_STEPS", "not-a-number")
-        import pytest
 
         with pytest.raises(ValueError, match="DIFFUSERS_NUM_INFERENCE_STEPS"):
             DiffusersReceiverConfig.from_env()

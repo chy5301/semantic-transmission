@@ -1,8 +1,8 @@
 """发送端 Tab：图像上传 → Canny 边缘提取 → VLM 语义描述。
 
-使用本地 OpenCV 提取 Canny 边缘。Canny 阈值与 VLM 路径默认值从
-``ProjectConfig`` 读取（R-11），取代旧的模块级常量与
-``get_default_vlm_path()`` 拼接逻辑。
+使用本地 OpenCV 提取 Canny 边缘。Canny 阈值与 VLM 路径默认值
+从 ``ProjectConfig`` 读取（R-11），取代旧的模块级常量与
+基于 ``MODEL_CACHE_DIR`` 的路径拼接逻辑。
 """
 
 import time
