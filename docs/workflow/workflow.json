@@ -5,6 +5,7 @@
   "primaryType": "refactor",
   "secondaryTags": ["bugfix", "infrastructure"],
   "taskPrefix": "R",
+  "workflowBranch": "refactor/unify-config-and-loader",
   "constraints": {
     "maxFilesPerTask": 8,
     "maxHoursPerTask": 3
