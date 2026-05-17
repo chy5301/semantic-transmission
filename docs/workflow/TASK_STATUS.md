@@ -576,3 +576,39 @@
 
 **遗留问题**:
 - 无。所有验收标准达成，全套测试通过，lint 全绿
+
+---
+
+### R-13 交接（2026-05-18）
+
+**完成内容**：将 CLI 模块（demo/sender/batch_demo）与 GUI 模块（sender_panel/pipeline_panel/batch_panel/batch_sender_panel）共 7 个文件中所有"加载 + RGB 转换"语义的散落点统一替换为 `load_as_rgb()` / `image_to_numpy()`。Canny 提取路径上的 `Image.open(...).convert("RGB")` + `np.array(...)` 二步合并为单步 `image_to_numpy()`；Canny 输出 `np.ndarray` 转回 PIL 的 `Image.fromarray(edge_np)` 改为 `load_as_rgb(edge_np)`（同样能正确处理 H/W/3 uint8）。`_make_comparison_image` 中 mode 转换的 `img.convert("RGB")` 改为 `load_as_rgb(img)`；`pipeline_panel._run_evaluation()` 中 ndarray/PIL/path 三分支判别简化为一行 `load_as_rgb(restored_img)`（load_as_rgb 已支持全部三类输入）。保留 `receiver_panel.py:52` 的 `Image.fromarray(edge_value)`（用于落临时盘前的 ndarray→PIL 转换，spec 验收标准 #1 明确允许 Gradio 显示场景的 fromarray 保留）。
+
+**修改的文件**：
+- `src/semantic_transmission/cli/demo.py` — 移除 `numpy as np` 导入；`Image.open + np.array` → `load_as_rgb + image_to_numpy`；`Image.fromarray(edge_np)` → `load_as_rgb(edge_np)`；comparison fromarray 替换
+- `src/semantic_transmission/cli/batch_demo.py` — 同上
+- `src/semantic_transmission/cli/sender.py` — 移除 `numpy as np` 导入；`process_one()` 中两处替换
+- `src/semantic_transmission/gui/sender_panel.py` — 移除 `numpy as np` + `from PIL import Image` 导入（不再直接使用）；3 处替换
+- `src/semantic_transmission/gui/pipeline_panel.py` — 保留 `Image` 用于 `Image.LANCZOS` 和 type hint；`_run_e2e` 两段（[1/4]、[2/4]）+ `_run_evaluation` 完整简化
+- `src/semantic_transmission/gui/batch_panel.py` — 移除 `numpy as np` 导入；`compute_sample_metrics` + 主处理循环 + `_make_comparison_image` 共 5 处替换
+- `src/semantic_transmission/gui/batch_sender_panel.py` — 移除 `numpy as np` + `from PIL import Image` 导入；3 处替换
+
+**验证结果**:
+- 测试: ✅ PASS — 264 passed in 36.14s（与 R-12 baseline 一致）
+- Lint: ✅ PASS — `ruff check .` All checks passed / `ruff format --check .` 58 files already formatted
+- 功能: ✅ GUI app create_app() import 烟测通过；`semantic-tx sender/demo/batch-demo --help` 全部成功；静态验证 `Image.open(...).convert("RGB")` 在 `cli/` 和 `gui/` 0 命中，`Image.fromarray(` 仅剩 receiver_panel 允许例外
+- 功能: ⚠️ GUI 真机 GPU 端到端验证延后到 R-14（与 Phase 3 阶段回顾结论一致）
+
+**关键决策**:
+- **`load_as_rgb(ndarray)` 替代 `Image.fromarray(ndarray)`**：load_as_rgb 对 (H,W,3) uint8 ndarray 走 `_ndarray_to_pil` 分支，行为完全等价于 `Image.fromarray(arr, mode="RGB")`，统一入口避免维护两条路径
+- **`_run_evaluation` 三分支简化**：原代码 `isinstance(restored_img, Image.Image) / np.ndarray / else` 三分支显式判别，全部由 `load_as_rgb()` 内部 dispatch 替代，逻辑等价且代码量从 6 行降至 1 行；ndarray 经 load_as_rgb 后已是 RGB PIL，原 `Image.fromarray(...).convert("RGB")` 的"显式 convert RGB"也被吸收
+- **保留 `Image.LANCZOS` 与 type hint 中的 `Image.Image`**：这些不属于"加载"范畴，PIL 直接引用合理；pipeline_panel 因此仍保留 `from PIL import Image`
+- **保留 receiver_panel.py:52 的 `Image.fromarray(edge_value)`**：严格按 spec 验收标准 #1 例外清单执行（Gradio 上下文落临时盘场景）
+- **保留 `_make_comparison_image` 内 mode 转换为 load_as_rgb**：虽然此处输入已是 PIL，但用 load_as_rgb 既正确（PIL 输入会直接 convert RGB）又统一了"任意一处转 RGB"的入口风格
+
+**下一任务需关注**（R-14 收尾）:
+- 本任务后 `Image.open(...).convert("RGB")` 在全代码库的散落点应已彻底归零（仅 `common/image_io.py` docstring 文字说明保留）；R-14 在删除 LocalRelay 与文档更新时无需再扫描此模式
+- pipeline_panel.py 仍有 `from PIL import Image`、`import numpy as np` 是必要的（LANCZOS + np.array on PIL），不要误删
+- GUI 真机 GPU 冒烟（Phase 3 + Phase 4 累积的 PARTIAL 项）在 R-14 一次性补完，覆盖 sender_panel / pipeline_panel / batch_panel / batch_sender_panel 各 Tab 的端到端流程
+
+**遗留问题**:
+- 无。所有验收标准达成（代码层），真机 GPU 冒烟按计划归入 R-14。

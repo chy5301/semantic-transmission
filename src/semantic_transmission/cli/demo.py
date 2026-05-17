@@ -9,10 +9,10 @@ import time
 from pathlib import Path
 
 import click
-import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.config import load_config
+from semantic_transmission.common.image_io import image_to_numpy, load_as_rgb
 from semantic_transmission.receiver import create_receiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
@@ -37,7 +37,7 @@ def _make_comparison_image(
     x = 0
     for img in imgs:
         if img.mode != "RGB":
-            img = img.convert("RGB")
+            img = load_as_rgb(img)
         comparison.paste(img, (x, 0))
         x += img.width
 
@@ -140,12 +140,12 @@ def demo(
 
     # 发送端：本地提取 Canny 边缘图
     _print("\n[1/4] 本地提取 Canny 边缘图...")
-    original_img = Image.open(image).convert("RGB")
-    image_array = np.array(original_img)
+    original_img = load_as_rgb(image)
+    image_array = image_to_numpy(original_img)
     extractor = LocalCannyExtractor(threshold1=threshold1, threshold2=threshold2)
     start = time.time()
     edge_np = extractor.extract(image_array)
-    edge_image = Image.fromarray(edge_np)
+    edge_image = load_as_rgb(edge_np)
     sender_elapsed = time.time() - start
 
     edge_path = output_dir / "edge.png"

@@ -8,10 +8,9 @@
 import time
 
 import gradio as gr
-import numpy as np
-from PIL import Image
 
 from semantic_transmission.common.config import ProjectConfig, load_config
+from semantic_transmission.common.image_io import image_to_numpy, load_as_rgb
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
@@ -44,8 +43,8 @@ def _run_sender(
     log += "[1/3] 读取图像...\n"
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
-    original_img = Image.open(image_path).convert("RGB")
-    image_array = np.array(original_img)
+    original_img = load_as_rgb(image_path)
+    image_array = image_to_numpy(original_img)
     log += f"  尺寸: {original_img.width}x{original_img.height}\n"
 
     # [2] 提取边缘图（本地 OpenCV）
@@ -60,7 +59,7 @@ def _run_sender(
         start = time.time()
         edge_np = extractor.extract(image_array)
         elapsed = time.time() - start
-        edge_pil = Image.fromarray(edge_np)
+        edge_pil = load_as_rgb(edge_np)
         edge_img = edge_pil
         log += f"  完成 ({edge_pil.size[0]}x{edge_pil.size[1]}, {elapsed:.3f}s)\n"
     except Exception as e:

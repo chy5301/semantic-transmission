@@ -24,10 +24,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import click
-import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.config import ProjectConfig, load_config
+from semantic_transmission.common.image_io import image_to_numpy, load_as_rgb
 from semantic_transmission.common.model_loader import QwenVLModelLoader
 from semantic_transmission.pipeline.batch_processor import (
     SUPPORTED_IMAGE_EXTS,
@@ -102,13 +102,13 @@ def process_one(
         SenderResult: 包含边缘图、prompt、打包好的 TransmissionPacket 与耗时
     """
     image_name = image_path.stem
-    original_img = Image.open(image_path).convert("RGB")
-    image_array = np.array(original_img)
+    original_img = load_as_rgb(image_path)
+    image_array = image_to_numpy(original_img)
 
     # Canny 边缘
     start = time.time()
     edge_np = extractor.extract(image_array)
-    edge_image = Image.fromarray(edge_np)
+    edge_image = load_as_rgb(edge_np)
     sender_elapsed = time.time() - start
 
     # Prompt

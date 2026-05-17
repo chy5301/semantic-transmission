@@ -17,11 +17,11 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import gradio as gr
-import numpy as np
 import torch
 from PIL import Image
 
 from semantic_transmission.common.config import ProjectConfig, load_config
+from semantic_transmission.common.image_io import image_to_numpy, load_as_rgb
 from semantic_transmission.pipeline.batch_processor import (
     BatchImageDiscoverer,
     BatchResult,
@@ -78,9 +78,9 @@ def compute_sample_metrics(
     from semantic_transmission.evaluation import compute_psnr, compute_ssim
 
     if isinstance(original, (str, Path)):
-        original = Image.open(original).convert("RGB")
+        original = load_as_rgb(original)
     if isinstance(restored, (str, Path)):
-        restored = Image.open(restored).convert("RGB")
+        restored = load_as_rgb(restored)
 
     metrics: dict[str, float] = {
         "psnr": compute_psnr(original, restored),
@@ -140,7 +140,7 @@ def _make_comparison_image(
     x = 0
     for img in imgs:
         if img.mode != "RGB":
-            img = img.convert("RGB")
+            img = load_as_rgb(img)
         comparison.paste(img, (x, 0))
         x += img.width
 
@@ -331,12 +331,12 @@ def build_batch_tab(
 
                 try:
                     # 提取边缘图（本地 OpenCV）
-                    original_image = Image.open(image_path).convert("RGB")
-                    image_array = np.array(original_image)
+                    original_image = load_as_rgb(image_path)
+                    image_array = image_to_numpy(original_image)
                     start = time.time()
                     edge_np = extractor.extract(image_array)
                     sender_elapsed = time.time() - start
-                    edge_image = Image.fromarray(edge_np)
+                    edge_image = load_as_rgb(edge_np)
 
                     edge_path = sample_output_dir / "edge.png"
                     edge_image.save(edge_path)

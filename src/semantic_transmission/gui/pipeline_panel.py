@@ -14,6 +14,7 @@ import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.config import ProjectConfig, load_config
+from semantic_transmission.common.image_io import image_to_numpy, load_as_rgb
 from semantic_transmission.receiver import create_receiver
 from semantic_transmission.receiver.base import BaseReceiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
@@ -108,7 +109,7 @@ def _run_e2e(
         )
         return
 
-    original_img = Image.open(image_path)
+    original_img = load_as_rgb(image_path)
     original_bytes = os.path.getsize(image_path)
 
     # --- [1/4] 提取边缘图（本地 OpenCV） ---
@@ -116,13 +117,12 @@ def _run_e2e(
 
     log += "[1/4] 本地提取 Canny 边缘图...\n"
     try:
-        img_rgb = original_img.convert("RGB")
-        image_array = np.array(img_rgb)
+        image_array = image_to_numpy(original_img)
         extractor = LocalCannyExtractor()
         t0 = time.time()
         edge_np = extractor.extract(image_array)
         sender_elapsed = time.time() - t0
-        edge_pil = Image.fromarray(edge_np)
+        edge_pil = load_as_rgb(edge_np)
         edge_img = edge_pil
         log += (
             f"  完成 ({edge_pil.size[0]}x{edge_pil.size[1]}, {sender_elapsed:.1f}s)\n"
@@ -154,8 +154,7 @@ def _run_e2e(
 
             vlm_sender = QwenVLSender(**vlm_kwargs)
             try:
-                img_rgb = original_img.convert("RGB")
-                img_array = np.array(img_rgb)
+                img_array = image_to_numpy(original_img)
                 t0 = time.time()
                 sender_output = vlm_sender.describe(img_array)
                 vlm_elapsed = time.time() - t0
@@ -266,15 +265,10 @@ def _run_evaluation(original_path, restored_img):
         return [], "错误：需要先完成端到端演示\n"
 
     log = "运行质量评估...\n"
-    original = Image.open(original_path).convert("RGB")
+    original = load_as_rgb(original_path)
     original_np = np.array(original)
 
-    if isinstance(restored_img, Image.Image):
-        restored = restored_img.convert("RGB")
-    elif isinstance(restored_img, np.ndarray):
-        restored = Image.fromarray(restored_img).convert("RGB")
-    else:
-        restored = Image.open(restored_img).convert("RGB")
+    restored = load_as_rgb(restored_img)
     restored_np = np.array(restored)
 
     # 调整尺寸一致

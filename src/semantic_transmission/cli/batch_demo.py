@@ -10,10 +10,10 @@ import time
 from pathlib import Path
 
 import click
-import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.config import load_config
+from semantic_transmission.common.image_io import image_to_numpy, load_as_rgb
 from semantic_transmission.pipeline.batch_processor import (
     SUPPORTED_IMAGE_EXTS,
     BatchImageDiscoverer,
@@ -45,7 +45,7 @@ def _make_comparison_image(
     x = 0
     for img in imgs:
         if img.mode != "RGB":
-            img = img.convert("RGB")
+            img = load_as_rgb(img)
         comparison.paste(img, (x, 0))
         x += img.width
 
@@ -215,13 +215,13 @@ def batch_demo(
 
         try:
             # 读取图像
-            original_img = Image.open(image_path).convert("RGB")
-            image_array = np.array(original_img)
+            original_img = load_as_rgb(image_path)
+            image_array = image_to_numpy(original_img)
 
             # 发送端：本地提取 Canny 边缘图
             start = time.time()
             edge_np = extractor.extract(image_array)
-            edge_image = Image.fromarray(edge_np)
+            edge_image = load_as_rgb(edge_np)
             sender_elapsed = time.time() - start
 
             edge_path = sample_output_dir / "edge.png"
