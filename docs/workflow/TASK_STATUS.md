@@ -62,6 +62,7 @@
 | 2026-04-13 | 尺寸对齐到 16 的倍数 | pipeline 要求 height/width 必须是 16 的倍数 |
 | 2026-04-13 | config.toml 新增 hf_endpoint | 解决 HF 下载在国内需镜像站的持久化配置问题 |
 | 2026-04-14 | Phase 1 阶段回顾通过 | 审计无 🔴/🟡 发现，214 passed，退出标准全满足，后续阶段无需调整 |
+| 2026-05-17 | Phase 2 阶段回顾通过 | 审计无 🔴/🟡 发现，241 passed，退出标准 3 项 PASS + 1 项 PARTIAL（真机 GPU 端到端未跑），3 条 🔵 建议已合并到 R-11/R-13/R-14 |
 
 ## 交接记录
 
@@ -348,3 +349,59 @@
 - `common/config.py` 中的 `get_default_vlm_path()` / `get_default_z_image_path()` 仍存在但 demo/batch_demo CLI 已不再调用；GUI 模块是否还在用、是否可在 R-11/R-13 cleanup 中清理待 audit
 - `download.py` 通过 basename 匹配仓库来源是脆弱设计：若 `config.toml` 改了 ControlNet 文件名或换 transformer 量化版本会触发"未知目标文件 [WARN]"。属可接受妥协（避免在 ProjectConfig 加 `repo_id` 字段越权）
 - `_SINGLE_FILE_SOURCES` 中的 GGUF 仓库来源 (`city96/Z-Image-Turbo-gguf`) 是基于 README 记录推断，实际首次下载时需要验证仓库 ID 与文件路径正确（本地已有该文件，本任务 dry-run 跳过下载，无法实测）
+
+---
+
+#### Phase 2 (sender/CLI 侧垂直切) — 回顾记录
+
+**回顾时间**: 2026-05-17
+
+**执行摘要**:
+- 计划 task 数：3（R-07 / R-08 / R-09）
+- 完成数（✅）：3
+- 阻塞 / 跳过数：0
+- 关键决策：6 项（VLMLoaderConfig 派生模式 / QwenVLSender 双入口 / SenderResult 数据结构 / `_SINGLE_FILE_SOURCES` basename map / receiver.py finally unload / CLI 共享参数 ProjectConfig fallback）
+- 计划变更：0（Phase 2 内部，R-07 → R-08 → R-09 按 PLAN 顺序执行）
+- 遗留问题：3 项（`get_default_vlm_path()` 残留 / `_SINGLE_FILE_SOURCES` basename 脆弱 / city96 仓库 ID 未实测）
+
+**变更审计**:
+- 审计 task 数：3
+- 变更文件数：16（src/ 内 9 文件 + tests/ 3 文件 + docs/workflow/ 2 文件 + cli/batch_sender.py 删除）
+- 总 diff：+1731 / -741 行
+- 🔴 阻断：0
+- 🟡 需修正：0
+- 🔵 建议：3（均已合并到 R-11 / R-13 / R-14 步骤）
+
+**审计结论**:
+- 完整性：R-07/R-08/R-09 每个任务的 spec 步骤均有对应变更，无漏项
+- 准确性：变更文件与 PLAN "涉及文件" 一致；R-07 新增 `QwenVLBundle` dataclass（spec 未明列但实现需要）/ R-09 新增 `_SingleFileTarget`/`_RepoTarget` dataclass（spec 未明列，但合理拆分）属正常实现细节
+- 边界：未发现偷跑或范围外修改。R-07 引入的 `_loader.config` 公共 property 在第 1 轮修正中已加，R-08 引入的 `_build_vlm_sender()` 局部函数符合 spec "process_one 共享核心"
+- 跨任务一致性：R-08 / R-09 共用 `load_config()` fallback 模式，互不冲突；R-09 删除 `--comfyui-dir` 后 `tests/test_cli.py` 同步更新断言，无遗漏
+
+**退出标准验证**:
+- QwenVLSender 迁 loader: ✅ PASS — `_load_model()` 已删除，量化 cascade 移入 `QwenVLModelLoader.load()`，`describe()` 走 bundle
+- #19 CLI 合并: ✅ PASS — `batch_sender.py` 已删除，`main.py` 注册移除，`sender.py` 通过互斥选项分两条路径并共享 `process_one()` 核心
+- #27 download.py 接 config: ✅ PASS — `COMFYUI_MODELS` / `--comfyui-dir` / `DEFAULT_COMFYUI_DIR` 全部移除，改为 `_derive_*_targets()` 从 ProjectConfig 派生
+- sender 单图/批量均正常: ⚠️ PARTIAL — 测试维度通过（241 passed 含 15 个 `test_cli_sender.py` 用例覆盖 dry-run + 互斥 + 模式校验 + ProjectConfig 默认值 + override）；真实 GPU 端到端验证未跑（首次下载 `city96/Z-Image-Turbo-gguf` 仓库 ID 待实测），属可接受妥协（R-14 PR 前最终冒烟时验证）
+
+**构建 / 测试 integration 验证**:
+- 编译: SKIPPED (venv ready, 3.6G 依赖完整无需 sync)
+- 测试: ✅ PASS — 241 passed in 36.39s（与 R-09 交接记录一致；R-07 +12 / R-08 +15 累计净增 27 个 mock + CLI 测试）
+- Lint: ✅ PASS — `ruff check .` All checks passed / `ruff format --check .` 55 files already formatted
+
+**下游影响评估**:
+- [必须] R-11 步骤补充：grep `get_default_vlm_path` / `get_default_z_image_path` 在 src/ 内引用，无 GUI 残留则连带删除（已合并到 R-11 spec）
+- [建议] R-13 步骤补充：R-08 重写 `sender.py` 200→650 行，新增 RGB 调用点（`process_one()` 中 `Image.open(...).convert("RGB")` / `Image.fromarray()`）需纳入替换范围（已合并到 R-13 spec）
+- [建议] R-14 步骤补充：PR 前最终冒烟实测 `semantic-tx download` 真实下载流程，验证 `city96/Z-Image-Turbo-gguf` 仓库 ID 正确性（已合并到 R-14 spec）
+- [可选] `_SINGLE_FILE_SOURCES` basename 匹配脆弱性：当前作为可接受妥协保留在 `cli/download.py`；若未来支持多量化版本时可考虑在 ProjectConfig 加 `repo_id` 字段（不强制本 workflow 处理）
+
+**Phase 3 / Phase 4 依赖准确性**:
+- R-10 (依赖 R-04 + R-07)：receiver/sender loader 接口未变，准确
+- R-11 (依赖 R-01 + R-10)：ProjectConfig 字段已被广泛使用，准确（含 `get_default_*` 清理补充）
+- R-12 (依赖 R-04 + R-07)：image_io 未动，准确
+- R-13 (依赖 R-12)：含 sender.py 行数膨胀补充，准确
+- R-14 (依赖 R-08 + R-13)：CLI 合并已完成；含 PR 前冒烟补充，准确
+
+**结论**: ✅ 通过
+
+---

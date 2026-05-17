@@ -294,17 +294,19 @@
 - **阶段**: Phase 3 - GUI 侧垂直切
 - **依赖**: R-01, R-10
 - **目标**: GUI 面板启动时从 `ProjectConfig` 读默认值填入控件，取代分散的硬编码默认值
-- **背景信息**: 当前 GUI 面板的默认值来源分散：`config_panel.py` 硬编码 VLM 名 `"Qwen/Qwen2.5-VL-7B-Instruct"` 和路径 `get_default_vlm_path()`；`sender_panel.py` / `batch_sender_panel.py` 硬编码 Canny 阈值 100/200。R-01 已建立 `ProjectConfig` 作为统一配置源，本任务让 GUI 从 config 读一次默认值。**不做"GUI 改动写回 config"的双向绑定**。
+- **背景信息**: 当前 GUI 面板的默认值来源分散：`config_panel.py` 硬编码 VLM 名 `"Qwen/Qwen2.5-VL-7B-Instruct"` 和路径 `get_default_vlm_path()`；`sender_panel.py` / `batch_sender_panel.py` 硬编码 Canny 阈值 100/200。R-01 已建立 `ProjectConfig` 作为统一配置源，本任务让 GUI 从 config 读一次默认值。**不做"GUI 改动写回 config"的双向绑定**。**Phase 2 回顾补充**：R-09 已将 CLI 层全部从 `get_default_vlm_path()` 切到 `ProjectConfig.vlm_model_path`，但 `common/config.py` 中 `get_default_vlm_path()` / `get_default_z_image_path()` 两个函数仍保留；本任务在迁移 GUI 时必须 audit 这两个函数的 GUI 调用方，无残留引用后连带删除。
 - **涉及文件**:
   - `src/semantic_transmission/gui/config_panel.py`（读 `ProjectConfig`）
   - `src/semantic_transmission/gui/sender_panel.py`（读 config 默认值）
   - `src/semantic_transmission/gui/batch_sender_panel.py`（读 config 默认值）
   - `src/semantic_transmission/gui/app.py`（可能需要在组装时传入 config）
+  - `src/semantic_transmission/common/config.py`（删除 `get_default_vlm_path()` / `get_default_z_image_path()`，若 audit 无残留引用）
 - **具体步骤**:
   1. `app.py` 启动时调用 `load_config()` 获取 `ProjectConfig` 实例
   2. 传给 `config_panel` 用于填充 VLM 控件默认值
   3. 传给 `sender_panel` / `batch_sender_panel` 用于填充 Canny 阈值等默认值
   4. receiver_panel / pipeline_panel / batch_panel 如有硬编码默认值也统一替换
+  5. **Phase 2 回顾补充**：grep `get_default_vlm_path` / `get_default_z_image_path` 在 src/ 内的所有引用，确认仅在 `common/config.py` 内部定义后无调用方时连带删除（含测试残留）
 - **验收标准**:
   - [ ] 删除 `config.local.toml` 后 GUI 所有面板仍能正常启动
   - [ ] 修改 `config.toml` 中的默认值后 GUI 控件反映新值
@@ -362,6 +364,7 @@
   1. 逐文件搜索 `Image.open(` / `.convert("RGB")` / `Image.fromarray(` / `np.array(`
   2. 用 `load_as_rgb()` 或 `image_to_numpy()` 替换
   3. 确保所有 Canny 提取仍收到正确的 numpy array 输入
+  4. **Phase 2 回顾补充**：R-08 已将 `sender.py` 从 200 行重写至 ~650 行，新增的 RGB 调用点（主要在 `process_one()` 中的 `Image.open(...).convert("RGB")` 与 `Image.fromarray(edge_np)`）也需纳入本任务替换范围
 - **验收标准**:
   - [ ] CLI / GUI 模块无直接 `Image.open().convert("RGB")` 调用（允许 receiver_panel 的 `Image.fromarray` 用于 Gradio 显示）
   - [ ] `uv run pytest` 全绿
@@ -384,11 +387,13 @@
   1. 找到 LocalRelay 类定义，确认无调用方后删除
   2. 更新 `docs/cli-reference.md`：移除 `batch-sender` 子命令、更新 `sender` 命令参数说明
   3. 更新 `docs/user-guide.md`：更新使用示例
-  4. 检查 #13（日志冗余）是否已在 Phase 3 顺带修掉，如未修则简单清理
-  5. 在 #17 下追加评论：指向本 workflow 的 ModelLoader 量化策略统一
-  6. 准备 PR commit message
-  7. `docs/workflow/` archive（使用 `/workflow-archive`）
-  8. 更新 memory：`project_pending_issues.md` / `project_next_workflow_seed.md`
+  4. 同步检查 `docs/demo-handbook.md` / `docs/ROADMAP.md` 是否仍引用 `batch-sender` 命令（R-08 交接已识别）
+  5. 检查 #13（日志冗余）是否已在 Phase 3 顺带修掉，如未修则简单清理
+  6. 在 #17 下追加评论：指向本 workflow 的 ModelLoader 量化策略统一
+  7. **Phase 2 回顾补充 — PR 前最终冒烟**：（建议级，可选）在 RTX 5090 环境实测 `semantic-tx download` 真实下载流程，验证 `_SINGLE_FILE_SOURCES` 中 `city96/Z-Image-Turbo-gguf` 仓库 ID 正确（R-09 dry-run 跳过未实测）；若发现仓库 ID 不准确，需修复 `cli/download.py` 中的 `_SINGLE_FILE_SOURCES` map
+  8. 准备 PR commit message
+  9. `docs/workflow/` archive（使用 `/workflow-archive`）
+  10. 更新 memory：`project_pending_issues.md` / `project_next_workflow_seed.md`
 - **验收标准**:
   - [ ] LocalRelay class 已删除，grep 无残留引用
   - [ ] `docs/cli-reference.md` 不含 `batch-sender`
