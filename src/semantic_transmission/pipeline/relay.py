@@ -1,8 +1,7 @@
 """中继传输模块：发送端到接收端的数据传输。
 
-支持两种传输模式：
-    - LocalRelay：内存传递，单机调试用
-    - SocketRelaySender / SocketRelayReceiver：TCP socket 传输，双机演示用
+提供 SocketRelaySender / SocketRelayReceiver 双机 TCP 传输，
+配合 BaseRelay 抽象基类便于未来扩展其他传输模式。
 
 传输协议（length-prefixed framing）：
     每个字段由 4 字节大端 uint32 长度头 + 原始数据组成，依次为：
@@ -10,7 +9,6 @@
 """
 
 import json
-import queue
 import socket
 import struct
 from abc import ABC, abstractmethod
@@ -108,22 +106,6 @@ class BaseRelay(ABC):
         Raises:
             TimeoutError: 超时未收到数据。
         """
-
-
-class LocalRelay(BaseRelay):
-    """内存中继：使用队列在同一进程内传递数据。"""
-
-    def __init__(self) -> None:
-        self._queue: queue.Queue[TransmissionPacket] = queue.Queue()
-
-    def send(self, packet: TransmissionPacket) -> None:
-        self._queue.put(packet)
-
-    def receive(self, timeout: float | None = None) -> TransmissionPacket:
-        try:
-            return self._queue.get(timeout=timeout)
-        except queue.Empty:
-            raise TimeoutError("LocalRelay 接收超时")
 
 
 class SocketRelaySender:

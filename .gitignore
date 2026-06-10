@@ -14,9 +14,13 @@ skills-lock.json
 .agents/
 skills-lock.json
 
+# 本地配置覆盖
+config.local.toml
+
 # Temporary files
 .tmp-*/
 .playwright-mcp/
+.brainstorm-seed.md
 
 # 脚本输出（output/demo/ 下的测试结果纳入版本管理，其余忽略）
 output/*

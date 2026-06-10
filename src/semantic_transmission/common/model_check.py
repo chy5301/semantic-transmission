@@ -8,7 +8,7 @@ import os
 
 from semantic_transmission.common.config import (
     DiffusersReceiverConfig,
-    get_default_vlm_path,
+    load_config,
 )
 
 
@@ -16,16 +16,17 @@ def check_vlm_model(model_path: str | None = None) -> tuple[bool, str]:
     """检查 VLM 模型是否就绪。
 
     Args:
-        model_path: VLM 模型本地路径；为空时回退到 ``get_default_vlm_path()``。
+        model_path: VLM 模型本地路径；为空时回退到 ``ProjectConfig.vlm_model_path``。
 
     Returns:
         ``(ok, message)``：``ok`` 表示路径存在且包含 ``config.json``；
         ``message`` 为人类可读的状态描述。
     """
-    path = model_path or get_default_vlm_path()
+    path = model_path or load_config().vlm_model_path
     if not path:
         return False, (
-            "未设置 VLM 模型路径（环境变量 MODEL_CACHE_DIR 未配置，且未显式传入路径）"
+            "未设置 VLM 模型路径（config.toml [models.vlm].model_path 为空，"
+            "且未显式传入路径）"
         )
     if not os.path.isdir(path):
         return False, f"VLM 模型目录不存在：{path}"

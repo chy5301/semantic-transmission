@@ -8,6 +8,8 @@ import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
+from semantic_transmission.common.image_io import load_as_rgb
+
 ImageInput = Union[NDArray[np.uint8], Image.Image]
 
 
@@ -15,24 +17,20 @@ def to_numpy(image: ImageInput) -> NDArray[np.uint8]:
     """将输入图像统一转换为 (H, W, 3) uint8 RGB numpy 数组。
 
     支持 PIL Image（任意 mode）和 numpy 数组输入。
-    """
-    if isinstance(image, Image.Image):
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-        return np.array(image)
 
+    注：本函数与 :func:`semantic_transmission.common.image_io.image_to_numpy`
+    职责一致；区别在于 ``image_to_numpy`` 还接受 ``str | Path | bytes``，
+    而本函数只接受指标计算阶段会拿到的 PIL/ndarray。内部统一委托
+    :func:`load_as_rgb` 完成模式归一化，避免与 ``image_io`` 重复实现。
+    """
     if isinstance(image, np.ndarray):
-        if image.ndim == 2:
-            # 灰度图 (H, W) → (H, W, 3)
-            return np.stack([image] * 3, axis=-1)
-        if image.ndim == 3 and image.shape[2] == 4:
-            # RGBA → RGB
-            return image[:, :, :3].copy()
+        # ndarray 走快速路径：(H,W,3) 命中可零拷贝，(H,W,4)/(H,W) 走 load_as_rgb
         if image.ndim == 3 and image.shape[2] == 3:
             return image
-        raise ValueError(
-            f"不支持的数组形状: {image.shape}，期望 (H,W), (H,W,3) 或 (H,W,4)"
-        )
+        return np.asarray(load_as_rgb(image))
+
+    if isinstance(image, Image.Image):
+        return np.asarray(load_as_rgb(image))
 
     raise TypeError(f"不支持的输入类型: {type(image)}，期望 numpy.ndarray 或 PIL.Image")
 

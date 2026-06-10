@@ -1,20 +1,17 @@
 """发送端 Tab：图像上传 → Canny 边缘提取 → VLM 语义描述。
 
-使用本地 OpenCV 提取 Canny 边缘。
+使用本地 OpenCV 提取 Canny 边缘。Canny 阈值与 VLM 路径默认值
+从 ``ProjectConfig`` 读取（R-11），取代旧的模块级常量与
+基于 ``MODEL_CACHE_DIR`` 的路径拼接逻辑。
 """
 
 import time
 
 import gradio as gr
-import numpy as np
-from PIL import Image
 
-from semantic_transmission.common.config import get_default_vlm_path
+from semantic_transmission.common.config import ProjectConfig, load_config
+from semantic_transmission.common.image_io import image_to_numpy, load_as_rgb
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
-
-# 默认 Canny 阈值
-DEFAULT_THRESHOLD1 = 100
-DEFAULT_THRESHOLD2 = 200
 
 
 def _on_mode_change(mode: str):
@@ -29,6 +26,7 @@ def _run_sender(
     threshold2,
     vlm_model_name,
     vlm_model_path,
+    project_config: ProjectConfig,
 ):
     """运行发送端流程，generator 逐步 yield 更新 UI。"""
     log = ""
@@ -45,8 +43,8 @@ def _run_sender(
     log += "[1/3] 读取图像...\n"
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
-    original_img = Image.open(image_path).convert("RGB")
-    image_array = np.array(original_img)
+    original_img = load_as_rgb(image_path)
+    image_array = image_to_numpy(original_img)
     log += f"  尺寸: {original_img.width}x{original_img.height}\n"
 
     # [2] 提取边缘图（本地 OpenCV）
@@ -61,7 +59,7 @@ def _run_sender(
         start = time.time()
         edge_np = extractor.extract(image_array)
         elapsed = time.time() - start
-        edge_pil = Image.fromarray(edge_np)
+        edge_pil = load_as_rgb(edge_np)
         edge_img = edge_pil
         log += f"  完成 ({edge_pil.size[0]}x{edge_pil.size[1]}, {elapsed:.3f}s)\n"
     except Exception as e:
@@ -83,7 +81,7 @@ def _run_sender(
             vlm_kwargs = {}
             if vlm_model_name:
                 vlm_kwargs["model_name"] = vlm_model_name
-            vlm_path = vlm_model_path or get_default_vlm_path() or ""
+            vlm_path = vlm_model_path or project_config.vlm_model_path or ""
             if vlm_path:
                 vlm_kwargs["model_path"] = vlm_path
 
@@ -114,8 +112,19 @@ def _run_sender(
     yield edge_img, log, prompt_result, gr.update(visible=send_btn_visible)
 
 
-def build_sender_tab(config_components: dict) -> dict:
-    """构建发送端 Tab 的 UI 组件并绑定事件。"""
+def build_sender_tab(
+    config_components: dict,
+    project_config: ProjectConfig | None = None,
+) -> dict:
+    """构建发送端 Tab 的 UI 组件并绑定事件。
+
+    Args:
+        config_components: 来自 ``build_config_tab`` 的共享组件字典（VLM 控件）。
+        project_config: 项目配置实例，提供 Canny 阈值与 VLM 默认值。``None``
+            时调 ``load_config()`` 获取。
+    """
+    config = project_config if project_config is not None else load_config()
+
     gr.Markdown("### 单张发送\n上传图像 → 本地提取 Canny 边缘 → VLM 生成语义描述。")
 
     # --- 输入区 ---
@@ -128,12 +137,12 @@ def build_sender_tab(config_components: dict) -> dict:
     with gr.Row():
         threshold1 = gr.Number(
             label="Canny 低阈值",
-            value=DEFAULT_THRESHOLD1,
+            value=config.canny_low_threshold,
             precision=0,
         )
         threshold2 = gr.Number(
             label="Canny 高阈值",
-            value=DEFAULT_THRESHOLD2,
+            value=config.canny_high_threshold,
             precision=0,
         )
 
@@ -171,8 +180,14 @@ def build_sender_tab(config_components: dict) -> dict:
     # --- 事件绑定 ---
     mode_radio.change(fn=_on_mode_change, inputs=mode_radio, outputs=prompt_input)
 
+    # project_config 通过闭包绑定（Gradio inputs 仅支持组件，不接受普通对象）
+    def _run_sender_bound(image_path, mode, prompt, t1, t2, vlm_name, vlm_path):
+        yield from _run_sender(
+            image_path, mode, prompt, t1, t2, vlm_name, vlm_path, config
+        )
+
     run_btn.click(
-        fn=_run_sender,
+        fn=_run_sender_bound,
         inputs=[
             image_input,
             mode_radio,

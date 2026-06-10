@@ -1,4 +1,8 @@
-"""semantic-tx batch-demo 子命令：端到端批量语义传输演示。"""
+"""semantic-tx batch-demo 子命令：端到端批量语义传输演示。
+
+共享参数（Canny 阈值、VLM 模型/路径）默认值从 ``ProjectConfig`` 读取，
+CLI options 作为运行时 override（与 R-08 ``sender.py`` 模式一致）。
+"""
 
 import json
 import sys
@@ -6,10 +10,10 @@ import time
 from pathlib import Path
 
 import click
-import numpy as np
 from PIL import Image
 
-from semantic_transmission.common.config import get_default_vlm_path
+from semantic_transmission.common.config import load_config
+from semantic_transmission.common.image_io import image_to_numpy, load_as_rgb
 from semantic_transmission.pipeline.batch_processor import (
     SUPPORTED_IMAGE_EXTS,
     BatchImageDiscoverer,
@@ -41,7 +45,7 @@ def _make_comparison_image(
     x = 0
     for img in imgs:
         if img.mode != "RGB":
-            img = img.convert("RGB")
+            img = load_as_rgb(img)
         comparison.paste(img, (x, 0))
         x += img.width
 
@@ -82,8 +86,18 @@ def _make_comparison_image(
     default=False,
     help="跳过失败的图片，继续处理下一张",
 )
-@click.option("--threshold1", default=100, type=int, help="Canny 低阈值（默认 100）")
-@click.option("--threshold2", default=200, type=int, help="Canny 高阈值（默认 200）")
+@click.option(
+    "--threshold1",
+    default=None,
+    type=int,
+    help="Canny 低阈值（默认读 config.toml [sender].canny_low_threshold）",
+)
+@click.option(
+    "--threshold2",
+    default=None,
+    type=int,
+    help="Canny 高阈值（默认读 config.toml [sender].canny_high_threshold）",
+)
 @click.option(
     "--seed", default=None, type=int, help="KSampler 随机种子（可选，便于复现）"
 )
@@ -91,13 +105,13 @@ def _make_comparison_image(
     "--vlm-model",
     default=None,
     type=str,
-    help="VLM 模型名称（默认 Qwen/Qwen2.5-VL-7B-Instruct）",
+    help="VLM 模型名称（默认读 config.toml [models.vlm].model_name）",
 )
 @click.option(
     "--vlm-model-path",
     default=None,
     type=str,
-    help="VLM 模型本地路径（默认 $MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct）",
+    help="VLM 模型本地路径（默认读 config.toml [models.vlm].model_path）",
 )
 def batch_demo(
     input_dir,
@@ -127,8 +141,16 @@ def batch_demo(
     if prompt and auto_prompt:
         raise click.UsageError("--prompt 和 --auto-prompt 不能同时使用")
 
+    # 共享参数默认值：CLI override > ProjectConfig
+    project_config = load_config()
+    if threshold1 is None:
+        threshold1 = project_config.canny_low_threshold
+    if threshold2 is None:
+        threshold2 = project_config.canny_high_threshold
+    if vlm_model is None:
+        vlm_model = project_config.vlm_model_name
     if vlm_model_path is None:
-        vlm_model_path = get_default_vlm_path()
+        vlm_model_path = project_config.vlm_model_path or None
 
     # 创建输出根目录
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -193,13 +215,13 @@ def batch_demo(
 
         try:
             # 读取图像
-            original_img = Image.open(image_path).convert("RGB")
-            image_array = np.array(original_img)
+            original_img = load_as_rgb(image_path)
+            image_array = image_to_numpy(original_img)
 
             # 发送端：本地提取 Canny 边缘图
             start = time.time()
             edge_np = extractor.extract(image_array)
-            edge_image = Image.fromarray(edge_np)
+            edge_image = load_as_rgb(edge_np)
             sender_elapsed = time.time() - start
 
             edge_path = sample_output_dir / "edge.png"

@@ -1,10 +1,15 @@
-"""配置 Tab：VLM 与 Diffusers 接收端模型就绪检测。"""
+"""配置 Tab：VLM 与 Diffusers 接收端模型就绪检测。
+
+VLM 控件默认值（模型名/本地路径）从 ``ProjectConfig`` 读取（R-11），
+取代旧的硬编码字符串与基于 ``MODEL_CACHE_DIR`` 的路径拼接逻辑。
+"""
 
 import gradio as gr
 
 from semantic_transmission.common.config import (
     DiffusersReceiverConfig,
-    get_default_vlm_path,
+    ProjectConfig,
+    load_config,
 )
 from semantic_transmission.common.model_check import (
     check_diffusers_receiver_model,
@@ -32,8 +37,15 @@ def _gui_check_diffusers() -> str:
     return _format_status(ok, message)
 
 
-def build_config_tab() -> dict:
-    """构建配置 Tab 的 UI 组件并绑定事件，返回组件引用字典。"""
+def build_config_tab(project_config: ProjectConfig | None = None) -> dict:
+    """构建配置 Tab 的 UI 组件并绑定事件，返回组件引用字典。
+
+    Args:
+        project_config: 项目配置实例，提供控件默认值。``None`` 时调
+            ``load_config()`` 获取，便于独立测试。
+    """
+    config = project_config if project_config is not None else load_config()
+
     gr.Markdown(
         "### 配置\n检查 VLM 与 Diffusers 接收端模型是否就绪，设置发送端 VLM 模型路径。"
     )
@@ -46,9 +58,9 @@ def build_config_tab() -> dict:
 
     # --- VLM 模型 ---
     gr.Markdown("#### VLM 模型（发送端 auto-prompt 使用）")
-    vlm_model_name = gr.Textbox(value="Qwen/Qwen2.5-VL-7B-Instruct", label="模型名称")
+    vlm_model_name = gr.Textbox(value=config.vlm_model_name, label="模型名称")
     vlm_model_path = gr.Textbox(
-        value=get_default_vlm_path() or "",
+        value=config.vlm_model_path,
         label="本地路径",
         placeholder="留空则使用 HuggingFace 在线加载",
     )

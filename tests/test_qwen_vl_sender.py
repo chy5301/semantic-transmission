@@ -5,11 +5,38 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from semantic_transmission.common.model_loader import QwenVLBundle, QwenVLModelLoader
 from semantic_transmission.common.types import SenderOutput
 from semantic_transmission.sender.qwen_vl_sender import (
     QwenVLSender,
     _DEFAULT_SYSTEM_PROMPT,
 )
+
+
+def _build_mock_bundle(decode_text: str = "decoded text"):
+    """构造一个可直接装进 loader 的 mock bundle。"""
+    mock_model = MagicMock()
+    mock_model.device = "cpu"
+    mock_model.generate.return_value = [[1, 2, 3, 100, 200, 300]]
+
+    mock_processor = MagicMock()
+    mock_processor.apply_chat_template.return_value = "formatted text"
+    mock_processor.return_value = MagicMock(
+        input_ids=[[1, 2, 3]],
+        to=MagicMock(return_value=MagicMock(input_ids=[[1, 2, 3]])),
+    )
+    mock_processor.batch_decode.return_value = [decode_text]
+
+    return QwenVLBundle(
+        model=mock_model,
+        processor=mock_processor,
+        actual_quantization="int4",
+    )
+
+
+def _inject_mock_bundle(sender: QwenVLSender, bundle: QwenVLBundle) -> None:
+    """直接将 bundle 注入 sender 的 loader，跳过真实加载。"""
+    sender._loader._bundle = bundle
 
 
 @pytest.fixture
@@ -22,25 +49,10 @@ def sample_image():
 def mock_vlm_sender():
     """创建已 mock 模型加载的 QwenVLSender。"""
     sender = QwenVLSender()
-
-    mock_model = MagicMock()
-    mock_model.device = "cpu"
-    mock_model.generate.return_value = [[1, 2, 3, 100, 200, 300]]
-
-    mock_processor = MagicMock()
-    mock_processor.apply_chat_template.return_value = "formatted text"
-    mock_processor.return_value = MagicMock(
-        input_ids=[[1, 2, 3]],
-        to=MagicMock(return_value=MagicMock(input_ids=[[1, 2, 3]])),
+    bundle = _build_mock_bundle(
+        decode_text="A detailed description of a dark scene with black pixels."
     )
-    mock_processor.batch_decode.return_value = [
-        "A detailed description of a dark scene with black pixels."
-    ]
-
-    sender._model = mock_model
-    sender._processor = mock_processor
-    sender._actual_quantization = "int4"
-
+    _inject_mock_bundle(sender, bundle)
     return sender
 
 
@@ -68,8 +80,18 @@ class TestQwenVLSenderInit:
 
     def test_lazy_load_model_not_loaded_on_init(self):
         sender = QwenVLSender()
-        assert sender._model is None
-        assert sender._processor is None
+        assert not sender.is_loaded
+
+    def test_accepts_loader_directly(self):
+        from semantic_transmission.common.config import VLMLoaderConfig
+
+        loader = QwenVLModelLoader(
+            VLMLoaderConfig(model_name="custom/loader-model", max_new_tokens=128)
+        )
+        sender = QwenVLSender(loader=loader)
+        assert sender._loader is loader
+        assert sender._model_name == "custom/loader-model"
+        assert sender._max_new_tokens == 128
 
 
 class TestDescribe:
@@ -97,45 +119,36 @@ class TestDescribe:
 
     def test_calls_model_generate(self, mock_vlm_sender, sample_image):
         mock_vlm_sender.describe(sample_image)
-        mock_vlm_sender._model.generate.assert_called_once()
+        mock_vlm_sender._loader._bundle.model.generate.assert_called_once()
 
     def test_calls_processor_apply_chat_template(self, mock_vlm_sender, sample_image):
         mock_vlm_sender.describe(sample_image)
-        mock_vlm_sender._processor.apply_chat_template.assert_called_once()
+        mock_vlm_sender._loader._bundle.processor.apply_chat_template.assert_called_once()
 
 
 class TestModelLoading:
-    """测试模型加载逻辑。"""
+    """测试模型加载逻辑（通过 loader 委托）。"""
 
     def test_loads_model_on_first_describe(self, sample_image):
         sender = QwenVLSender()
-        assert sender._model is None
+        assert not sender.is_loaded
 
-        with patch.object(sender, "_load_model") as mock_load:
-            # _load_model 被 mock 了，所以不会真正加载
-            # 但需要设置 _model 不为 None，否则每次都会调用 _load_model
-            def set_model():
-                sender._model = MagicMock()
-                sender._model.device = "cpu"
-                sender._model.generate.return_value = [[1, 2, 3, 100]]
-                sender._processor = MagicMock()
-                sender._processor.apply_chat_template.return_value = "text"
-                sender._processor.return_value = MagicMock(
-                    input_ids=[[1, 2, 3]],
-                    to=MagicMock(return_value=MagicMock(input_ids=[[1, 2, 3]])),
-                )
-                sender._processor.batch_decode.return_value = ["desc"]
-                sender._actual_quantization = "int4"
+        bundle = _build_mock_bundle(decode_text="desc")
 
-            mock_load.side_effect = set_model
+        with patch.object(sender._loader, "load", return_value=bundle) as mock_load:
             sender.describe(sample_image)
             mock_load.assert_called_once()
 
     def test_does_not_reload_on_second_describe(self, mock_vlm_sender, sample_image):
-        with patch.object(mock_vlm_sender, "_load_model") as mock_load:
+        # loader.load() 在 bundle 已存在时直接返回，应只触发一次真实加载逻辑
+        with patch.object(
+            QwenVLModelLoader, "load", wraps=mock_vlm_sender._loader.load
+        ) as spy:
             mock_vlm_sender.describe(sample_image)
             mock_vlm_sender.describe(sample_image)
-            mock_load.assert_not_called()
+            # 每次 describe 都会调一次 loader.load()，但底层 bundle 已 cache
+            assert spy.call_count == 2
+            assert mock_vlm_sender.is_loaded
 
 
 class TestSystemPrompt:
@@ -143,7 +156,8 @@ class TestSystemPrompt:
 
     def test_default_system_prompt_used(self, mock_vlm_sender, sample_image):
         mock_vlm_sender.describe(sample_image)
-        call_args = mock_vlm_sender._processor.apply_chat_template.call_args
+        processor = mock_vlm_sender._loader._bundle.processor
+        call_args = processor.apply_chat_template.call_args
         messages = call_args[0][0]
         system_msg = messages[0]
         assert system_msg["role"] == "system"
@@ -151,25 +165,11 @@ class TestSystemPrompt:
 
     def test_custom_system_prompt(self, sample_image):
         sender = QwenVLSender(system_prompt="Custom system prompt")
-
-        mock_model = MagicMock()
-        mock_model.device = "cpu"
-        mock_model.generate.return_value = [[1, 2, 3, 100]]
-
-        mock_processor = MagicMock()
-        mock_processor.apply_chat_template.return_value = "text"
-        mock_processor.return_value = MagicMock(
-            input_ids=[[1, 2, 3]],
-            to=MagicMock(return_value=MagicMock(input_ids=[[1, 2, 3]])),
-        )
-        mock_processor.batch_decode.return_value = ["output"]
-
-        sender._model = mock_model
-        sender._processor = mock_processor
-        sender._actual_quantization = "int4"
+        bundle = _build_mock_bundle(decode_text="output")
+        _inject_mock_bundle(sender, bundle)
 
         sender.describe(sample_image)
-        call_args = mock_processor.apply_chat_template.call_args
+        call_args = bundle.processor.apply_chat_template.call_args
         messages = call_args[0][0]
         assert messages[0]["content"][0]["text"] == "Custom system prompt"
 
@@ -178,39 +178,26 @@ class TestUnload:
     """测试 unload() 方法。"""
 
     def test_unload_clears_model(self, mock_vlm_sender):
-        assert mock_vlm_sender._model is not None
-        assert mock_vlm_sender._processor is not None
+        assert mock_vlm_sender.is_loaded
         mock_vlm_sender.unload()
-        assert mock_vlm_sender._model is None
-        assert mock_vlm_sender._processor is None
+        assert not mock_vlm_sender.is_loaded
 
     def test_unload_idempotent(self):
         sender = QwenVLSender()
-        assert sender._model is None
+        assert not sender.is_loaded
         sender.unload()  # 未加载状态调用不应报错
         sender.unload()  # 连续调用不应报错
-        assert sender._model is None
+        assert not sender.is_loaded
 
     def test_describe_after_unload_reloads(self, mock_vlm_sender, sample_image):
         mock_vlm_sender.unload()
-        assert mock_vlm_sender._model is None
+        assert not mock_vlm_sender.is_loaded
 
-        with patch.object(mock_vlm_sender, "_load_model") as mock_load:
+        reloaded_bundle = _build_mock_bundle(decode_text="reloaded")
 
-            def reload():
-                mock_vlm_sender._model = MagicMock()
-                mock_vlm_sender._model.device = "cpu"
-                mock_vlm_sender._model.generate.return_value = [[1, 2, 3, 100]]
-                mock_vlm_sender._processor = MagicMock()
-                mock_vlm_sender._processor.apply_chat_template.return_value = "text"
-                mock_vlm_sender._processor.return_value = MagicMock(
-                    input_ids=[[1, 2, 3]],
-                    to=MagicMock(return_value=MagicMock(input_ids=[[1, 2, 3]])),
-                )
-                mock_vlm_sender._processor.batch_decode.return_value = ["reloaded"]
-                mock_vlm_sender._actual_quantization = "int4"
-
-            mock_load.side_effect = reload
+        with patch.object(
+            mock_vlm_sender._loader, "load", return_value=reloaded_bundle
+        ) as mock_load:
             result = mock_vlm_sender.describe(sample_image)
             mock_load.assert_called_once()
             assert result.text == "reloaded"

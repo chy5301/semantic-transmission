@@ -25,8 +25,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 
+from semantic_transmission.common.image_io import load_as_rgb
 from semantic_transmission.evaluation.perceptual_metrics import (
     compute_lpips,
     load_lpips_model,
@@ -79,11 +79,8 @@ def evaluate_sample(
     device: str | None = None,
 ) -> dict:
     """评估单个样本，返回指标字典。"""
-    original = Image.open(original_path).convert("RGB")
-    restored = Image.open(restored_path).convert("RGB")
-
-    original_arr = np.array(original)
-    restored_arr = np.array(restored)
+    original_arr = np.asarray(load_as_rgb(original_path))
+    restored_arr = np.asarray(load_as_rgb(restored_path))
 
     result = {
         "psnr": compute_psnr(original_arr, restored_arr),

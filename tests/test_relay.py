@@ -6,7 +6,6 @@ import time
 import pytest
 
 from semantic_transmission.pipeline.relay import (
-    LocalRelay,
     SocketRelayReceiver,
     SocketRelaySender,
     TransmissionPacket,
@@ -81,49 +80,6 @@ class TestSerialization:
         data = _serialize_packet(packet)
         restored = _deserialize_packet(data)
         assert restored.edge_image == large_image
-
-
-# ── LocalRelay ──
-
-
-class TestLocalRelay:
-    def test_send_receive(self):
-        relay = LocalRelay()
-        packet = TransmissionPacket(edge_image=b"edge", prompt_text="hello")
-        relay.send(packet)
-        received = relay.receive(timeout=1.0)
-        assert received.edge_image == packet.edge_image
-        assert received.prompt_text == packet.prompt_text
-
-    def test_fifo_order(self):
-        relay = LocalRelay()
-        for i in range(5):
-            relay.send(
-                TransmissionPacket(edge_image=bytes([i]), prompt_text=f"msg-{i}")
-            )
-        for i in range(5):
-            received = relay.receive(timeout=1.0)
-            assert received.prompt_text == f"msg-{i}"
-            assert received.edge_image == bytes([i])
-
-    def test_receive_timeout(self):
-        relay = LocalRelay()
-        with pytest.raises(TimeoutError):
-            relay.receive(timeout=0.1)
-
-    def test_threaded_send_receive(self):
-        relay = LocalRelay()
-        packet = TransmissionPacket(edge_image=b"data", prompt_text="threaded")
-
-        def sender():
-            time.sleep(0.1)
-            relay.send(packet)
-
-        t = threading.Thread(target=sender)
-        t.start()
-        received = relay.receive(timeout=2.0)
-        t.join()
-        assert received.prompt_text == "threaded"
 
 
 # ── SocketRelay ──
