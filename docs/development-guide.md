@@ -41,7 +41,7 @@ src/semantic_transmission/
 │   ├── comfyui_receiver.py#  ComfyUI 工作流调用实现
 │   └── workflow_converter.py# 工作流 JSON→API 格式转换器
 ├── pipeline/            # 管道编排
-│   └── relay.py         #   中继传输（LocalRelay / SocketRelay）
+│   └── relay.py         #   中继传输（SocketRelaySender / SocketRelayReceiver）
 ├── evaluation/          # 质量评估
     ├── pixel_metrics.py #   PSNR / SSIM
     ├── perceptual_metrics.py# LPIPS

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import torch
-from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
+
+from semantic_transmission.common.image_io import load_as_rgb
 
 from .utils import ImageInput, to_numpy
 
@@ -56,8 +57,10 @@ def compute_clip_score(
     Returns:
         CLIP Score，范围 [0, 100]，越高表示图文匹配度越好。
     """
+    # to_numpy 负责把 PIL/ndarray 统一为 RGB uint8；
+    # load_as_rgb 再回到 PIL.Image 以便交给 CLIPProcessor。
     arr = to_numpy(image)
-    pil_image = Image.fromarray(arr)
+    pil_image = load_as_rgb(arr)
 
     if model is None or processor is None:
         model, processor = load_clip_model(model_name=model_name, device=device)

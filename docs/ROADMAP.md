@@ -65,7 +65,7 @@
   - 输出：Z-Image-Turbo + ControlNet Union 还原的图像
 - [x] 搭建端到端 pipeline
   - 图像 → 发送端 → 序列化传输数据 → 接收端 → 还原图像
-- [x] 实现中继传输协议（LocalRelay + SocketRelay）
+- [x] 实现中继传输协议（SocketRelaySender / SocketRelayReceiver；早期实验性 LocalRelay 已于 cleanup 阶段删除）
 - [x] 双机部署：`semantic-tx sender` / `semantic-tx receiver` CLI 子命令（原 run_sender.py / run_receiver.py 已归档）
 - [x] 初步评估还原质量
   - 质量评估模块：PSNR、SSIM、LPIPS、CLIP Score
@@ -78,7 +78,7 @@
 
 - 可运行的发送端/接收端 Python 模块
 - VLM 自动语义描述生成（QwenVLSender）
-- 中继传输模块（LocalRelay + SocketRelay）
+- 中继传输模块（SocketRelaySender / SocketRelayReceiver）
 - 端到端 demo 脚本 + 双机演示脚本
 - 端到端测试报告（`docs/test-reports/`）
 - 质量评估模块和批量评估脚本

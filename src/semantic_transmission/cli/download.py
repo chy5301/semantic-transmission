@@ -1,59 +1,118 @@
-"""semantic-tx download 子命令：下载所需模型文件。"""
+"""semantic-tx download 子命令：下载所需模型文件。
+
+模型清单从 ``ProjectConfig`` 派生：
+
+- ``[models.diffusers]`` 的 ``transformer_path`` / ``controlnet_name`` 给出目标
+  本地路径，本模块通过文件名匹配查表得到 HuggingFace/ModelScope 仓库来源；
+- ``[models.vlm]`` 给出 VLM 完整仓库下载目标目录。
+
+ComfyUI 路径在 Phase 2 已完全脱离，相关清单已移除。
+"""
+
+from __future__ import annotations
 
 import json
 import os
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
 
+from semantic_transmission.common.config import ProjectConfig, load_config
+
 # === 默认配置 ===
-DEFAULT_COMFYUI_DIR = (
-    Path(os.environ["COMFYUI_DIR"]) if os.environ.get("COMFYUI_DIR") else None
-)
 DEFAULT_PROXY = "http://127.0.0.1:7890"
 HF_MIRROR_ENDPOINT = "https://hf-mirror.com"
 DEFAULT_CACHE_DIR = (
     Path(os.environ["MODEL_CACHE_DIR"]) if os.environ.get("MODEL_CACHE_DIR") else None
 )
 
-# === 模型定义 ===
-COMFYUI_MODELS = [
-    (
+
+# === 单文件模型来源映射 ===
+# 键: 目标文件名（取自 ProjectConfig 中 transformer_path / controlnet_name 的 basename）
+# 值: (source, repo_id, repo_internal_path)
+#   source: "huggingface" 或 "modelscope"
+#   repo_id: 仓库 ID
+#   repo_internal_path: 文件在仓库内的相对路径
+_SINGLE_FILE_SOURCES: dict[str, tuple[str, str, str]] = {
+    "z-image-turbo-Q8_0.gguf": (
         "huggingface",
-        "Comfy-Org/z_image_turbo",
-        "split_files/text_encoders/qwen_3_4b.safetensors",
-        "text_encoders",
-        "qwen_3_4b.safetensors",
+        "city96/Z-Image-Turbo-gguf",
+        "z-image-turbo-Q8_0.gguf",
     ),
-    (
-        "huggingface",
-        "Comfy-Org/z_image_turbo",
-        "split_files/diffusion_models/z_image_turbo_bf16.safetensors",
-        "diffusion_models",
-        "z_image_turbo_bf16.safetensors",
-    ),
-    (
-        "huggingface",
-        "Comfy-Org/z_image_turbo",
-        "split_files/vae/ae.safetensors",
-        "vae",
-        "ae.safetensors",
-    ),
-    (
+    "Z-Image-Turbo-Fun-Controlnet-Union.safetensors": (
         "modelscope",
         "PAI/Z-Image-Turbo-Fun-Controlnet-Union",
         "Z-Image-Turbo-Fun-Controlnet-Union.safetensors",
-        "model_patches",
-        "Z-Image-Turbo-Fun-Controlnet-Union.safetensors",
     ),
-]
+}
 
-HF_REPO_MODELS = [
-    ("Qwen/Qwen2.5-VL-7B-Instruct",),
-]
+
+@dataclass(frozen=True)
+class _SingleFileTarget:
+    """单文件下载条目。"""
+
+    source: str
+    repo_id: str
+    repo_internal_path: str
+    target_path: Path  # 落盘绝对路径
+
+    @property
+    def target_name(self) -> str:
+        return self.target_path.name
+
+
+@dataclass(frozen=True)
+class _RepoTarget:
+    """完整仓库下载条目（HuggingFace repo）。"""
+
+    repo_id: str
+    target_dir: Path
+
+
+def _derive_single_file_targets(
+    project_config: ProjectConfig,
+) -> list[_SingleFileTarget]:
+    """从 ProjectConfig 派生需要下载的单文件清单（GGUF transformer + ControlNet）。"""
+    candidates = [
+        project_config.diffusers_transformer_path,
+        project_config.diffusers_controlnet_name,
+    ]
+    targets: list[_SingleFileTarget] = []
+    for raw_path in candidates:
+        if not raw_path:
+            continue
+        target_path = Path(raw_path)
+        source_info = _SINGLE_FILE_SOURCES.get(target_path.name)
+        if source_info is None:
+            print(f"  [WARN] 未知的目标文件 {target_path.name}，无法派生下载来源，跳过")
+            continue
+        source, repo_id, repo_internal_path = source_info
+        targets.append(
+            _SingleFileTarget(
+                source=source,
+                repo_id=repo_id,
+                repo_internal_path=repo_internal_path,
+                target_path=target_path,
+            )
+        )
+    return targets
+
+
+def _derive_repo_targets(
+    project_config: ProjectConfig, cache_dir: Path
+) -> list[_RepoTarget]:
+    """从 ProjectConfig 派生需要整库下载的 HuggingFace 仓库清单（VLM）。"""
+    targets: list[_RepoTarget] = []
+    vlm_repo = project_config.vlm_model_name
+    if vlm_repo:
+        vlm_path = project_config.vlm_model_path
+        target_dir = Path(vlm_path) if vlm_path else cache_dir / vlm_repo
+        targets.append(_RepoTarget(repo_id=vlm_repo, target_dir=target_dir))
+    return targets
 
 
 def _check_tool(name: str) -> bool:
@@ -152,12 +211,6 @@ def _download_huggingface_repo(repo_id, target_dir, proxy, hf_mirror, cache_dir)
 
 @click.command()
 @click.option(
-    "--comfyui-dir",
-    default=DEFAULT_COMFYUI_DIR,
-    type=click.Path(path_type=Path),
-    help="ComfyUI 安装目录（默认从环境变量 COMFYUI_DIR 读取）",
-)
-@click.option(
     "--proxy",
     default=None,
     type=str,
@@ -178,13 +231,10 @@ def _download_huggingface_repo(repo_id, target_dir, proxy, hf_mirror, cache_dir)
 @click.option(
     "--dry-run", is_flag=True, default=False, help="仅显示将要执行的操作，不实际下载"
 )
-def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
-    """下载 ComfyUI 所需模型文件。"""
-    if comfyui_dir is None:
-        print(
-            "错误：未指定 ComfyUI 目录。请设置环境变量 COMFYUI_DIR 或使用 --comfyui-dir 参数"
-        )
-        sys.exit(1)
+def download(proxy, no_mirror, cache_dir, dry_run):
+    """下载项目所需模型文件（从 config.toml 派生清单）。"""
+    project_config = load_config()
+
     if cache_dir is None:
         print(
             "错误：未指定缓存目录。请设置环境变量 MODEL_CACHE_DIR 或使用 --cache-dir 参数"
@@ -203,15 +253,11 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
             or DEFAULT_PROXY
         )
 
-    models_dir = comfyui_dir / "models"
-    if not models_dir.exists():
-        print(f"错误：ComfyUI models 目录不存在: {models_dir}")
-        sys.exit(1)
-
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"ComfyUI 目录: {comfyui_dir}")
-    print(f"模型目录:     {models_dir}")
+    single_file_targets = _derive_single_file_targets(project_config)
+    repo_targets = _derive_repo_targets(project_config, cache_dir)
+
     print(f"缓存目录:     {cache_dir}")
     if hf_mirror:
         print(f"HF 访问方式:  镜像 ({HF_MIRROR_ENDPOINT})")
@@ -223,7 +269,7 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
 
     # 检查 CLI 工具
     tool_cmd = {"modelscope": "modelscope", "huggingface": "hf"}
-    for tool in {m[0] for m in COMFYUI_MODELS}:
+    for tool in {t.source for t in single_file_targets}:
         cmd = tool_cmd[tool]
         if not _check_tool(cmd):
             print(f"错误：{cmd} 未安装。请运行:")
@@ -233,22 +279,22 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
                 print('  uv tool install "huggingface_hub[cli]"')
             sys.exit(1)
 
-    if HF_REPO_MODELS and not _check_tool("hf"):
+    if repo_targets and not _check_tool("hf"):
         print('错误：hf 未安装。请运行: uv tool install "huggingface_hub[cli]"')
         sys.exit(1)
 
-    # === 下载 ComfyUI 单文件模型 ===
-    print("=== ComfyUI 模型 ===\n")
-    tmp_dir = comfyui_dir / "_model_downloads"
+    # === 下载 Diffusers 单文件模型 ===
+    if single_file_targets:
+        print("=== Diffusers 单文件模型 ===\n")
+    tmp_dir = cache_dir / "_model_downloads"
 
-    for source, repo_id, file_path, sub_dir, target_name in COMFYUI_MODELS:
-        target_path = models_dir / sub_dir / target_name
-        print(f"[{source}] {target_name}")
-        print(f"  仓库: {repo_id}")
-        print(f"  目标: {target_path}")
+    for t in single_file_targets:
+        print(f"[{t.source}] {t.target_name}")
+        print(f"  仓库: {t.repo_id}")
+        print(f"  目标: {t.target_path}")
 
-        if target_path.exists():
-            size_mb = target_path.stat().st_size / (1024 * 1024)
+        if t.target_path.exists():
+            size_mb = t.target_path.stat().st_size / (1024 * 1024)
             print(f"  已存在 ({size_mb:.1f} MB)，跳过")
             print()
             continue
@@ -259,12 +305,19 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
             continue
 
         try:
-            dl_dir = tmp_dir / source / repo_id.replace("/", "_")
-            if source == "modelscope":
-                downloaded = _download_modelscope(repo_id, file_path, dl_dir, cache_dir)
+            dl_dir = tmp_dir / t.source / t.repo_id.replace("/", "_")
+            if t.source == "modelscope":
+                downloaded = _download_modelscope(
+                    t.repo_id, t.repo_internal_path, dl_dir, cache_dir
+                )
             else:
                 downloaded = _download_huggingface(
-                    repo_id, file_path, dl_dir, _proxy, hf_mirror, cache_dir
+                    t.repo_id,
+                    t.repo_internal_path,
+                    dl_dir,
+                    _proxy,
+                    hf_mirror,
+                    cache_dir,
                 )
 
             if not downloaded.exists():
@@ -272,9 +325,9 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
                 print()
                 continue
 
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(downloaded), str(target_path))
-            size_mb = target_path.stat().st_size / (1024 * 1024)
+            t.target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(downloaded), str(t.target_path))
+            size_mb = t.target_path.stat().st_size / (1024 * 1024)
             print(f"  下载完成 ({size_mb:.1f} MB)")
         except subprocess.CalledProcessError as e:
             print(f"  下载失败（命令返回码 {e.returncode}）")
@@ -285,16 +338,15 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
     if tmp_dir.exists() and not dry_run:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    # === 下载 HuggingFace 完整仓库模型 ===
-    if HF_REPO_MODELS:
+    # === 下载 HuggingFace 完整仓库模型（VLM） ===
+    if repo_targets:
         print("=== HuggingFace 仓库模型 ===\n")
 
-    for (repo_id,) in HF_REPO_MODELS:
-        target_dir = cache_dir / repo_id
-        print(f"[huggingface_repo] {repo_id}")
-        print(f"  目标: {target_dir}")
+    for rt in repo_targets:
+        print(f"[huggingface_repo] {rt.repo_id}")
+        print(f"  目标: {rt.target_dir}")
 
-        if _is_hf_repo_complete(target_dir):
+        if _is_hf_repo_complete(rt.target_dir):
             print("  已存在（权重文件完整），跳过")
             print()
             continue
@@ -306,7 +358,7 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
 
         try:
             _download_huggingface_repo(
-                repo_id, target_dir, _proxy, hf_mirror, cache_dir
+                rt.repo_id, rt.target_dir, _proxy, hf_mirror, cache_dir
             )
             print("  下载完成")
         except subprocess.CalledProcessError as e:
@@ -318,22 +370,24 @@ def download(comfyui_dir, proxy, no_mirror, cache_dir, dry_run):
     # === 汇总 ===
     print("=== 模型文件状态 ===")
     all_ok = True
-    for _, _, _, sub_dir, target_name in COMFYUI_MODELS:
-        target_path = models_dir / sub_dir / target_name
-        if target_path.exists():
-            size_mb = target_path.stat().st_size / (1024 * 1024)
-            print(f"  [ComfyUI] {sub_dir}/{target_name} ({size_mb:.1f} MB)")
+    for t in single_file_targets:
+        if t.target_path.exists():
+            size_mb = t.target_path.stat().st_size / (1024 * 1024)
+            print(f"  [Diffusers] {t.target_name} ({size_mb:.1f} MB)")
         else:
-            print(f"  [ComfyUI] {sub_dir}/{target_name} 缺失")
+            print(f"  [Diffusers] {t.target_name} 缺失")
             all_ok = False
 
-    for (repo_id,) in HF_REPO_MODELS:
-        target_dir = cache_dir / repo_id
-        if _is_hf_repo_complete(target_dir):
-            print(f"  [HF Repo] {repo_id} ✓")
+    for rt in repo_targets:
+        if _is_hf_repo_complete(rt.target_dir):
+            print(f"  [HF Repo] {rt.repo_id} ✓")
         else:
-            print(f"  [HF Repo] {repo_id} 缺失或不完整")
+            print(f"  [HF Repo] {rt.repo_id} 缺失或不完整")
             all_ok = False
+
+    if not single_file_targets and not repo_targets:
+        print("  未派生出任何下载条目（请检查 config.toml [models.*] 配置）")
+        all_ok = False
 
     if all_ok:
         print("\n所有模型文件就绪！")
