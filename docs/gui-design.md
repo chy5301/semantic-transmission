@@ -3,6 +3,8 @@
 > 版本: 1.0
 > 日期: 2026-03-29
 > 对应任务: P2-25 / P2-26 / P2-27
+>
+> ⚠️ 本文为 2026-03 GUI 设计稿，部分内容（ComfyUI 连接、4 Tab 结构等）已随实现演进。当前实现为 Diffusers 本地推理 + 6 个面板，具体以代码与 [cli-reference.md](cli-reference.md) / [demo-handbook.md](demo-handbook.md) 为准。
 
 ## 1. 设计定位
 

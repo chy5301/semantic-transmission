@@ -8,6 +8,9 @@
 |------|------|
 | [project-overview.md](project-overview.md) | 项目总览：目标、进展、关键成果、后续计划（面向负责人） |
 | [ROADMAP.md](ROADMAP.md) | 项目路线图：各阶段目标、当前状态、技术路线 |
+| [research/2026-06-21-video-stream-tech-scout.md](research/2026-06-21-video-stream-tech-scout.md) | 视频流技术方案：帧生成/连续帧/插帧超分选型与开发计划（当前主线） |
+| [superpowers/specs/2026-06-21-video-stream-6day-plan-design.md](superpowers/specs/2026-06-21-video-stream-6day-plan-design.md) | 视频流 6 天冲刺规划与三层 ROADMAP |
+| [research/2026-06-reevaluation.md](research/2026-06-reevaluation.md) | 2026-06 综合评估：模型选型、技术路线、issue triage |
 
 ## 开发
 
@@ -21,17 +24,18 @@
 | 文档 | 说明 |
 |------|------|
 | [user-guide.md](user-guide.md) | 使用指南：系统要求、完整安装步骤、基本使用 |
+| [cli-reference.md](cli-reference.md) | CLI 参考：`semantic-tx` 命令行工具完整参数说明 |
 | [demo-handbook.md](demo-handbook.md) | 演示手册：单机/双机演示操作步骤、参数说明、常见错误排查 |
-| [comfyui-setup.md](comfyui-setup.md) | ComfyUI 本机部署指南：安装、模型下载、配置验证 |
+| [gui-design.md](gui-design.md) | GUI 设计文档：Gradio 界面布局与交互设计 |
 
 ## 调研成果
 
 | 文档 | 说明 |
 |------|------|
 | [research/README.md](research/README.md) | 调研成果总索引 |
-| [research/selection-report.md](research/selection-report.md) | 模型与方案选型报告（最终结论） |
+| [research/selection-report.md](research/selection-report.md) | 模型与方案选型报告（阶段一结论） |
 | [research/evaluation-metrics.md](research/evaluation-metrics.md) | 质量评估指标体系说明 |
-| [research/comfyui-workflow-analysis.md](research/comfyui-workflow-analysis.md) | ComfyUI 工作流结构分析 |
+| [research/comfyui-workflow-analysis.md](research/comfyui-workflow-analysis.md) | ComfyUI 工作流结构分析（阶段二历史材料） |
 | [research/papers/](research/papers/) | 论文综述（语义通信领域综述） |
 | [research/projects/](research/projects/) | 开源项目评估 |
 | [research/models/](research/models/) | 模型对比（生成模型、视觉理解模型、ControlNet 条件） |
@@ -60,3 +64,5 @@
 | 文档 | 说明 |
 |------|------|
 | [workflow/](workflow/) | structured-workflow 插件产物（任务规划、状态跟踪、依赖关系） |
+
+> 接收端已脱离 ComfyUI（改用 Diffusers 本地推理），原 ComfyUI 部署指南与原型材料归档在 [archive/comfyui-prototype/](archive/comfyui-prototype/)。

@@ -5,8 +5,10 @@
 ```mermaid
 graph TB
     subgraph common["common — 公共模块"]
-        config["config.py<br/>DiffusersReceiverConfig / 路径工具"]
+        config["config.py<br/>ProjectConfig / config.toml 加载"]
+        model_loader["model_loader.py<br/>DiffusersModelLoader / QwenVLModelLoader"]
         model_check["model_check.py<br/>VLM / Diffusers 模型就绪检测"]
+        image_io["image_io.py<br/>load_as_rgb / image_to_numpy"]
     end
 
     subgraph sender["sender — 发送端"]
@@ -44,12 +46,15 @@ graph TB
     base_s --> local_canny
     base_s --> qwen_vl
     diffusers_r --> base_r
-    diffusers_r --> config
+    diffusers_r --> model_loader
+    model_loader --> config
     factory --> diffusers_r
     relay --> batch
 ```
 
 ## 核心数据流
+
+> 当前描述单帧（图像）数据流。视频流逐帧处理（关键帧生成 + 上一帧参考 + 插帧）的数据流将在阶段三随实现补充。
 
 ```mermaid
 sequenceDiagram
@@ -78,6 +83,7 @@ sequenceDiagram
 | `BaseConditionExtractor` | `LocalCannyExtractor` | 使用 OpenCV Canny 提取边缘图 |
 | `BaseReceiver` | `DiffusersReceiver` | 使用 Diffusers 0.37 + Z-Image-Turbo GGUF + ControlNet Union 本地推理 |
 | 中继传输 | `SocketRelaySender` / `SocketRelayReceiver` | TCP length-prefixed 协议，双机部署时使用 |
+| `ModelLoader` | `DiffusersModelLoader` / `QwenVLModelLoader` | 统一 load/unload 生命周期，配置来自 ProjectConfig / config.toml |
 
 ## Diffusers 接收端加载流程
 
@@ -118,6 +124,6 @@ TCP 中继使用 length-prefixed framing 协议，每个字段由 4 字节大端
 
 - **发送端模型替换**：实现 `BaseSender` 接口即可接入新的视觉理解模型
 - **条件类型扩展**：实现 `BaseConditionExtractor` 支持深度图、分割图等条件
-- **接收端模型替换**：实现 `BaseReceiver` 可接入其他生成模型（Wan2.x 等）
-- **量化策略扩展**：`DiffusersReceiver.load()` 目前写死 GGUF Q8_0 分组件加载，未来可抽象为 `ModelLoader` 策略模式
+- **接收端模型替换**：实现 `BaseReceiver` 可接入其他生成模型（帧生成主线调研中：FLUX.2-klein-9B）
+- **量化策略扩展**：模型加载已抽象为 `ModelLoader`（`DiffusersModelLoader` / `QwenVLModelLoader`），换量化/模型改 `config.toml` 即可
 - **传输协议扩展**：`pipeline.relay` 可扩展 WebSocket / gRPC 等传输方式
