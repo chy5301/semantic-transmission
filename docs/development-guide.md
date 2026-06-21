@@ -8,9 +8,10 @@
 |------|------|
 | Python | >= 3.10（CI 使用 3.12） |
 | 包管理 | [uv](https://docs.astral.sh/uv/) |
-| GPU | NVIDIA GPU + CUDA 13.0+（ComfyUI 和 VLM 推理需要） |
+| GPU | NVIDIA GPU + CUDA 13.0+（Diffusers 接收端与 VLM 推理需要） |
 | Git LFS | 用于管理 output/ 下的 PNG 测试结果 |
-| ComfyUI | 本机运行，默认 `127.0.0.1:8188` |
+
+接收端 Diffusers 需要模型文件（`Z-Image-Turbo` GGUF transformer + ControlNet Union + HuggingFace cache 中的 pipeline 组件），可通过 `semantic-tx check diffusers` 检测；发送端 VLM 可选，通过 `semantic-tx check vlm` 检测。
 
 ## 依赖安装
 
@@ -29,40 +30,49 @@ PyTorch 使用 CUDA 13.0 索引源，`pyproject.toml` 中已配置 `pytorch-cu13
 ```
 src/semantic_transmission/
 ├── common/              # 公共模块
-│   ├── config.py        #   ComfyUI 连接配置（支持环境变量覆盖）
-│   ├── types.py         #   数据类型定义（SenderOutput, TransmissionData, ReceiverOutput）
-│   └── comfyui_client.py#   ComfyUI HTTP API 客户端
+│   ├── config.py        #   ProjectConfig + config.toml 加载（4 层优先级）
+│   ├── model_loader.py  #   ModelLoader 抽象（DiffusersModelLoader / QwenVLModelLoader）
+│   ├── model_check.py   #   模型就绪检测（check vlm / diffusers）
+│   ├── image_io.py      #   统一图像加载（load_as_rgb / image_to_numpy）
+│   └── types.py         #   数据类型定义
 ├── sender/              # 发送端
 │   ├── base.py          #   抽象基类（BaseSender, BaseConditionExtractor）
-│   ├── qwen_vl_sender.py#   Qwen-VL 本地推理实现
-│   └── comfyui_sender.py#   ComfyUI 工作流调用实现
+│   ├── qwen_vl_sender.py#   Qwen-VL 本地推理（语义描述生成）
+│   └── local_condition_extractor.py # 本地 Canny 边缘提取
 ├── receiver/            # 接收端
-│   ├── base.py          #   抽象基类（BaseReceiver）
-│   ├── comfyui_receiver.py#  ComfyUI 工作流调用实现
-│   └── workflow_converter.py# 工作流 JSON→API 格式转换器
+│   ├── base.py          #   抽象基类 + create_receiver 工厂
+│   └── diffusers_receiver.py # Diffusers 本地推理（Z-Image-Turbo + ControlNet Union）
 ├── pipeline/            # 管道编排
+│   ├── batch_processor.py #  批量逐样本编排
 │   └── relay.py         #   中继传输（SocketRelaySender / SocketRelayReceiver）
 ├── evaluation/          # 质量评估
-    ├── pixel_metrics.py #   PSNR / SSIM
-    ├── perceptual_metrics.py# LPIPS
-    └── semantic_metrics.py#  CLIP Score
+│   ├── pixel_metrics.py #   PSNR / SSIM
+│   ├── perceptual_metrics.py # LPIPS
+│   ├── semantic_metrics.py#  CLIP Score
+│   └── utils.py         #   指标计算工具
+├── cli/                 # CLI 入口（click 子命令，入口点 semantic-tx）
+│   ├── main.py          #   根命令组装
+│   ├── sender.py        #   发送（单图 / 批量）
+│   ├── receiver.py      #   接收（双机监听）
+│   ├── demo.py          #   端到端演示
+│   ├── batch_demo.py    #   批量端到端演示
+│   ├── check.py         #   就绪检测（vlm / diffusers / relay）
+│   ├── download.py      #   模型下载
+│   └── gui.py           #   启动 Gradio 界面
 └── gui/                 # Gradio 可视化界面
     ├── app.py           #   主应用组装（Blocks + Tabs）
-    ├── theme.py         #   主题定义（Sky/Slate 配色 + 自定义 CSS）
-    └── config_panel.py  #   配置面板（连接测试 + VLM 模型检查）
+    ├── theme.py         #   主题定义
+    ├── config_panel.py  #   配置面板（模型就绪检测）
+    ├── sender_panel.py / batch_sender_panel.py  # 单图 / 批量发送
+    ├── receiver_panel.py / pipeline_panel.py    # 接收 / 端到端
+    └── batch_panel.py   #   批量端到端
 
 scripts/                 # 工具脚本
-├── demo_e2e.py          #   端到端演示（单机）
-├── run_sender.py        #   独立发送端（双机模式）
-├── run_receiver.py      #   独立接收端（双机模式）
-├── evaluate.py          #   批量质量评估
-├── download_models.py   #   模型下载
-├── test_comfyui_connection.py # 连通性测试
-└── verify_workflows.py  #   工作流验证
+├── download_models.py   #   模型下载（亦可用 semantic-tx download）
+└── evaluate.py          #   批量质量评估（亦可用 semantic-tx 配套）
 
-tests/                   # 单元测试（167 个）
+tests/                   # 单元测试（pytest，mock 运行不依赖 GPU）
 resources/
-├── comfyui/             # ComfyUI 工作流文件
 └── test_images/         # 测试用图片集
 ```
 
@@ -111,16 +121,16 @@ uv run ruff format .
 uv run pytest
 
 # 运行单个测试文件
-uv run pytest tests/test_comfyui_client.py
+uv run pytest tests/test_diffusers_receiver.py
 
 # 运行匹配名称的测试
-uv run pytest -k "test_submit"
+uv run pytest -k "test_load"
 
 # 显示详细输出
 uv run pytest -v
 ```
 
-测试通过 mock 运行，不依赖 ComfyUI 实例。需要真实 ComfyUI 环境的集成测试通过 scripts/ 中的脚本完成。
+单元测试通过 mock 运行，不依赖真实 GPU 或模型文件（CI runner 无 CUDA）。涉及真实推理的端到端验证通过 `semantic-tx demo` / `semantic-tx check` 在有 GPU 的环境手动执行。
 
 ## CI
 
