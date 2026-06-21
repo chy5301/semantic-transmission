@@ -1,29 +1,31 @@
 # 语义传输（Semantic Transmission）
 
-基于 AI 生成模型的视频语义级压缩传输预研项目。核心思路是用语义描述替代像素级编码，在极低码率（<0.01 bpp）下实现视频传输。
+基于 AI 生成模型的视频流语义级压缩传输预研项目。核心思路是用语义描述 + 轻量结构条件替代像素级编码，在极低码率下传输视频。当前目标是实现**输入视频流、输出生成视频流**的程序，逐步逼近替代无人车远程遥操作画面所需的延迟、清晰度与帧间一致性。
 
 ## 系统架构
 
 ```mermaid
 graph LR
     subgraph sender["发送端"]
-        A[源视频] --> B[视觉理解模型<br/>语义描述生成]
-        A --> C[条件提取<br/>Canny/深度图/分割]
+        A[源视频流] --> B[视觉理解模型<br/>语义描述生成]
+        A --> C[条件提取<br/>Canny/深度图]
     end
     subgraph transport["传输层（极低码率）"]
         B --> D[文本描述]
         C --> E[结构化条件]
     end
     subgraph receiver["接收端"]
-        D --> F[生成模型<br/>图像/视频重建]
+        D --> F[生成模型<br/>以上一帧为基底重建]
         E --> F
-        F --> G[还原视频]
+        F --> G[还原视频流]
     end
 ```
 
-- **发送端**：通过多模态大模型（如 Qwen-VL）将视频帧压缩为文本描述，并提取结构化条件信息（边缘图、深度图等）
+- **发送端**：通过多模态大模型（Qwen-VL）将视频帧压缩为文本描述，并提取结构化条件信息（Canny 边缘图、深度图等）
 - **传输层**：仅传输文本和轻量条件信息，实现极低码率
-- **接收端**：通过扩散生成模型（如 Z-Image-Turbo、Wan2.x）从语义信息还原视觉内容
+- **接收端**：通过扩散生成模型，以"上一帧生成图像为基底 + 语义/条件引导"逐帧重建视觉内容
+
+> 项目已脱离 ComfyUI，接收端改用 **Diffusers 本地推理**（Z-Image-Turbo GGUF + ControlNet Union）。帧生成主线正在调研 FLUX.2-klein-9B，详细方向与规划见 [项目路线图](docs/ROADMAP.md)。
 
 ## 快速开始
 
@@ -36,43 +38,32 @@ git lfs install   # 首次使用需执行
 uv sync
 ```
 
-### 2. 部署 ComfyUI
+### 2. 下载模型
 
-推荐使用 [秋叶 ComfyUI 整合包](https://space.bilibili.com/12566101)（ComfyUI-aki v3），下载后启动启动器即可使用。
-
-详细部署说明见 [docs/comfyui-setup.md](docs/comfyui-setup.md)。
-
-### 3. 下载模型
-
-项目需要 4 个模型文件（总计约 24GB）：
+接收端 Diffusers 需要 Z-Image-Turbo GGUF + ControlNet Union，发送端 VLM 自动描述可选 Qwen2.5-VL：
 
 ```bash
-# 下载模型（使用国内镜像，默认）
-uv run python scripts/download_models.py
-
-# 预览下载内容（不实际下载）
-uv run python scripts/download_models.py --dry-run
+uv run semantic-tx download            # 按 config.toml 下载模型
+uv run semantic-tx download --dry-run  # 预览下载计划（不实际下载）
 ```
 
-### 4. 验证环境
-
-启动 ComfyUI 后，运行连通性测试和工作流验证：
+### 3. 验证环境
 
 ```bash
-# 连通性测试（6 项检查）
-uv run python scripts/test_comfyui_connection.py
-
-# 端到端工作流验证（发送端 + 接收端）
-uv run python scripts/verify_workflows.py
+uv run semantic-tx check diffusers                            # 接收端 Diffusers 模型就绪
+uv run semantic-tx check vlm                                  # 发送端 VLM 模型就绪
+uv run semantic-tx check relay --host 127.0.0.1 --port 9000   # 双机部署 TCP 可达
 ```
 
-### 5. 启动 GUI
+### 4. 启动 GUI
 
 ```bash
 uv run semantic-tx gui
 ```
 
-浏览器打开 http://127.0.0.1:7860 即可使用可视化界面，支持配置管理、发送端/接收端独立操作和一键端到端演示。
+浏览器打开 http://127.0.0.1:7860 即可使用可视化界面，支持模型配置、发送端/接收端独立操作和一键端到端演示。
+
+> 命令行用法见 [CLI 参考](docs/cli-reference.md)；单机/双机演示步骤见 [演示手册](docs/demo-handbook.md)。
 
 ## 文档导航
 
@@ -82,7 +73,6 @@ uv run semantic-tx gui
 |------|------|
 | [开发指南](docs/development-guide.md) | 环境搭建、项目结构、测试方法、CI、编码规范 |
 | [系统架构](docs/architecture.md) | 模块关系图、数据流、接口设计、扩展点 |
-| [ComfyUI 部署指南](docs/comfyui-setup.md) | 本机 ComfyUI 部署与配置 |
 | [协作规范](docs/collaboration/) | Git 分支、PR、Issue 流程与编码规范 |
 
 ### 面向用户
@@ -100,7 +90,7 @@ uv run semantic-tx gui
 |------|------|
 | [项目总览](docs/project-overview.md) | 目标、进展、关键成果、后续计划（2 分钟速览） |
 | [项目路线图](docs/ROADMAP.md) | 各阶段目标、状态与技术路线 |
-| [调研报告](docs/research/selection-report.md) | 模型与方案选型结论 |
+| [视频流技术方案](docs/research/2026-06-21-video-stream-tech-scout.md) | 帧生成/连续帧/插帧超分选型与 6 天开发方案 |
 
 > 完整文档索引见 [docs/README.md](docs/README.md)。
 
@@ -109,19 +99,20 @@ uv run semantic-tx gui
 | 阶段 | 目标 | 状态 |
 |------|------|------|
 | 阶段一：调研与选型 | 论文综述、开源项目评估、技术路线确定 | ✅ 已完成 |
-| 阶段二：ComfyUI API 原型 | 基于 ComfyUI API 打通端到端流程 | 🔄 进行中 |
-| 阶段三：方案迭代优化 | 模型升级、条件优化、视频级扩展 | 待启动 |
-| 阶段四：工程化 | 脱离 ComfyUI，构建独立可部署系统 | 待启动 |
+| 阶段二：原型搭建 | 打通端到端流程，接收端脱离 ComfyUI 改用 Diffusers 本地推理 | ✅ 已完成 |
+| 阶段三：视频流语义传输 | 输入视频流、输出生成视频流，逼近遥控可用的延迟/清晰度/一致性 | 🔄 进行中 |
+| 阶段四：准实时遥控替代 | 达到尽量替代远程遥控视频的画面输出 | 待启动 |
 
 详见 [项目路线图](docs/ROADMAP.md)。
 
 ## 技术栈
 
 - **开发语言**：Python（uv 管理依赖）
-- **工作流引擎**：ComfyUI（API 模式远程调用）
-- **视觉理解**：Qwen-VL 等多模态大模型
-- **图像生成**：Z-Image-Turbo + ControlNet Union（当前基线）
-- **视频生成**：Wan2.x（规划中）
+- **接收端推理**：Diffusers + Z-Image-Turbo（GGUF Q8_0）+ ControlNet Union（帧生成主线调研中：FLUX.2-klein-9B）
+- **视觉理解**：Qwen2.5-VL 多模态大模型（规划升级 Qwen3-VL）
+- **条件提取**：OpenCV Canny（规划增加深度图）
+- **中继传输**：SocketRelay（TCP 长度前缀协议，双机部署）
+- **CLI / GUI**：click 子命令体系（`semantic-tx`）/ Gradio 可视化界面
 
 ## 参与开发
 

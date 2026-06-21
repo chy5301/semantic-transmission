@@ -49,7 +49,7 @@ uv sync
 | `--vlm-model-path` | TEXT | 否 | `$MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct` | VLM 模型本地路径 |
 | `--relay-host` | TEXT | 是 | - | 接收端机器 IP 地址 |
 | `--relay-port` | INT | 否 | 9000 | 接收端监听端口 |
-| `--seed` | INT | 否 | - | KSampler 随机种子 |
+| `--seed` | INT | 否 | - | 扩散采样随机种子 |
 
 ### 示例
 
@@ -108,7 +108,7 @@ semantic-tx receiver --relay-host 0.0.0.0 --relay-port 9000
 | `--threshold1` | INT | 否 | 100 | Canny 低阈值 |
 | `--threshold2` | INT | 否 | 200 | Canny 高阈值 |
 | `--output-dir` | PATH | 否 | output/demo | 输出目录 |
-| `--seed` | INT | 否 | - | KSampler 随机种子 |
+| `--seed` | INT | 否 | - | 扩散采样随机种子 |
 | `--vlm-model` | TEXT | 否 | - | VLM 模型名称 |
 | `--vlm-model-path` | TEXT | 否 | `$MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B-Instruct` | VLM 模型本地路径 |
 
@@ -152,7 +152,7 @@ semantic-tx demo --image photo.jpg --auto-prompt --seed 42
 | `--skip-errors` | FLAG | 否 | - | 跳过失败图片继续处理 |
 | `--threshold1` | INT | 否 | 100 | Canny 低阈值 |
 | `--threshold2` | INT | 否 | 200 | Canny 高阈值 |
-| `--seed` | INT | 否 | - | KSampler 随机种子 |
+| `--seed` | INT | 否 | - | 扩散采样随机种子 |
 
 ### 示例
 
