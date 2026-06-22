@@ -85,7 +85,11 @@ def main(argv: list[str] | None = None) -> int:
 
     prompts = None
     if args.prompts is not None and args.prompts.is_file():
-        prompts = load_prompts(args.prompts)
+        try:
+            prompts = load_prompts(args.prompts)
+        except (json.JSONDecodeError, OSError, KeyError, TypeError) as e:
+            print(f"错误: 无法解析 prompts 文件 {args.prompts}: {e}", file=sys.stderr)
+            return 1
 
     try:
         report = evaluate_video(

@@ -88,3 +88,48 @@ def test_frame_count_mismatch_returns_1(tmp_path):
         ]
     )
     assert code == 1
+
+
+def test_nonexistent_restored_returns_1(tmp_path):
+    orig = tmp_path / "orig.mp4"
+    _make_video(orig, 2, 100)
+    code = main(["--original", str(orig), "--restored", str(tmp_path / "nope.mp4")])
+    assert code == 1
+
+
+def test_prompts_happy_path(tmp_path):
+    orig = tmp_path / "orig.mp4"
+    rest = tmp_path / "rest.mp4"
+    _make_video(orig, 3, 100)
+    _make_video(rest, 3, 110)
+    prompts_file = tmp_path / "receiver_summary.json"
+    prompts_file.write_text(
+        json.dumps(
+            {
+                "frames": [
+                    {"index": 0, "prompt": "a"},
+                    {"index": 1, "prompt": "b"},
+                    {"index": 2, "prompt": "c"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "result.json"
+    code = main(
+        [
+            "--original",
+            str(orig),
+            "--restored",
+            str(rest),
+            "--prompts",
+            str(prompts_file),
+            "--output",
+            str(out),
+            "--no-lpips",
+            "--no-clip",
+        ]
+    )
+    assert code == 0
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["frame_count"] == 3
