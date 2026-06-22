@@ -79,18 +79,18 @@ def identity_postprocess(frames: list[Image.Image]) -> list[Image.Image]:
 
 ## 4. 数据流
 
-```
-input.mp4
-  └─ video_io.read_frames ─→ (frames: list[RGB ndarray], meta{fps,w,h,n})
-       └─ 逐帧 i:
-            edge = LocalCannyExtractor.extract(frames[i]) → load_as_rgb → PIL（内存，不落盘）
-            FrameInput(edge_image=edge, prompt_text=prompt_i, seed=seed,
-                       metadata={"name": f"frame_{i:04d}", "index": i})
-       └─ receiver.process_batch(frame_inputs) → BatchOutput(images: list[Image|None], stats: BatchResult)
-       └─ images = _fill_failed_frames(images)      # 失败帧用上一成功帧填充
-       └─ images = frame_postprocess(images)         # D1 恒等
-       └─ video_io.write_frames(output.mp4, images, fps=meta.fps)
-  └─ 写 summary.json（BatchResult.to_dict()：逐帧计时 + 成功率 + 总耗时）
+```mermaid
+flowchart TD
+    A["input.mp4"] --> B["video_io.read_frames\n→ frames: list[RGB ndarray]\nmeta{fps, w, h, n}"]
+    B --> C["逐帧 i\nedge = LocalCannyExtractor.extract\n→ load_as_rgb → PIL\n不落盘，内存传递"]
+    C --> D["构造 FrameInput\nedge_image / prompt_text\nseed / metadata"]
+    D --> E["receiver.process_batch\n→ BatchOutput\nimages: list[Image|None]\nstats: BatchResult"]
+    E --> F["_fill_failed_frames\n失败帧用上一成功帧填充"]
+    F --> G["frame_postprocess\nD1 恒等透传\nD5 插帧 / D6 超分在此扩展"]
+    G --> H["video_io.write_frames\noutput.mp4\nfps = meta.fps（D5 插帧前不变）"]
+    H --> I["写 summary.json\nBatchResult.to_dict\n逐帧计时 + 成功率 + 总耗时"]
+
+    B -. "prompt 策略\n--prompt: 整段共用\n--auto-prompt: 逐帧 VLM\n二者互斥" .-> D
 ```
 
 **prompt 策略（沿用 demo/batch_demo 约定）**
