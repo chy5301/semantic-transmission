@@ -210,6 +210,9 @@ class VideoRelayReceiver:
                     total = int(packet.metadata["total_frames"])
                     fps = float(packet.metadata["fps"])
                     batch = BatchResult(total=total)
+                if idx in buffer:
+                    # 重复 frame_index：跳过重复处理与计数（防御异常发送端重传）
+                    continue
                 seed = packet.metadata.get("seed")
                 sample = SampleResult(name=f"frame_{idx:04d}", status="success")
                 t0 = time.time()
@@ -221,8 +224,8 @@ class VideoRelayReceiver:
                     img = None
                     sample.status = "failed"
                     sample.error = str(e)
-                    if idx not in buffer:  # only record first failure for this index
-                        failed_indices.append(idx)
+                    # 上面的去重 continue 已保证每个 idx 只到达此处一次
+                    failed_indices.append(idx)
                 sample.timings["process"] = time.time() - t0
                 batch.add_sample(sample)
                 buffer[idx] = img

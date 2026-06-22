@@ -258,6 +258,9 @@ def test_receiver_duplicate_frame_index_no_premature_exit(tmp_path):
 
     frames, _ = read_frames(out)
     assert len(frames) == 3  # 3 个唯一帧均已还原
+    # 去重后重复包不应过计数：success 等于唯一帧数而非收到的包数
+    assert box[0].stats.total == 3
+    assert box[0].stats.success == 3
 
 
 def test_sender_receiver_end_to_end(tmp_path):
