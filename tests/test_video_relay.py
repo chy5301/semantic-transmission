@@ -176,6 +176,7 @@ def test_receiver_assembles_video(tmp_path):
     time.sleep(0.2)
     _send_packets("127.0.0.1", port, 3)
     t.join(timeout=10.0)
+    assert not t.is_alive(), "receiver thread timed out"
 
     frames, meta = read_frames(out)
     assert len(frames) == 3
@@ -184,6 +185,7 @@ def test_receiver_assembles_video(tmp_path):
     assert result.stats.success == 3
     assert result.prompts == ["idx-0", "idx-1", "idx-2"]
     assert abs(result.fps - 8.0) < 0.01
+    assert result.output_path == out
 
 
 def test_receiver_fills_failed_frames(tmp_path):
@@ -203,6 +205,7 @@ def test_receiver_fills_failed_frames(tmp_path):
     time.sleep(0.2)
     _send_packets("127.0.0.1", port, 3)
     t.join(timeout=10.0)
+    assert not t.is_alive(), "receiver thread timed out"
 
     frames, _ = read_frames(out)
     assert len(frames) == 3  # 失败帧被填充，帧数守恒
@@ -235,6 +238,7 @@ def test_sender_receiver_end_to_end(tmp_path):
         src, "127.0.0.1", port, prompt_fn=lambda i, f: f"idx-{i}"
     )
     t.join(timeout=15.0)
+    assert not t.is_alive(), "receiver thread timed out"
 
     frames, _ = read_frames(out)
     assert len(frames) == 4

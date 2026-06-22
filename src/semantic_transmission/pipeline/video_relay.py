@@ -190,7 +190,12 @@ class VideoRelayReceiver:
 
         try:
             while total is None or received < total:
-                packet = relay.receive(timeout=timeout)
+                try:
+                    packet = relay.receive(timeout=timeout)
+                except ConnectionError:
+                    raise
+                except (TimeoutError, OSError, EOFError) as exc:
+                    raise ConnectionError("收齐前连接中断") from exc
                 idx = int(packet.metadata["frame_index"])
                 if total is None:
                     total = int(packet.metadata["total_frames"])
@@ -215,7 +220,8 @@ class VideoRelayReceiver:
         finally:
             relay.close()
 
-        assert batch is not None and total is not None
+        if batch is None or total is None:
+            raise ValueError("未收到任何数据包，无法合成视频")
         batch.total_time = sum(s.timings.get("process", 0) for s in batch.samples)
         ordered = _order_buffer(buffer, total)
         filled = _fill_failed_frames(ordered)
