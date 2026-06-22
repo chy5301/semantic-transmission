@@ -22,6 +22,9 @@ config.local.toml
 .playwright-mcp/
 .brainstorm-seed.md
 
+# structured-workflow / SDD 临时工作区（brief / report / diff / ledger 等 scratch）
+.superpowers/
+
 # 脚本输出（output/demo/ 下的测试结果纳入版本管理，其余忽略）
 output/*
 !output/demo/
