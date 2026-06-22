@@ -15,9 +15,15 @@ from pathlib import Path
 from PIL import Image
 
 from semantic_transmission.common.image_io import load_as_rgb
-from semantic_transmission.common.video_io import read_frames
-from semantic_transmission.pipeline.relay import SocketRelaySender, TransmissionPacket
-from semantic_transmission.pipeline.video_pipeline import PromptFn
+from semantic_transmission.common.video_io import read_frames, write_frames
+from semantic_transmission.pipeline.batch_processor import BatchResult, SampleResult
+from semantic_transmission.pipeline.relay import (
+    SocketRelayReceiver,
+    SocketRelaySender,
+    TransmissionPacket,
+)
+from semantic_transmission.pipeline.video_pipeline import PromptFn, _fill_failed_frames
+from semantic_transmission.receiver.base import BaseReceiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
@@ -124,4 +130,106 @@ class VideoRelaySender:
         return stats
 
 
-__all__ = ["VideoSendStats", "VideoRelaySender"]
+@dataclass
+class VideoReceiveResult:
+    """接收端结果：统计 + fps + 逐帧 prompt + 输出路径。"""
+
+    stats: BatchResult
+    fps: float
+    prompts: list[str]
+    output_path: Path
+
+
+def _order_buffer(
+    buffer: dict[int, Image.Image | None], total: int
+) -> list[Image.Image | None]:
+    """按 frame_index 排序为有序列表，缺失帧位填 None。"""
+    return [buffer.get(i) for i in range(total)]
+
+
+class VideoRelayReceiver:
+    """接收端编排：收包 → 按 index 缓冲 → process → 收齐合成视频。"""
+
+    def __init__(self, receiver: BaseReceiver):
+        self.receiver = receiver
+
+    def run(
+        self,
+        host: str,
+        port: int,
+        output_path,
+        *,
+        timeout: float | None = None,
+    ) -> VideoReceiveResult:
+        """监听端口、逐帧接收并还原，收齐 total_frames 后合成视频。
+
+        Args:
+            host: 监听地址。
+            port: 监听端口。
+            output_path: 输出视频路径。
+            timeout: accept/receive 超时秒数，None 为无限等待。
+
+        Returns:
+            VideoReceiveResult（含 BatchResult、fps、逐帧 prompt、输出路径）。
+
+        Raises:
+            ConnectionError: 收齐前连接中断。
+            ValueError: 全部帧失败（无可用帧合成）。
+        """
+        output_path = Path(output_path)
+        relay = SocketRelayReceiver(host, port)
+        relay.start()
+        relay.accept(timeout=timeout)
+
+        buffer: dict[int, Image.Image | None] = {}
+        prompt_buffer: dict[int, str] = {}
+        total: int | None = None
+        fps: float = 30.0
+        batch: BatchResult | None = None
+        received = 0
+
+        try:
+            while total is None or received < total:
+                packet = relay.receive(timeout=timeout)
+                idx = int(packet.metadata["frame_index"])
+                if total is None:
+                    total = int(packet.metadata["total_frames"])
+                    fps = float(packet.metadata["fps"])
+                    batch = BatchResult(total=total)
+                seed = packet.metadata.get("seed")
+                sample = SampleResult(name=f"frame_{idx:04d}", status="success")
+                t0 = time.time()
+                try:
+                    img = self.receiver.process(
+                        packet.edge_image, packet.prompt_text, seed=seed
+                    )
+                except Exception as e:
+                    img = None
+                    sample.status = "failed"
+                    sample.error = str(e)
+                sample.timings["process"] = time.time() - t0
+                batch.add_sample(sample)
+                buffer[idx] = img
+                prompt_buffer[idx] = packet.prompt_text
+                received += 1
+        finally:
+            relay.close()
+
+        assert batch is not None and total is not None
+        batch.total_time = sum(s.timings.get("process", 0) for s in batch.samples)
+        ordered = _order_buffer(buffer, total)
+        filled = _fill_failed_frames(ordered)
+        write_frames(output_path, filled, fps=fps)
+        prompts = [prompt_buffer.get(i, "") for i in range(total)]
+        return VideoReceiveResult(
+            stats=batch, fps=fps, prompts=prompts, output_path=output_path
+        )
+
+
+__all__ = [
+    "VideoSendStats",
+    "VideoRelaySender",
+    "VideoReceiveResult",
+    "VideoRelayReceiver",
+    "_order_buffer",
+]
