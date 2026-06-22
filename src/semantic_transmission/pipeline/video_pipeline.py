@@ -115,5 +115,4 @@ __all__ = [
     "identity_postprocess",
     "PromptFn",
     "VideoPipeline",
-    "_fill_failed_frames",
 ]

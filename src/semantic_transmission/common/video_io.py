@@ -36,7 +36,7 @@ def read_frames(path: str | Path) -> tuple[list[NDArray[np.uint8]], VideoMeta]:
         ``(frames, meta)``，frames 为 ``(H, W, 3)`` uint8 RGB 数组列表。
 
     Raises:
-        ValueError: 视频无可解码帧。
+        ValueError: 视频无可解码帧，或视频损坏/无法解码。
     """
     path = Path(path)
     try:
