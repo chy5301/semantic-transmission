@@ -10,6 +10,7 @@ from semantic_transmission.cli.download import download
 from semantic_transmission.cli.gui import gui
 from semantic_transmission.cli.receiver import receiver
 from semantic_transmission.cli.sender import sender
+from semantic_transmission.cli.video import video
 
 
 @click.group()
@@ -28,6 +29,7 @@ cli.add_command(batch_demo)
 cli.add_command(check)
 cli.add_command(download)
 cli.add_command(gui)
+cli.add_command(video)
 
 if __name__ == "__main__":
     cli()
