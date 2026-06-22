@@ -117,3 +117,33 @@ def test_run_passes_frame_ndarray_to_prompt_fn(tmp_path):
     assert [s[0] for s in seen] == [0, 1]
     assert seen[0][1] == "ndarray"
     assert seen[0][2] == (48, 64, 3)
+
+
+def test_run_respects_explicit_fps(tmp_path):
+    """显式传入的 fps 必须被写入输出视频，不得被 meta.fps 覆盖。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 4)  # 以 8.0 fps 写入
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())
+
+    pipe.run(src, tmp_path / "out.mp4", prompt_fn=lambda i, f: "t", fps=5.0)
+
+    _, meta = read_frames(tmp_path / "out.mp4")
+    assert abs(meta.fps - 5.0) < 1.0, f"期望输出 fps≈5.0，实际 {meta.fps}"
+
+
+def test_run_survives_prompt_fn_failure(tmp_path):
+    """prompt_fn 对某帧抛异常时，该帧回退空 prompt，整段正常完成。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 3)
+
+    def flaky_prompt(i, frame):
+        if i == 1:
+            raise RuntimeError("模拟 VLM 单帧失败")
+        return f"ok_{i}"
+
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())
+    stats = pipe.run(src, tmp_path / "out.mp4", prompt_fn=flaky_prompt)
+
+    read, _ = read_frames(tmp_path / "out.mp4")
+    assert len(read) == 3, "输出帧数应等于输入帧数"
+    assert stats.total == 3

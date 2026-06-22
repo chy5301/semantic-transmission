@@ -100,6 +100,8 @@ def video(
     click.echo(f"处理视频: {input_path} → {output_path}")
     try:
         stats = pipeline.run(input_path, output_path, prompt_fn, seed=seed, fps=fps)
+    except Exception as e:
+        raise click.ClickException(f"视频处理失败: {e}") from e
     finally:
         if vlm_sender is not None:
             vlm_sender.unload()

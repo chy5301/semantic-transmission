@@ -94,10 +94,14 @@ class VideoPipeline:
         for i, frame in enumerate(frames):
             edge_np = self.extractor.extract(frame)
             edge_img = load_as_rgb(edge_np)
+            try:
+                prompt_text = prompt_fn(i, frame)
+            except Exception:
+                prompt_text = ""
             frame_inputs.append(
                 FrameInput(
                     edge_image=edge_img,
-                    prompt_text=prompt_fn(i, frame),
+                    prompt_text=prompt_text,
                     seed=seed,
                     metadata={"name": f"frame_{i:04d}", "index": i},
                 )
@@ -106,7 +110,7 @@ class VideoPipeline:
         output = self.receiver.process_batch(frame_inputs)
         filled = _fill_failed_frames(output.images)
         processed = self.frame_postprocess(filled)
-        write_frames(output_path, processed, fps=fps or meta.fps)
+        write_frames(output_path, processed, fps=fps if fps is not None else meta.fps)
         return output.stats
 
 

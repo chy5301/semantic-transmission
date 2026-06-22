@@ -37,6 +37,10 @@ def read_frames(path: str | Path) -> tuple[list[NDArray[np.uint8]], VideoMeta]:
 
     Raises:
         ValueError: 视频无可解码帧，或视频损坏/无法解码。
+
+    Note:
+        元数据缺失/非法 fps（<= 0）时回退为 30.0，保证 VideoMeta.fps 恒为正，
+        避免下游 ffmpeg 收到 0 帧率导致崩溃。
     """
     path = Path(path)
     try:
@@ -56,6 +60,8 @@ def read_frames(path: str | Path) -> tuple[list[NDArray[np.uint8]], VideoMeta]:
 
     height, width = frames[0].shape[:2]
     fps = float(meta.get("fps", 0.0))
+    if fps <= 0:
+        fps = 30.0
     return frames, VideoMeta(
         fps=fps, width=width, height=height, frame_count=len(frames)
     )
