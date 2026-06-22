@@ -80,8 +80,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     device = resolve_device(args.device)
-    orig_frames, _ = read_frames(args.original)
-    rest_frames, _ = read_frames(args.restored)
+    try:
+        orig_frames, _ = read_frames(args.original)
+    except ValueError as e:
+        print(f"错误: 无法解码原视频 {args.original}: {e}", file=sys.stderr)
+        return 1
+    try:
+        rest_frames, _ = read_frames(args.restored)
+    except ValueError as e:
+        print(f"错误: 无法解码还原视频 {args.restored}: {e}", file=sys.stderr)
+        return 1
 
     prompts = None
     if args.prompts is not None and args.prompts.is_file():
@@ -90,6 +98,11 @@ def main(argv: list[str] | None = None) -> int:
         except (json.JSONDecodeError, OSError, KeyError, TypeError) as e:
             print(f"错误: 无法解析 prompts 文件 {args.prompts}: {e}", file=sys.stderr)
             return 1
+        if prompts is None:
+            print(
+                f"提示: prompts 文件 {args.prompts} 无帧记录，跳过 CLIP",
+                file=sys.stderr,
+            )
 
     try:
         report = evaluate_video(

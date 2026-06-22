@@ -97,6 +97,25 @@ def test_nonexistent_restored_returns_1(tmp_path):
     assert code == 1
 
 
+def test_corrupt_restored_returns_1(tmp_path):
+    """还原视频文件损坏（非视频内容）：read_frames 抛 ValueError，脚本返回 1。"""
+    orig = tmp_path / "orig.mp4"
+    _make_video(orig, 2, 100)
+    rest = tmp_path / "rest.mp4"
+    rest.write_bytes(b"not a video")
+    code = main(
+        [
+            "--original",
+            str(orig),
+            "--restored",
+            str(rest),
+            "--no-lpips",
+            "--no-clip",
+        ]
+    )
+    assert code == 1
+
+
 def test_prompts_happy_path(tmp_path):
     orig = tmp_path / "orig.mp4"
     rest = tmp_path / "rest.mp4"

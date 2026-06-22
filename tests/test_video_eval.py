@@ -1,5 +1,7 @@
 """video_eval 逐帧 + 整段评估测试（无 GPU：仅 PSNR/SSIM + mock LPIPS）。"""
 
+import json
+import math
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -57,6 +59,41 @@ def test_summarize_metrics_handles_none():
     assert summary["lpips"]["count"] == 1
     assert summary["clip_score"]["count"] == 0
     assert summary["clip_score"]["mean"] is None
+
+
+def test_identical_frames_psnr_is_none_not_inf():
+    """完全相同的帧：psnr 应为 None（非 inf），summary 不含 inf，报告可 JSON 序列化。"""
+    frame = _frame(128)
+    report = evaluate_video([frame], [frame.copy()], with_lpips=False, with_clip=False)
+    assert report["frames"][0]["metrics"]["psnr"] is None, (
+        "identical frame psnr must be None"
+    )
+    summary_psnr = report["summary"]["psnr"]
+    assert summary_psnr["mean"] is None or math.isfinite(summary_psnr["mean"]), (
+        "summary psnr mean must be finite or None, not inf"
+    )
+    dumped = json.dumps(report)
+    assert "Infinity" not in dumped, "JSON report must not contain bare Infinity"
+    assert "NaN" not in dumped, "JSON report must not contain bare NaN"
+
+
+def test_mixed_identical_and_different_frames_summary():
+    """一帧相同 + 一帧不同：summary psnr count == 1，mean 有限。"""
+    frame_same = _frame(128)
+    orig = [frame_same, _frame(100)]
+    rest = [frame_same.copy(), _frame(110)]
+    report = evaluate_video(orig, rest, with_lpips=False, with_clip=False)
+    # 第 0 帧：identical → psnr None
+    assert report["frames"][0]["metrics"]["psnr"] is None
+    # 第 1 帧：differing → psnr finite float
+    assert isinstance(report["frames"][1]["metrics"]["psnr"], float)
+    assert math.isfinite(report["frames"][1]["metrics"]["psnr"])
+    # summary 只统计有限帧
+    assert report["summary"]["psnr"]["count"] == 1
+    assert math.isfinite(report["summary"]["psnr"]["mean"])
+    # JSON 可序列化
+    dumped = json.dumps(report)
+    assert "Infinity" not in dumped
 
 
 def test_lpips_with_mock_model(monkeypatch):

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import math
 import statistics
 
 from .perceptual_metrics import compute_lpips, load_lpips_model
@@ -16,11 +17,13 @@ _METRIC_NAMES = ("psnr", "ssim", "lpips", "clip_score")
 
 
 def summarize_metrics(frames: list[dict]) -> dict:
-    """对逐帧指标求均值/标准差/有效计数，None 值跳过。"""
+    """对逐帧指标求均值/标准差/有效计数，None 值和非有限值（inf/nan）跳过。"""
     summary: dict = {}
     for name in _METRIC_NAMES:
         values = [
-            f["metrics"][name] for f in frames if f["metrics"].get(name) is not None
+            f["metrics"][name]
+            for f in frames
+            if f["metrics"].get(name) is not None and math.isfinite(f["metrics"][name])
         ]
         if values:
             mean = statistics.mean(values)
@@ -73,8 +76,9 @@ def evaluate_video(
 
     frames: list[dict] = []
     for i, (orig, rest) in enumerate(zip(original_frames, restored_frames)):
+        raw_psnr = compute_psnr(orig, rest)
         metrics: dict = {
-            "psnr": compute_psnr(orig, rest),
+            "psnr": raw_psnr if math.isfinite(raw_psnr) else None,
             "ssim": compute_ssim(orig, rest),
             "lpips": None,
             "clip_score": None,
