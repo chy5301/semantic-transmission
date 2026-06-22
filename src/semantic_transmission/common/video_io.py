@@ -39,12 +39,17 @@ def read_frames(path: str | Path) -> tuple[list[NDArray[np.uint8]], VideoMeta]:
         ValueError: 视频无可解码帧。
     """
     path = Path(path)
-    reader = imageio.get_reader(path)
     try:
-        meta = reader.get_meta_data()
-        frames = [np.asarray(frame, dtype=np.uint8) for frame in reader]
-    finally:
-        reader.close()
+        reader = imageio.get_reader(path)
+        try:
+            meta = reader.get_meta_data()
+            frames = [np.asarray(frame, dtype=np.uint8) for frame in reader]
+        finally:
+            reader.close()
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"无法解码视频: {path}") from e
 
     if not frames:
         raise ValueError(f"视频无可解码帧: {path}")

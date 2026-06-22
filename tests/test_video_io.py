@@ -27,3 +27,11 @@ def test_write_empty_frames_raises(tmp_path):
     """空帧列表抛 ValueError。"""
     with pytest.raises(ValueError):
         write_frames(tmp_path / "x.mp4", [], fps=10.0)
+
+
+def test_read_corrupt_file_raises(tmp_path):
+    """损坏/非视频文件抛 ValueError。"""
+    broken = tmp_path / "broken.mp4"
+    broken.write_bytes(b"not a real video")
+    with pytest.raises(ValueError):
+        read_frames(broken)
