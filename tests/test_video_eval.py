@@ -96,6 +96,28 @@ def test_mixed_identical_and_different_frames_summary():
     assert "Infinity" not in dumped
 
 
+def test_skip_indices_marks_frame_as_skipped_and_excludes_from_summary():
+    """skip_indices=[k] 使第 k 帧指标全为 None/skipped=True，且不计入 summary count。"""
+    orig = [_frame(100), _frame(150), _frame(200)]
+    rest = [_frame(110), _frame(151), _frame(210)]
+    report = evaluate_video(
+        orig, rest, with_lpips=False, with_clip=False, skip_indices=[1]
+    )
+    assert report["frame_count"] == 3
+    assert len(report["frames"]) == 3
+
+    skipped = report["frames"][1]
+    assert skipped["index"] == 1
+    assert skipped.get("skipped") is True
+    assert skipped["metrics"]["psnr"] is None
+    assert skipped["metrics"]["ssim"] is None
+    assert skipped["metrics"]["lpips"] is None
+    assert skipped["metrics"]["clip_score"] is None
+
+    # summary count should only include non-skipped frames (0 and 2)
+    assert report["summary"]["psnr"]["count"] == 2
+
+
 def test_lpips_with_mock_model(monkeypatch):
     import torch
 

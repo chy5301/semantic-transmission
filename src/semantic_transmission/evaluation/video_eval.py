@@ -42,6 +42,7 @@ def evaluate_video(
     device: str | None = None,
     with_lpips: bool = True,
     with_clip: bool = True,
+    skip_indices: list[int] | None = None,
 ) -> dict:
     """逐帧评估原视频帧 vs 还原视频帧，并汇总整段统计。
 
@@ -52,6 +53,7 @@ def evaluate_video(
         device: 计算设备，None 自动。
         with_lpips: 是否计算 LPIPS（关闭则跳过模型加载）。
         with_clip: 是否计算 CLIP Score（需 prompts，否则逐帧跳过）。
+        skip_indices: 要跳过的帧索引（填充帧），这些帧的指标记为 None/skipped。
 
     Returns:
         ``{"frame_count": N, "frames": [...], "summary": {...}}``。
@@ -68,6 +70,8 @@ def evaluate_video(
             f"prompts 长度 {len(prompts)} 与帧数 {len(original_frames)} 不符"
         )
 
+    _skip = set(skip_indices) if skip_indices else set()
+
     lpips_model = load_lpips_model(device=device) if with_lpips else None
     clip_model = None
     clip_processor = None
@@ -76,6 +80,20 @@ def evaluate_video(
 
     frames: list[dict] = []
     for i, (orig, rest) in enumerate(zip(original_frames, restored_frames)):
+        if i in _skip:
+            frames.append(
+                {
+                    "index": i,
+                    "skipped": True,
+                    "metrics": {
+                        "psnr": None,
+                        "ssim": None,
+                        "lpips": None,
+                        "clip_score": None,
+                    },
+                }
+            )
+            continue
         raw_psnr = compute_psnr(orig, rest)
         metrics: dict = {
             "psnr": raw_psnr if math.isfinite(raw_psnr) else None,

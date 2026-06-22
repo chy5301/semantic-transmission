@@ -31,7 +31,6 @@ from semantic_transmission.receiver import create_receiver
 )
 def video_receiver(relay_host, relay_port, output_path, timeout):
     """视频流双机接收端：逐帧接收还原 → 收齐合成视频。"""
-    output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     click.echo(f"监听 {relay_host}:{relay_port}，输出 → {output_path}")
@@ -53,6 +52,7 @@ def video_receiver(relay_host, relay_port, output_path, timeout):
     summary["frames"] = [
         {"index": i, "prompt": p} for i, p in enumerate(result.prompts)
     ]
+    summary["failed_indices"] = result.failed_indices
     summary_path = output_path.parent / "receiver_summary.json"
     summary_path.write_text(
         json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"

@@ -46,6 +46,18 @@ def load_prompts(prompts_path: Path) -> list[str] | None:
     return [f.get("prompt", "") for f in ordered]
 
 
+def load_failed_indices(prompts_path: Path) -> list[int] | None:
+    """从 receiver_summary.json 读取 failed_indices（可选字段）。"""
+    try:
+        data = json.loads(prompts_path.read_text(encoding="utf-8"))
+        raw = data.get("failed_indices")
+        if not isinstance(raw, list):
+            return None
+        return [int(x) for x in raw]
+    except (json.JSONDecodeError, OSError, ValueError, TypeError):
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="评估视频还原质量：逐帧 PSNR/SSIM/LPIPS/CLIP + 整段汇总",
@@ -92,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     prompts = None
+    skip_indices = None
     if args.prompts is not None and args.prompts.is_file():
         try:
             prompts = load_prompts(args.prompts)
@@ -103,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"提示: prompts 文件 {args.prompts} 无帧记录，跳过 CLIP",
                 file=sys.stderr,
             )
+        skip_indices = load_failed_indices(args.prompts)
 
     try:
         report = evaluate_video(
@@ -112,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
             device=device,
             with_lpips=not args.no_lpips,
             with_clip=not args.no_clip,
+            skip_indices=skip_indices,
         )
     except ValueError as e:
         print(f"错误: {e}", file=sys.stderr)

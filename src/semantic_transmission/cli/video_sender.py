@@ -62,9 +62,9 @@ def video_sender(
     summary_path,
 ):
     """视频流双机发送端：逐帧 Canny + 描述 → 经 relay 发送。"""
-    if not prompt and not auto_prompt:
+    if prompt is None and not auto_prompt:
         raise click.UsageError("必须指定 --prompt 或 --auto-prompt 之一")
-    if prompt and auto_prompt:
+    if prompt is not None and auto_prompt:
         raise click.UsageError("--prompt 和 --auto-prompt 不能同时使用")
 
     cfg = load_config()
@@ -109,7 +109,6 @@ def video_sender(
         if vlm_sender is not None:
             vlm_sender.unload()
 
-    summary_path = Path(summary_path)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(
         json.dumps(stats.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"

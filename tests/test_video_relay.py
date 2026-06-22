@@ -213,6 +213,53 @@ def test_receiver_fills_failed_frames(tmp_path):
     assert box[0].stats.success == 2
 
 
+def test_receiver_failed_indices_in_result(tmp_path):
+    """失败帧的索引应出现在 result.failed_indices 中。"""
+    port = _find_free_port()
+    out = tmp_path / "out.mp4"
+    box = []
+
+    def recv_thread():
+        box.append(
+            VideoRelayReceiver(_FakeReceiver(fail_indices=[0, 2])).run(
+                "127.0.0.1", port, out, timeout=5.0
+            )
+        )
+
+    t = threading.Thread(target=recv_thread)
+    t.start()
+    time.sleep(0.2)
+    _send_packets("127.0.0.1", port, 3)
+    t.join(timeout=10.0)
+    assert not t.is_alive(), "receiver thread timed out"
+
+    result = box[0]
+    assert result.failed_indices == [0, 2]
+
+
+def test_receiver_duplicate_frame_index_no_premature_exit(tmp_path):
+    """重复 frame_index 不应导致提前退出——所有唯一帧仍需收齐。"""
+    port = _find_free_port()
+    out = tmp_path / "out.mp4"
+    box = []
+
+    def recv_thread():
+        box.append(
+            VideoRelayReceiver(_FakeReceiver()).run("127.0.0.1", port, out, timeout=5.0)
+        )
+
+    t = threading.Thread(target=recv_thread)
+    t.start()
+    time.sleep(0.2)
+    # 发送索引序列：0, 0 (重复), 1, 2 —— 3 个唯一帧，total_frames=3
+    _send_packets("127.0.0.1", port, 3, indices=[0, 0, 1, 2])
+    t.join(timeout=10.0)
+    assert not t.is_alive(), "receiver thread timed out"
+
+    frames, _ = read_frames(out)
+    assert len(frames) == 3  # 3 个唯一帧均已还原
+
+
 def test_sender_receiver_end_to_end(tmp_path):
     src = tmp_path / "in.mp4"
     write_frames(

@@ -116,7 +116,9 @@ class VideoRelaySender:
                 relay.send(packet)
                 relay_elapsed = time.time() - t0
                 if save_frames_dir is not None:
-                    edge_img.save(save_frames_dir / f"frame_{i:04d}_edge.png")
+                    (save_frames_dir / f"frame_{i:04d}_edge.png").write_bytes(
+                        edge_bytes
+                    )
                 stats.frames.append(
                     {
                         "index": i,
@@ -132,12 +134,13 @@ class VideoRelaySender:
 
 @dataclass
 class VideoReceiveResult:
-    """接收端结果：统计 + fps + 逐帧 prompt + 输出路径。"""
+    """接收端结果：统计 + fps + 逐帧 prompt + 输出路径 + 失败帧索引。"""
 
     stats: BatchResult
     fps: float
     prompts: list[str]
     output_path: Path
+    failed_indices: list[int] = field(default_factory=list)
 
 
 def _order_buffer(
@@ -176,26 +179,32 @@ class VideoRelayReceiver:
             ConnectionError: 收齐前连接中断。
             ValueError: 全部帧失败（无可用帧合成）。
         """
-        output_path = Path(output_path)
         relay = SocketRelayReceiver(host, port)
-        relay.start()
-        relay.accept(timeout=timeout)
 
         buffer: dict[int, Image.Image | None] = {}
         prompt_buffer: dict[int, str] = {}
         total: int | None = None
         fps: float = 30.0
         batch: BatchResult | None = None
-        received = 0
+        failed_indices: list[int] = []
 
         try:
-            while total is None or received < total:
+            relay.start()
+            relay.accept(timeout=timeout)
+            t_start = time.time()
+            while total is None or len(buffer) < total:
                 try:
                     packet = relay.receive(timeout=timeout)
                 except ConnectionError:
                     raise
                 except (TimeoutError, OSError, EOFError) as exc:
                     raise ConnectionError("收齐前连接中断") from exc
+                if (
+                    packet.metadata.get("frame_index") is None
+                    or packet.metadata.get("total_frames") is None
+                    or packet.metadata.get("fps") is None
+                ):
+                    raise ConnectionError("收到缺少必要 metadata 字段的包")
                 idx = int(packet.metadata["frame_index"])
                 if total is None:
                     total = int(packet.metadata["total_frames"])
@@ -212,23 +221,28 @@ class VideoRelayReceiver:
                     img = None
                     sample.status = "failed"
                     sample.error = str(e)
+                    if idx not in buffer:  # only record first failure for this index
+                        failed_indices.append(idx)
                 sample.timings["process"] = time.time() - t0
                 batch.add_sample(sample)
                 buffer[idx] = img
                 prompt_buffer[idx] = packet.prompt_text
-                received += 1
         finally:
             relay.close()
 
         if batch is None or total is None:
             raise ValueError("未收到任何数据包，无法合成视频")
-        batch.total_time = sum(s.timings.get("process", 0) for s in batch.samples)
+        batch.total_time = time.time() - t_start
         ordered = _order_buffer(buffer, total)
         filled = _fill_failed_frames(ordered)
         write_frames(output_path, filled, fps=fps)
         prompts = [prompt_buffer.get(i, "") for i in range(total)]
         return VideoReceiveResult(
-            stats=batch, fps=fps, prompts=prompts, output_path=output_path
+            stats=batch,
+            fps=fps,
+            prompts=prompts,
+            output_path=output_path,
+            failed_indices=sorted(failed_indices),
         )
 
 
