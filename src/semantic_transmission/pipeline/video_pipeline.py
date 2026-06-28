@@ -75,6 +75,7 @@ class VideoPipeline:
         prompt_fn: PromptFn,
         seed: int | None = None,
         fps: float | None = None,
+        on_prompts_ready: Callable[[], None] | None = None,
     ) -> BatchResult:
         """跑通一段视频的 video→video 闭环，返回逐帧/整段统计。
 
@@ -84,6 +85,10 @@ class VideoPipeline:
             prompt_fn: ``(frame_index, frame_rgb_ndarray) -> prompt_text``。
             seed: 透传给每帧的随机种子。
             fps: 输出帧率，None 时沿用输入 fps。
+            on_prompts_ready: 全部帧 prompt 生成完毕、接收端 ``process_batch``
+                （加载生成模型）之前调用的钩子。auto-prompt 时由调用方传入
+                ``vlm_sender.unload``，在生成模型上显存前先释放 VLM，避免
+                VLM 与 Diffusers 同驻 24GB 触发 OOM / device_map=auto 的 CPU offload。
 
         Returns:
             BatchResult 逐帧计时 + 成功率统计。
@@ -106,6 +111,11 @@ class VideoPipeline:
                     metadata={"name": f"frame_{i:04d}", "index": i},
                 )
             )
+
+        # VLM 描述阶段已结束：在接收端加载生成模型前释放 VLM 显存，确保两模型
+        # 不同时驻留 GPU（见 on_prompts_ready 说明）。
+        if on_prompts_ready is not None:
+            on_prompts_ready()
 
         output = self.receiver.process_batch(frame_inputs)
         filled = _fill_failed_frames(output.images)

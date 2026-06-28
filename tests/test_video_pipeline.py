@@ -131,6 +131,49 @@ def test_run_respects_explicit_fps(tmp_path):
     assert abs(meta.fps - 5.0) < 1.0, f"期望输出 fps≈5.0，实际 {meta.fps}"
 
 
+def test_run_calls_on_prompts_ready_between_describe_and_generate(tmp_path):
+    """on_prompts_ready 必须在所有帧 describe 之后、任何帧生成之前触发。
+
+    这是显存生命周期的契约：auto-prompt 时调用方传入 vlm_sender.unload，
+    确保 VLM 在接收端加载生成模型前被释放，两模型不同驻 GPU。
+    """
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 3)
+    events: list[str] = []
+
+    class _RecordingReceiver(BaseReceiver):
+        def process(self, edge_image, prompt_text, seed=None):
+            events.append("generate")
+            return Image.new("RGB", (64, 48), color=(0, 255, 0))
+
+    def prompt_fn(i, frame):
+        events.append(f"describe_{i}")
+        return "t"
+
+    def on_ready():
+        events.append("unload")
+
+    pipe = VideoPipeline(_RecordingReceiver(), LocalCannyExtractor())
+    pipe.run(src, tmp_path / "out.mp4", prompt_fn=prompt_fn, on_prompts_ready=on_ready)
+
+    unload_at = events.index("unload")
+    last_describe = max(i for i, e in enumerate(events) if e.startswith("describe"))
+    first_generate = min(i for i, e in enumerate(events) if e == "generate")
+    assert last_describe < unload_at < first_generate, events
+
+
+def test_run_without_on_prompts_ready_still_works(tmp_path):
+    """不传 on_prompts_ready 时（如 --prompt 固定文本）行为不变。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 2)
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())
+
+    stats = pipe.run(src, tmp_path / "out.mp4", prompt_fn=lambda i, f: "t")
+
+    assert stats.total == 2
+    assert stats.success == 2
+
+
 def test_run_survives_prompt_fn_failure(tmp_path):
     """prompt_fn 对某帧抛异常时，该帧回退空 prompt，整段正常完成。"""
     src = tmp_path / "in.mp4"

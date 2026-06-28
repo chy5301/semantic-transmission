@@ -97,12 +97,25 @@ def video(
     pipeline = VideoPipeline(receiver, extractor)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # auto-prompt 时，让 VLM 在所有帧描述完成、接收端加载生成模型之前先卸载，
+    # 避免 VLM 与 Diffusers 同驻 24GB 显存触发 OOM / CPU offload。
+    on_prompts_ready = vlm_sender.unload if vlm_sender is not None else None
+
     click.echo(f"处理视频: {input_path} → {output_path}")
     try:
-        stats = pipeline.run(input_path, output_path, prompt_fn, seed=seed, fps=fps)
+        stats = pipeline.run(
+            input_path,
+            output_path,
+            prompt_fn,
+            seed=seed,
+            fps=fps,
+            on_prompts_ready=on_prompts_ready,
+        )
     except Exception as e:
         raise click.ClickException(f"视频处理失败: {e}") from e
     finally:
+        # 兜底卸载（unload 幂等）：on_prompts_ready 已释放时此处为空操作；
+        # 若在描述阶段就异常退出，则由此处确保 VLM 显存被释放。
         if vlm_sender is not None:
             vlm_sender.unload()
 
