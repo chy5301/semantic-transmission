@@ -95,7 +95,7 @@
 
 **目标**：交付输入视频流、输出生成视频流的程序，逼近遥控可用的延迟/清晰度/一致性
 
-**状态**：进行中（2026-06 启动）。详细编排、风险兜底、验收口径见 [6 天冲刺规划设计](superpowers/specs/2026-06-21-video-stream-6day-plan-design.md)；技术选型依据见 [视频流技术方案](research/2026-06-21-video-stream-tech-scout.md) 与 [2026-06 综合评估](research/2026-06-reevaluation.md)。
+**状态**：进行中。**保底版 M1 单机闭环已达成（2026-06-28）**，目标版顺延 7 月（见下方「实际进展」）。详细编排、风险兜底、验收口径见 [6 天冲刺规划设计](superpowers/specs/2026-06-21-video-stream-6day-plan-design.md)；技术选型依据见 [视频流技术方案](research/2026-06-21-video-stream-tech-scout.md) 与 [2026-06 综合评估](research/2026-06-reevaluation.md)；测试方案与实测基线见 [测试方案 spec](superpowers/specs/2026-06-28-video-stream-test-plan-design.md)。
 
 ### 核心决策（已与负责人确认）
 
@@ -113,6 +113,21 @@
 | D6 6/27 | 接超分 + 流式 I/O 雏形 + 延迟/帧率/一致性测量 + 目标版 PoC 演示 | 写 7 月计划 |
 
 **M1 红线**：D3 保底闭环必达；若 D1–D3 受阻，目标版让位，余量保保底。**保底版用现有 Z-Image 不依赖 klein**，klein 显存/质量风险不影响合同交付。
+
+### 实际进展（2026-06-28 复盘）
+
+6 天冲刺表中**保底版主线（D1–D3）已完成，目标版（D4–D6）整体顺延 7 月**——打通保底版流程后，判断不急于激进塞目标版（遵循「最短路径打通 demo」原则）。
+
+**保底版 M1（合同硬目标）——核心达成：**
+
+- ✅ 离线 video→video 闭环打通（`semantic-tx video --auto-prompt`）；3 组真实行车视频标定（10s / 60 帧 / 640×480，`.h265` 需先 ffmpeg 转码）全 **60/60 帧 100% 成功**
+- ✅ 逐帧 + 整段质量指标：PSNR ~15 / SSIM ~0.75 / LPIPS ~0.45 / CLIP 30.96 ——**保语义和结构、不保像素**（生成式重建的固有特性，目视证实关键物体可识别重建）
+- ✅ 工程化收尾（5 PR 合并 #53–#57）：显存错峰修复（VLM 描述完先卸载再加载 Diffusers，否则两模型同驻 32GB ≫ 24GB 必 OOM）、VLM token 控制、中间产物保存（语义码流 `prompts.json` + 边缘图 + 码率统计）、CLIP 评估 bug 修复、架构演进图、测试方案 spec
+- ⏳ **双机 relay 视频演示暂缓**：relay 代码已就绪（PR #52）、单测通过，是 M1 完整验收（单机 + 双机各一次）的最后一块，按需补
+
+**关键实测洞察**（详见 [测试方案 spec](superpowers/specs/2026-06-28-video-stream-test-plan-design.md)）：VLM 瓶颈在 prefill（降 `--vlm-max-tokens` 无效）；Diffusers 阶段显存 23.3GB / 距上限仅 1GB；单视频 ~33min、10 个 ~5.5h；完整码流压缩率仅 1.5x（边缘图比文本码流还大）。
+
+**目标版（D4–D6 + H1/H2/H3 PoC）顺延 7 月**：关键帧主线、RIFE 插帧、超分、klein 结构遵循度 PoC（IoU>0.4 判据）、帧间一致性主线裁决等，**均未启动**。
 
 ### 中期：目标版工程化（7 月）
 
