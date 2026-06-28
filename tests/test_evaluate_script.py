@@ -327,8 +327,9 @@ class TestEndToEnd:
 
         mock_img_feat = torch.tensor([[0.6, 0.8]])
         mock_txt_feat = torch.tensor([[0.6, 0.8]])
-        mock_clip_model.get_image_features.return_value = mock_img_feat
-        mock_clip_model.get_text_features.return_value = mock_txt_feat
+        mock_clip_model.return_value = MagicMock(
+            image_embeds=mock_img_feat, text_embeds=mock_txt_feat
+        )
         mock_clip_proc.return_value = {
             "pixel_values": torch.randn(1, 3, 32, 32),
             "input_ids": torch.tensor([[1, 2, 3]]),
