@@ -11,6 +11,8 @@ from semantic_transmission.cli.gui import gui
 from semantic_transmission.cli.receiver import receiver
 from semantic_transmission.cli.sender import sender
 from semantic_transmission.cli.video import video
+from semantic_transmission.cli.video_receiver import video_receiver
+from semantic_transmission.cli.video_sender import video_sender
 
 
 @click.group()
@@ -30,6 +32,8 @@ cli.add_command(check)
 cli.add_command(download)
 cli.add_command(gui)
 cli.add_command(video)
+cli.add_command(video_sender)
+cli.add_command(video_receiver)
 
 if __name__ == "__main__":
     cli()
