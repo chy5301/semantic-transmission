@@ -65,19 +65,27 @@ def compute_clip_score(
     if model is None or processor is None:
         model, processor = load_clip_model(model_name=model_name, device=device)
 
+    # CLIP 文本编码上限 77 token；VLM 描述常远超（数百 token），必须截断，
+    # 否则 transformers 抛 "sequence length > max_position_embeddings"。
     inputs = processor(
-        text=[text], images=[pil_image], return_tensors="pt", padding=True
+        text=[text],
+        images=[pil_image],
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=77,
     )
     if device:
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
+    # 用 CLIP 标准 forward 取投影后的 image_embeds / text_embeds（已是张量）；
+    # 旧写法 get_image_features 在当前 transformers 版本返回 BaseModelOutputWithPooling
+    # 而非张量，导致 .norm() 报 AttributeError。
     with torch.no_grad():
-        image_features = model.get_image_features(pixel_values=inputs["pixel_values"])
-        text_features = model.get_text_features(
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-        )
+        outputs = model(**inputs)
 
+    image_features = outputs.image_embeds
+    text_features = outputs.text_embeds
     image_features = image_features / image_features.norm(dim=-1, keepdim=True)
     text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 

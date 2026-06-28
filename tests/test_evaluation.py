@@ -329,8 +329,9 @@ class TestCLIPScore:
         # 模拟特征向量（归一化后余弦相似度为 0.3）
         img_feat = torch.tensor([[1.0, 0.0]])
         text_feat = torch.tensor([[0.3, 0.9539]])  # cos_sim ≈ 0.3
-        mock_model.get_image_features.return_value = img_feat
-        mock_model.get_text_features.return_value = text_feat
+        mock_model.return_value = MagicMock(
+            image_embeds=img_feat, text_embeds=text_feat
+        )
 
         img = np.full((32, 32, 3), 128, dtype=np.uint8)
         result = compute_clip_score(img, "a test image")
@@ -357,8 +358,10 @@ class TestCLIPScore:
         }
 
         # 模拟负余弦相似度
-        mock_model.get_image_features.return_value = torch.tensor([[1.0, 0.0]])
-        mock_model.get_text_features.return_value = torch.tensor([[-1.0, 0.0]])
+        mock_model.return_value = MagicMock(
+            image_embeds=torch.tensor([[1.0, 0.0]]),
+            text_embeds=torch.tensor([[-1.0, 0.0]]),
+        )
 
         img = np.full((32, 32, 3), 128, dtype=np.uint8)
         result = compute_clip_score(img, "unrelated text")
@@ -383,8 +386,10 @@ class TestCLIPScore:
         }
 
         # 相同方向的特征向量 → cos_sim = 1.0
-        mock_model.get_image_features.return_value = torch.tensor([[1.0, 0.0]])
-        mock_model.get_text_features.return_value = torch.tensor([[1.0, 0.0]])
+        mock_model.return_value = MagicMock(
+            image_embeds=torch.tensor([[1.0, 0.0]]),
+            text_embeds=torch.tensor([[1.0, 0.0]]),
+        )
 
         img = np.full((32, 32, 3), 128, dtype=np.uint8)
         result = compute_clip_score(img, "perfect match")
@@ -408,8 +413,10 @@ class TestCLIPScore:
             "attention_mask": torch.ones(1, 10, dtype=torch.long),
         }
 
-        mock_model.get_image_features.return_value = torch.tensor([[1.0, 0.0]])
-        mock_model.get_text_features.return_value = torch.tensor([[1.0, 0.0]])
+        mock_model.return_value = MagicMock(
+            image_embeds=torch.tensor([[1.0, 0.0]]),
+            text_embeds=torch.tensor([[1.0, 0.0]]),
+        )
 
         img = Image.new("RGB", (32, 32), (128, 128, 128))
         result = compute_clip_score(img, "a test")
@@ -433,8 +440,10 @@ class TestCLIPScore:
             "attention_mask": torch.ones(1, 10, dtype=torch.long),
         }
 
-        mock_model.get_image_features.return_value = torch.tensor([[1.0, 0.0]])
-        mock_model.get_text_features.return_value = torch.tensor([[1.0, 0.0]])
+        mock_model.return_value = MagicMock(
+            image_embeds=torch.tensor([[1.0, 0.0]]),
+            text_embeds=torch.tensor([[1.0, 0.0]]),
+        )
 
         img = np.full((32, 32, 3), 128, dtype=np.uint8)
         compute_clip_score(img, "test", model_name="openai/clip-vit-large-patch14")
