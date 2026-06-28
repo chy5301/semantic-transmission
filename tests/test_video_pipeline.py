@@ -131,6 +131,49 @@ def test_run_respects_explicit_fps(tmp_path):
     assert abs(meta.fps - 5.0) < 1.0, f"期望输出 fps≈5.0，实际 {meta.fps}"
 
 
+def test_run_calls_on_prompts_ready_between_describe_and_generate(tmp_path):
+    """on_prompts_ready 必须在所有帧 describe 之后、任何帧生成之前触发。
+
+    这是显存生命周期的契约：auto-prompt 时调用方传入 vlm_sender.unload，
+    确保 VLM 在接收端加载生成模型前被释放，两模型不同驻 GPU。
+    """
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 3)
+    events: list[str] = []
+
+    class _RecordingReceiver(BaseReceiver):
+        def process(self, edge_image, prompt_text, seed=None):
+            events.append("generate")
+            return Image.new("RGB", (64, 48), color=(0, 255, 0))
+
+    def prompt_fn(i, frame):
+        events.append(f"describe_{i}")
+        return "t"
+
+    def on_ready():
+        events.append("unload")
+
+    pipe = VideoPipeline(_RecordingReceiver(), LocalCannyExtractor())
+    pipe.run(src, tmp_path / "out.mp4", prompt_fn=prompt_fn, on_prompts_ready=on_ready)
+
+    unload_at = events.index("unload")
+    last_describe = max(i for i, e in enumerate(events) if e.startswith("describe"))
+    first_generate = min(i for i, e in enumerate(events) if e == "generate")
+    assert last_describe < unload_at < first_generate, events
+
+
+def test_run_without_on_prompts_ready_still_works(tmp_path):
+    """不传 on_prompts_ready 时（如 --prompt 固定文本）行为不变。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 2)
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())
+
+    stats = pipe.run(src, tmp_path / "out.mp4", prompt_fn=lambda i, f: "t")
+
+    assert stats.total == 2
+    assert stats.success == 2
+
+
 def test_run_survives_prompt_fn_failure(tmp_path):
     """prompt_fn 对某帧抛异常时，该帧回退空 prompt，整段正常完成。"""
     src = tmp_path / "in.mp4"
@@ -147,3 +190,43 @@ def test_run_survives_prompt_fn_failure(tmp_path):
     read, _ = read_frames(tmp_path / "out.mp4")
     assert len(read) == 3, "输出帧数应等于输入帧数"
     assert stats.total == 3
+
+
+def test_run_saves_artifacts(tmp_path):
+    """save_artifacts_to 提供时，保存 prompts.json（逐帧描述+码率）与 edges/。"""
+    import json
+
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 3)
+    artifacts = tmp_path / "artifacts"
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())
+
+    pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: f"描述 {i}",
+        save_artifacts_to=artifacts,
+    )
+
+    data = json.loads((artifacts / "prompts.json").read_text(encoding="utf-8"))
+    assert data["total_frames"] == 3
+    assert [f["prompt"] for f in data["frames"]] == ["描述 0", "描述 1", "描述 2"]
+    # byte_count 用 UTF-8 字节数（中文 != 字符数），是码率统计的基础
+    assert data["frames"][0]["byte_count"] == len("描述 0".encode("utf-8"))
+    assert data["frames"][0]["char_count"] == 4
+    assert data["semantic_bitrate"]["total_bytes"] > 0
+    assert data["semantic_bitrate"]["avg_bytes_per_second"] > 0
+    # 每帧一张边缘图
+    assert len(list((artifacts / "edges").glob("*.png"))) == 3
+
+
+def test_run_without_artifacts_dir_skips_saving(tmp_path):
+    """不传 save_artifacts_to 时不产出 artifacts（行为不变）。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 2)
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())
+
+    pipe.run(src, tmp_path / "out.mp4", prompt_fn=lambda i, f: "t")
+
+    assert not (tmp_path / "prompts.json").exists()
+    assert not (tmp_path / "edges").exists()

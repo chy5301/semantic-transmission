@@ -38,6 +38,13 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
     help="使用 VLM (Qwen2.5-VL) 为每帧自动生成描述",
 )
 @click.option(
+    "--vlm-max-tokens",
+    default=512,
+    type=int,
+    help="auto-prompt 时 VLM 每帧描述的最大 token 数（默认 512；调小可显著提速，"
+    "代价是描述更简略，仅 --auto-prompt 时生效）",
+)
+@click.option(
     "--threshold1",
     default=None,
     type=int,
@@ -53,15 +60,23 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
 @click.option(
     "--fps", default=None, type=float, help="输出帧率（默认沿用输入视频 fps）"
 )
+@click.option(
+    "--save-artifacts/--no-save-artifacts",
+    default=True,
+    help="是否保存语义中间产物（prompts.json 逐帧描述+码率统计、edges/ 边缘图）"
+    "到输出目录（默认保存）",
+)
 def video(
     input_path,
     output_path,
     prompt,
     auto_prompt,
+    vlm_max_tokens,
     threshold1,
     threshold2,
     seed,
     fps,
+    save_artifacts,
 ):
     """端到端视频语义传输：video → 逐帧语义还原 → video。"""
     if not prompt and not auto_prompt:
@@ -85,6 +100,7 @@ def video(
         vlm_sender = QwenVLSender(
             model_name=cfg.vlm_model_name,
             model_path=cfg.vlm_model_path or None,
+            max_new_tokens=vlm_max_tokens,
         )
 
         def prompt_fn(index, frame):
@@ -97,12 +113,26 @@ def video(
     pipeline = VideoPipeline(receiver, extractor)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # auto-prompt 时，让 VLM 在所有帧描述完成、接收端加载生成模型之前先卸载，
+    # 避免 VLM 与 Diffusers 同驻 24GB 显存触发 OOM / CPU offload。
+    on_prompts_ready = vlm_sender.unload if vlm_sender is not None else None
+
     click.echo(f"处理视频: {input_path} → {output_path}")
     try:
-        stats = pipeline.run(input_path, output_path, prompt_fn, seed=seed, fps=fps)
+        stats = pipeline.run(
+            input_path,
+            output_path,
+            prompt_fn,
+            seed=seed,
+            fps=fps,
+            on_prompts_ready=on_prompts_ready,
+            save_artifacts_to=output_path.parent if save_artifacts else None,
+        )
     except Exception as e:
         raise click.ClickException(f"视频处理失败: {e}") from e
     finally:
+        # 兜底卸载（unload 幂等）：on_prompts_ready 已释放时此处为空操作；
+        # 若在描述阶段就异常退出，则由此处确保 VLM 显存被释放。
         if vlm_sender is not None:
             vlm_sender.unload()
 
