@@ -38,6 +38,13 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
     help="使用 VLM (Qwen2.5-VL) 为每帧自动生成描述",
 )
 @click.option(
+    "--vlm-max-tokens",
+    default=512,
+    type=int,
+    help="auto-prompt 时 VLM 每帧描述的最大 token 数（默认 512；调小可显著提速，"
+    "代价是描述更简略，仅 --auto-prompt 时生效）",
+)
+@click.option(
     "--threshold1",
     default=None,
     type=int,
@@ -53,15 +60,23 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
 @click.option(
     "--fps", default=None, type=float, help="输出帧率（默认沿用输入视频 fps）"
 )
+@click.option(
+    "--save-artifacts/--no-save-artifacts",
+    default=True,
+    help="是否保存语义中间产物（prompts.json 逐帧描述+码率统计、edges/ 边缘图）"
+    "到输出目录（默认保存）",
+)
 def video(
     input_path,
     output_path,
     prompt,
     auto_prompt,
+    vlm_max_tokens,
     threshold1,
     threshold2,
     seed,
     fps,
+    save_artifacts,
 ):
     """端到端视频语义传输：video → 逐帧语义还原 → video。"""
     if not prompt and not auto_prompt:
@@ -85,6 +100,7 @@ def video(
         vlm_sender = QwenVLSender(
             model_name=cfg.vlm_model_name,
             model_path=cfg.vlm_model_path or None,
+            max_new_tokens=vlm_max_tokens,
         )
 
         def prompt_fn(index, frame):
@@ -110,6 +126,7 @@ def video(
             seed=seed,
             fps=fps,
             on_prompts_ready=on_prompts_ready,
+            save_artifacts_to=output_path.parent if save_artifacts else None,
         )
     except Exception as e:
         raise click.ClickException(f"视频处理失败: {e}") from e

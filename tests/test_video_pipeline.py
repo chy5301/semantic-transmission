@@ -190,3 +190,43 @@ def test_run_survives_prompt_fn_failure(tmp_path):
     read, _ = read_frames(tmp_path / "out.mp4")
     assert len(read) == 3, "输出帧数应等于输入帧数"
     assert stats.total == 3
+
+
+def test_run_saves_artifacts(tmp_path):
+    """save_artifacts_to 提供时，保存 prompts.json（逐帧描述+码率）与 edges/。"""
+    import json
+
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 3)
+    artifacts = tmp_path / "artifacts"
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())
+
+    pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: f"描述 {i}",
+        save_artifacts_to=artifacts,
+    )
+
+    data = json.loads((artifacts / "prompts.json").read_text(encoding="utf-8"))
+    assert data["total_frames"] == 3
+    assert [f["prompt"] for f in data["frames"]] == ["描述 0", "描述 1", "描述 2"]
+    # byte_count 用 UTF-8 字节数（中文 != 字符数），是码率统计的基础
+    assert data["frames"][0]["byte_count"] == len("描述 0".encode("utf-8"))
+    assert data["frames"][0]["char_count"] == 4
+    assert data["semantic_bitrate"]["total_bytes"] > 0
+    assert data["semantic_bitrate"]["avg_bytes_per_second"] > 0
+    # 每帧一张边缘图
+    assert len(list((artifacts / "edges").glob("*.png"))) == 3
+
+
+def test_run_without_artifacts_dir_skips_saving(tmp_path):
+    """不传 save_artifacts_to 时不产出 artifacts（行为不变）。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 2)
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())
+
+    pipe.run(src, tmp_path / "out.mp4", prompt_fn=lambda i, f: "t")
+
+    assert not (tmp_path / "prompts.json").exists()
+    assert not (tmp_path / "edges").exists()
