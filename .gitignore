@@ -28,3 +28,6 @@ config.local.toml
 # 脚本输出（output/demo/ 下的测试结果纳入版本管理，其余忽略）
 output/*
 !output/demo/
+
+# 测试视频素材（原始 .h265 大文件 + 转码产物，体积大不进版本库）
+resources/test_videos/
