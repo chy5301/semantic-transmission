@@ -4,12 +4,14 @@
 > 计划：[`docs/superpowers/plans/2026-06-28-h1-h2-klein-structure-poc.md`](../superpowers/plans/2026-06-28-h1-h2-klein-structure-poc.md)
 > 运行产物：`output/poc/h1-h2/`（gitignored，本地留存）；驱动脚本：`scripts/poc/h1_h2/`
 
-## 0. 结论先行（go/no-go）
+## 0. 结论先行
 
-- **FLUX.2-klein-9B 否决为目标版关键帧主线**：它无结构条件控制，把 Canny 当参考图（`image=[...]`）几乎无效。
-- **关键帧主线继续用现役 Z-Image-Turbo + ControlNet Union**：结构遵循够用、最快、已集成，质量/速度/工程平衡最佳。
+- **当前关键帧主线建议：现役 Z-Image-Turbo + ControlNet Union**——结构遵循够用、最快、已集成，质量/速度/工程平衡最佳。
+- **klein 不否决，记录其问题、保留为候选**：klein 在**单帧边缘 IoU 这一指标上最低**（精细几何不贴 Canny），但**单帧视觉质量好、且在准确 prompt 下能生成场景类型正确的图**（粗粒度跟随）。本 PoC 只测了「单帧 + Canny 参考图」这一受限条件，**未量到 klein 的视觉质量，也未测 video→video 全流程里时间一致性机制（上一帧 latent-init 等）可能带来的补偿**。因此结论是**保留 klein 候选，待经 `BaseReceiver` 接口接入 video→video 全流程后再评**（见 §5.3）。
 - **qwen-Image + InstantX ControlNet 为质量天花板参考**：结构保真最强（IoU 是 klein 的 ~3.4x、Z-Image 的 ~1.8x），但 95s/帧（~9x 慢），需重度速度优化后才可能上主线。
-- **H2（klein 速度三档）moot**：klein 已否决，且 fp8 加载受阻只能测 bf16，速度数据无决策价值，未单独跑。
+- **H2（klein 速度三档）moot**：klein 暂不作主线、且 fp8 加载受阻只能测 bf16，速度数据当前无决策价值，未单独跑。
+
+> **重要口径**：下方所有「IoU」都是**单帧、固定一帧、Canny 当唯一条件**下的边缘对齐度，是一个对生成式重建天花板很低的指标（连现役 Z-Image 也只 0.13）。它衡量的是「逐帧几何精确对齐」，**不衡量视觉质量，也不代表 video→video 流程下的最终表现**。klein 的「弱」严格限定在这个指标语境内。
 
 ## 1. 三方综合对比（核心结果）
 
@@ -25,7 +27,7 @@
 
 **目视铁证**（`compare3/grid_frame00`、`grid_frame02`、`grid_frame05`）：输入中"车辆在左、路牌在右"的布局，Z-Image 和 qwen 都能还原物体方位（qwen 还原最丰富），而 **klein 把同样物体放正中、自己重新构图**。
 
-## 2. klein 结构遵循 NO-GO（三重验证，对 prompt 质量鲁棒）
+## 2. klein 的已知问题：单帧精细结构对齐弱（三重验证，对 prompt 质量鲁棒）
 
 | 测试条件 | 均值 IoU | 最高帧 | 说明 |
 |---|---|---|---|
@@ -33,7 +35,9 @@
 | **VLM 准确 prompt**（最贴近生产） | 0.069 | 0.147 | Qwen-VL 逐帧描述，真实管道主信息源 |
 | 三方对比（VLM prompt） | 0.069 | 0.147 | 同上，与 Z-Image/qwen 横向比 |
 
-**机理**（`h1_vlm/grid_frame06`）：给 klein 准确 prompt，它能生成**场景类型正确**的图（沙漠路+牌+车），但**按自己的构图摆放、不靠 Canny 定位几何** → 边缘不重合。即 klein 把文本当主信息源生成合理场景，**但没有结构条件控制**——对需逐帧几何对齐（保证帧间一致、贴合真实画面）的视频语义传输不胜任。准确 prompt 让 IoU 相对提升 ~50%（场景对了、偶然部分重合），但绝对值仍远低。
+**机理**（`h1_vlm/grid_frame06`）：给 klein 准确 prompt，它能生成**场景类型正确、视觉质量高**的图（沙漠路+牌+车），但**按自己的构图摆放、不靠 Canny 精确定位几何** → 单帧边缘不重合。即 klein 把文本当主信息源生成合理场景，**结构条件（`image=` 参考图通道）对几何的约束很弱**。准确 prompt 让 IoU 相对提升 ~50%（场景对了、偶然部分重合）。
+
+**这是「问题」而非「否决」的原因**：①该弱点严格限定在「单帧逐帧几何精确对齐」语境，klein 的视觉质量是其优势、未被本指标衡量；②video→video 流程里还有时间一致性机制（上一帧 latent-init / img2img strength / Consistency LoRA 等）可能补偿几何漂移——这些**本 PoC 未测**；③对「保语义、不保像素」的语义传输定位，klein 的「合理生成」未必不可用。故保留候选，待全流程实测再裁。
 
 ## 3. 方法论修正：IoU 阈值
 
@@ -59,13 +63,29 @@ GGUF 量化的 Qwen-Image(20B) + InstantX 自定义 pipeline + 24GB，三条 off
 
 ## 5. 对后续的影响
 
-- 解锁 ROADMAP D4：关键帧主线选型 = **Z-Image+ControlNet**（klein 出局，qwen 备选）。
+- ROADMAP D4：关键帧主线**当前用 Z-Image+ControlNet**；klein、qwen 均为候选，待 video→video 全流程实测后再定。
 - 真正瓶颈是**速度**：三者 10–95s/帧都远离关键帧周期目标（~1-1.5s），速度优化（TensorRT/降步数/蒸馏/低分辨率）是 7 月主攻方向，与选哪个模型无关。
-- 待后续：depth 第二条件、H3 帧间一致性（在选定模型上测）、qwen 速度优化。
+- 待后续：depth 第二条件、H3 帧间一致性、qwen 速度优化。
+
+### 5.3 klein 经接口接入 video→video 再测（推荐下一步）
+
+本 PoC 只测了「单帧 + Canny 参考图」受限条件。接收端已抽象为 `BaseReceiver`
+接口（`process(edge_image, prompt_text, seed) -> Image`），video→video 管道
+（`video_pipeline.py`）只认该接口、经 `create_receiver()` 工厂构造，因此**任何
+`BaseReceiver` 子类都能无缝切换跑全流程**。让 klein 公平再测只需三步小改动：
+
+1. 新增 `KleinReceiver(BaseReceiver)`：`process()` 内用 klein pipeline（`image=[Canny]`
+   + prompt，4 步），逻辑已在 `scripts/poc/h1_h2/klein_runner.py` 验证。
+2. `create_receiver(backend=...)` 增加 `backend="klein"` 分支返回 `KleinReceiver`。
+3. video CLI 加 `--backend {diffusers,klein}` 旗标透传。
+
+如此可在**真实 video→video 流程**下对比 klein vs Z-Image：不仅看单帧 IoU，还看
+**帧间一致性、视觉质量、整段还原**——这些才是 klein 是否可用的真正判据，本 PoC 的
+单帧 IoU 只是第一道筛。
 
 ## 6. 验收
 
-- ✅ klein 结构遵循出逐帧 IoU + 均值 + 目视，给出明确 NO-GO（三重验证）。
+- ✅ klein 结构遵循出逐帧 IoU + 均值 + 目视，记录「单帧精细对齐弱」问题（三重验证），保留候选待全流程再测。
 - ✅ 三方质量(IoU)+速度(s/帧)横向对比，含现役 Z-Image 与 qwen+InstantX。
 - ✅ 全部对比产物落盘（`output/poc/h1-h2/`），裁决报告 committed。
 - ⏭ H2 速度三档 moot 未跑；qwen 速度优化、depth、H3 留作后续。
