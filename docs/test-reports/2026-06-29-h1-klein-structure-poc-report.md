@@ -1,4 +1,4 @@
-# H1 PoC 裁决报告：klein 结构遵循度 + 三方对比（2026-06-29）
+# H1 PoC 评估报告：klein 结构遵循度 + 三方对比（2026-06-29）
 
 > 上游 spec：[`docs/superpowers/specs/2026-06-28-h1-h2-klein-structure-poc-design.md`](../superpowers/specs/2026-06-28-h1-h2-klein-structure-poc-design.md)
 > 计划：[`docs/superpowers/plans/2026-06-28-h1-h2-klein-structure-poc.md`](../superpowers/plans/2026-06-28-h1-h2-klein-structure-poc.md)
@@ -6,10 +6,12 @@
 
 ## 0. 结论先行
 
-- **当前关键帧主线建议：现役 Z-Image-Turbo + ControlNet Union**——结构遵循够用、最快、已集成，质量/速度/工程平衡最佳。
-- **klein 不否决，记录其问题、保留为候选**：klein 在**单帧边缘 IoU 这一指标上最低**（精细几何不贴 Canny），但**单帧视觉质量好、且在准确 prompt 下能生成场景类型正确的图**（粗粒度跟随）。本 PoC 只测了「单帧 + Canny 参考图」这一受限条件，**未量到 klein 的视觉质量，也未测 video→video 全流程里时间一致性机制（上一帧 latent-init 等）可能带来的补偿**。因此结论是**保留 klein 候选，待经 `BaseReceiver` 接口接入 video→video 全流程后再评**（见 §5.3）。
-- **qwen-Image + InstantX ControlNet 为质量天花板参考**：结构保真最强（IoU 是 klein 的 ~3.4x、Z-Image 的 ~1.8x），但 95s/帧（~9x 慢），需重度速度优化后才可能上主线。
-- **H2（klein 速度三档）moot**：klein 暂不作主线、且 fp8 加载受阻只能测 bf16，速度数据当前无决策价值，未单独跑。
+**本 PoC 只记录「单帧 + Canny 参考图」条件下的结构遵循实测发现，不做最终主线裁决。** 关键帧主线选型留到 video→video 全流程评估（看帧间一致性、视觉质量、整段还原），**klein / Z-Image / qwen 三者均为在评候选**。
+
+- **klein**：单帧边缘 IoU 最低（精细几何不贴 Canny），但**单帧视觉质量好、准确 prompt 下生成场景类型正确的图**（粗粒度跟随）。本 PoC 未量其视觉质量、也未测 video→video 时间一致性机制（上一帧 latent-init 等）的补偿——**仍是主线候选，待全流程实测再评**（接入路径见 §5.3）。
+- **Z-Image-Turbo + ControlNet**：现役生产模型，结构遵循够用、最快、已集成，工程上现成可用的基线候选。
+- **qwen-Image + InstantX ControlNet**：结构保真最强（IoU 是 klein ~3.4x、Z-Image ~1.8x），但 95s/帧（~9x 慢），需重度速度优化才可能上主线。
+- **H2（klein 速度三档）未跑**：fp8 加载受阻只能测 bf16，当前无决策价值，moot。
 
 > **重要口径**：下方所有「IoU」都是**单帧、固定一帧、Canny 当唯一条件**下的边缘对齐度，是一个对生成式重建天花板很低的指标（连现役 Z-Image 也只 0.13）。它衡量的是「逐帧几何精确对齐」，**不衡量视觉质量，也不代表 video→video 流程下的最终表现**。klein 的「弱」严格限定在这个指标语境内。
 
@@ -63,7 +65,7 @@ GGUF 量化的 Qwen-Image(20B) + InstantX 自定义 pipeline + 24GB，三条 off
 
 ## 5. 对后续的影响
 
-- ROADMAP D4：关键帧主线**当前用 Z-Image+ControlNet**；klein、qwen 均为候选，待 video→video 全流程实测后再定。
+- ROADMAP D4：关键帧主线选型**不在本 PoC 裁决**，klein / Z-Image / qwen 三者均为在评候选，待 video→video 全流程实测后再定。
 - 真正瓶颈是**速度**：三者 10–95s/帧都远离关键帧周期目标（~1-1.5s），速度优化（TensorRT/降步数/蒸馏/低分辨率）是 7 月主攻方向，与选哪个模型无关。
 - 待后续：depth 第二条件、H3 帧间一致性、qwen 速度优化。
 
