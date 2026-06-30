@@ -47,3 +47,21 @@ class TestCreateReceiverKlein:
 
         with pytest.raises(ValueError, match="backend"):
             create_receiver(backend="nope")
+
+    def test_diffusers_rejects_klein_config(self):
+        """backend='diffusers' 收到 KleinReceiverConfig 应抛出 TypeError。"""
+        import pytest
+
+        from semantic_transmission.common.config import KleinReceiverConfig
+
+        with pytest.raises(TypeError, match="diffusers.*KleinReceiverConfig"):
+            create_receiver(
+                config=KleinReceiverConfig(model_dir="/x"), backend="diffusers"
+            )
+
+    def test_klein_rejects_diffusers_config(self):
+        """backend='klein' 收到 DiffusersReceiverConfig 应抛出 TypeError。"""
+        import pytest
+
+        with pytest.raises(TypeError, match="klein.*DiffusersReceiverConfig"):
+            create_receiver(config=DiffusersReceiverConfig(), backend="klein")

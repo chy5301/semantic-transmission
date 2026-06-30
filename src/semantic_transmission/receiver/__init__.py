@@ -29,11 +29,23 @@ def create_receiver(
     ``config`` 按 backend 解释为对应的接收端配置；``loader`` 仅 diffusers 适用。
     """
     if backend == "diffusers":
+        from semantic_transmission.common.config import DiffusersReceiverConfig
         from semantic_transmission.receiver.diffusers_receiver import DiffusersReceiver
 
+        if config is not None and not isinstance(config, DiffusersReceiverConfig):
+            raise TypeError(
+                f"backend='diffusers' 需要 DiffusersReceiverConfig，"
+                f"收到 {type(config).__name__}"
+            )
         return DiffusersReceiver(config, loader=loader)
     if backend == "klein":
+        from semantic_transmission.common.config import KleinReceiverConfig
         from semantic_transmission.receiver.klein_receiver import KleinReceiver
 
+        if config is not None and not isinstance(config, KleinReceiverConfig):
+            raise TypeError(
+                f"backend='klein' 需要 KleinReceiverConfig，"
+                f"收到 {type(config).__name__}"
+            )
         return KleinReceiver(config)
     raise ValueError(f"未知 backend: {backend!r}（支持 'diffusers' / 'klein'）")

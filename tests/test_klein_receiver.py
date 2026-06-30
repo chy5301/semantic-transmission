@@ -6,6 +6,7 @@ from semantic_transmission.common.config import KleinReceiverConfig
 from semantic_transmission.receiver.base import BaseReceiver
 from semantic_transmission.receiver.klein_receiver import (
     KleinReceiver,
+    _resolve_torch_dtype,
     fit_working_size,
 )
 
@@ -97,3 +98,42 @@ def test_fit_keeps_exact_multiple_unchanged():
     out = fit_working_size(src, max_side=768)
     assert out.size == (320, 240)
     assert out is src  # 尺寸已合规则原样返回
+
+
+# ── _resolve_torch_dtype ──────────────────────────────────────────────
+
+
+def test_resolve_torch_dtype_valid():
+    import torch
+
+    assert _resolve_torch_dtype("bfloat16") is torch.bfloat16
+    assert _resolve_torch_dtype("float16") is torch.float16
+    assert _resolve_torch_dtype("float32") is torch.float32
+
+
+def test_resolve_torch_dtype_invalid_raises():
+    import pytest
+
+    with pytest.raises(ValueError, match="BF16"):
+        _resolve_torch_dtype("BF16")
+
+
+# ── 空 images 守卫 ─────────────────────────────────────────────────────
+
+
+def test_process_raises_on_empty_images():
+    """result.images 为空列表时应抛出 RuntimeError。"""
+
+    class _EmptyPipe:
+        def __call__(self, **kwargs):
+            out = type("Out", (), {})()
+            out.images = []
+            return out
+
+    rec = KleinReceiver(KleinReceiverConfig(model_dir="/x"))
+    rec._pipe = _EmptyPipe()
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="未生成图像"):
+        rec.process(Image.new("RGB", (64, 64)), "test")

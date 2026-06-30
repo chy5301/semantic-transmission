@@ -12,12 +12,31 @@ from semantic_transmission.common.config import KleinReceiverConfig
 from semantic_transmission.common.image_io import load_as_rgb
 from semantic_transmission.receiver.base import BaseReceiver, BatchOutput, FrameInput
 
+_TORCH_DTYPE_MAP: dict[str, torch.dtype] = {
+    "float32": torch.float32,
+    "float16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "float": torch.float32,
+}
+
+
+def _resolve_torch_dtype(name: str) -> torch.dtype:
+    """将 torch_dtype 字符串解析为 ``torch.dtype``，无效值时给出明确错误。"""
+    dtype = _TORCH_DTYPE_MAP.get(name)
+    if dtype is not None:
+        return dtype
+    raise ValueError(
+        f"不支持的 torch_dtype {name!r}，有效值: {', '.join(sorted(_TORCH_DTYPE_MAP))}"
+    )
+
 
 def fit_working_size(image: Image.Image, max_side: int) -> Image.Image:
-    """保宽高比把长边压到 ``max_side``，宽高各向下取 16 的倍数，不放大。
+    """保宽高比把长边压到 ``max_side``，宽高各向下取 16 的倍数。
 
     klein/Flux 要求尺寸为 16 的倍数；大帧（如 1920×1080）原生分辨率会 OOM，
-    故在 receiver 内部降采样到 GPU 可承受的工作分辨率。尺寸已合规则原样返回。
+    故在 receiver 内部降采样到 GPU 可承受的工作分辨率。
+    宽/高不足 16 px 时取 16 px（Flux 要求的最小尺寸），不会放大超过该下限。
+    尺寸已合规则原样返回。
     """
     w, h = image.size
     scale = min(1.0, max_side / max(w, h))
@@ -44,7 +63,7 @@ class KleinReceiver(BaseReceiver):
 
         pipe = Flux2KleinPipeline.from_pretrained(
             self.config.model_dir,
-            torch_dtype=getattr(torch, self.config.torch_dtype),
+            torch_dtype=_resolve_torch_dtype(self.config.torch_dtype),
             local_files_only=True,
         )
         pipe.enable_model_cpu_offload()
@@ -63,7 +82,6 @@ class KleinReceiver(BaseReceiver):
     def unload(self) -> None:
         """卸载 pipeline，释放显存。"""
         if self._pipe is not None:
-            del self._pipe
             self._pipe = None
             gc.collect()
             if torch.cuda.is_available():
@@ -91,6 +109,8 @@ class KleinReceiver(BaseReceiver):
             width=width,
             generator=generator,
         )
+        if not result.images:
+            raise RuntimeError("Flux2KleinPipeline 未生成图像（result.images 为空）")
         return result.images[0]
 
     def process_batch(self, frames: list[FrameInput]) -> BatchOutput:

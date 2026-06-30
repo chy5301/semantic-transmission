@@ -10,6 +10,18 @@ from pathlib import Path
 import tomllib
 
 
+def _to_bool(v: str) -> bool:
+    """将环境变量字符串转换为布尔值。"""
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+_FROM_ENV_TYPE_MAP: dict[str, type | callable] = {
+    "int": int,
+    "float": float,
+    "bool": _to_bool,
+}
+
+
 @dataclass
 class DiffusersReceiverConfig:
     """Diffusers 接收端模型配置。
@@ -41,23 +53,23 @@ class DiffusersReceiverConfig:
     @classmethod
     def from_env(cls) -> "DiffusersReceiverConfig":
         """从环境变量构造配置实例。"""
-        _TYPE_MAP: dict[str, type] = {"int": int, "float": float}
-        kwargs = {}
+        kwargs: dict[str, object] = {}
         for f in fields(cls):
             env_key = f"DIFFUSERS_{f.name.upper()}"
             val = os.environ.get(env_key)
-            if val is not None:
-                type_str = f.type if isinstance(f.type, str) else f.type.__name__
-                converter = _TYPE_MAP.get(type_str)
-                if converter is not None:
-                    try:
-                        kwargs[f.name] = converter(val)
-                    except (ValueError, TypeError) as e:
-                        raise ValueError(
-                            f"环境变量 {env_key}={val!r} 无法转换为 {type_str}"
-                        ) from e
-                else:
-                    kwargs[f.name] = val
+            if val is None:
+                continue
+            type_str = f.type if isinstance(f.type, str) else f.type.__name__
+            converter = _FROM_ENV_TYPE_MAP.get(type_str)
+            if converter is not None:
+                try:
+                    kwargs[f.name] = converter(val)
+                except (ValueError, TypeError) as e:
+                    raise ValueError(
+                        f"环境变量 {env_key}={val!r} 无法转换为 {type_str}"
+                    ) from e
+            else:
+                kwargs[f.name] = val
         return cls(**kwargs)
 
 
@@ -67,10 +79,13 @@ class KleinReceiverConfig:
 
     支持 ``KLEIN_*`` 环境变量覆盖。``__post_init__`` 中空的 ``model_dir`` 回退到
     ``MODEL_CACHE_DIR``（经 ``load_config`` 解析）下的 klein 模型目录。
+
+    .. note::
+
+        设备放置由 ``enable_model_cpu_offload`` 统一管理，不提供 ``device`` 字段。
     """
 
     model_dir: str = ""
-    device: str = "cuda"
     num_inference_steps: int = 4
     guidance_scale: float = 1.0
     torch_dtype: str = "bfloat16"
@@ -90,18 +105,13 @@ class KleinReceiverConfig:
     @classmethod
     def from_env(cls) -> "KleinReceiverConfig":
         """从 ``KLEIN_*`` 环境变量构造配置实例。"""
-
-        def _to_bool(v: str) -> bool:
-            return v.strip().lower() in ("1", "true", "yes", "on")
-
-        _TYPE_MAP = {"int": int, "float": float, "bool": _to_bool}
         kwargs: dict[str, object] = {}
         for f in fields(cls):
             val = os.environ.get(f"KLEIN_{f.name.upper()}")
             if val is None:
                 continue
             type_str = f.type if isinstance(f.type, str) else f.type.__name__
-            converter = _TYPE_MAP.get(type_str)
+            converter = _FROM_ENV_TYPE_MAP.get(type_str)
             if converter is not None:
                 try:
                     kwargs[f.name] = converter(val)
