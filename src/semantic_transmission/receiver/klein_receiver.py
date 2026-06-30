@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
+import gc
+import random
+
+import torch
 from PIL import Image
+
+from semantic_transmission.common.config import KleinReceiverConfig
+from semantic_transmission.common.image_io import load_as_rgb
+from semantic_transmission.receiver.base import BaseReceiver, BatchOutput, FrameInput
 
 
 def fit_working_size(image: Image.Image, max_side: int) -> Image.Image:
@@ -18,3 +26,74 @@ def fit_working_size(image: Image.Image, max_side: int) -> Image.Image:
     if (nw, nh) == (w, h):
         return image
     return image.resize((nw, nh), Image.LANCZOS)
+
+
+class KleinReceiver(BaseReceiver):
+    """接收端：用 ``Flux2KleinPipeline`` 从 Canny 参考图 + prompt 生成图像。"""
+
+    def __init__(self, config: KleinReceiverConfig | None = None) -> None:
+        self.config = config or KleinReceiverConfig()
+        self._pipe = None
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._pipe is not None
+
+    def _build_pipeline(self):
+        from diffusers import Flux2KleinPipeline
+
+        pipe = Flux2KleinPipeline.from_pretrained(
+            self.config.model_dir,
+            torch_dtype=getattr(torch, self.config.torch_dtype),
+            local_files_only=True,
+        )
+        pipe.enable_model_cpu_offload()
+        if self.config.enable_vae_tiling:
+            pipe.enable_vae_tiling()
+        if self.config.enable_attention_slicing:
+            pipe.enable_attention_slicing()
+        return pipe
+
+    def load(self):
+        """加载 klein pipeline（幂等）。"""
+        if self._pipe is None:
+            self._pipe = self._build_pipeline()
+        return self._pipe
+
+    def unload(self) -> None:
+        """卸载 pipeline，释放显存。"""
+        if self._pipe is not None:
+            del self._pipe
+            self._pipe = None
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+    def process(
+        self,
+        edge_image,
+        prompt_text,
+        seed=None,
+    ) -> Image.Image:
+        """从 Canny 边缘图 + 文本生成还原图像（内部降采样到工作分辨率）。"""
+        pipe = self.load()
+        cond = fit_working_size(load_as_rgb(edge_image), self.config.max_side)
+        width, height = cond.size
+        if seed is None:
+            seed = random.randint(0, 2**32 - 1)
+        generator = torch.Generator("cpu").manual_seed(seed)
+        result = pipe(
+            prompt=prompt_text,
+            image=[cond],
+            guidance_scale=self.config.guidance_scale,
+            num_inference_steps=self.config.num_inference_steps,
+            height=height,
+            width=width,
+            generator=generator,
+        )
+        return result.images[0]
+
+    def process_batch(self, frames: list[FrameInput]) -> BatchOutput:
+        """批量处理，模型常驻 GPU 不反复加载。"""
+        self.load()
+        return super().process_batch(frames)

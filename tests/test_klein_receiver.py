@@ -2,7 +2,79 @@
 
 from PIL import Image
 
-from semantic_transmission.receiver.klein_receiver import fit_working_size
+from semantic_transmission.common.config import KleinReceiverConfig
+from semantic_transmission.receiver.base import BaseReceiver
+from semantic_transmission.receiver.klein_receiver import (
+    KleinReceiver,
+    fit_working_size,
+)
+
+
+class _FakePipe:
+    """记录 __call__ 入参的假 pipeline。"""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, **kwargs):
+        self.calls.append(kwargs)
+        out = type("Out", (), {})()
+        out.images = [Image.new("RGB", (kwargs["width"], kwargs["height"]))]
+        return out
+
+
+def _receiver_with_fake_pipe():
+    rec = KleinReceiver(KleinReceiverConfig(model_dir="/x", max_side=768))
+    fake = _FakePipe()
+    rec._pipe = fake
+    return rec, fake
+
+
+def test_is_basereceiver():
+    rec = KleinReceiver(KleinReceiverConfig(model_dir="/x"))
+    assert isinstance(rec, BaseReceiver)
+    assert rec.is_loaded is False
+
+
+def test_process_passes_klein_kwargs():
+    rec, fake = _receiver_with_fake_pipe()
+    rec.process(Image.new("RGB", (1920, 1080)), "a desert road", seed=0)
+    call = fake.calls[0]
+    assert call["image"][0].size == (768, 432)  # 内部已降采样
+    assert call["width"] == 768 and call["height"] == 432
+    assert call["num_inference_steps"] == 4
+    assert call["guidance_scale"] == 1.0
+    assert call["prompt"] == "a desert road"
+    assert call["generator"].device.type == "cpu"
+
+
+def test_process_seed_deterministic_generator():
+    rec, fake = _receiver_with_fake_pipe()
+    rec.process(Image.new("RGB", (512, 512)), "x", seed=123)
+    gen = fake.calls[0]["generator"]
+    assert gen.initial_seed() == 123
+
+
+def test_load_idempotent(monkeypatch):
+    rec = KleinReceiver(KleinReceiverConfig(model_dir="/x"))
+    counter = {"n": 0}
+
+    def fake_build():
+        counter["n"] += 1
+        return _FakePipe()
+
+    monkeypatch.setattr(rec, "_build_pipeline", fake_build)
+    rec.load()
+    rec.load()
+    assert counter["n"] == 1
+    assert rec.is_loaded is True
+
+
+def test_unload_clears_pipe():
+    rec, _ = _receiver_with_fake_pipe()
+    assert rec.is_loaded is True
+    rec.unload()
+    assert rec.is_loaded is False
 
 
 def test_fit_downscales_16x9_to_max_side():
