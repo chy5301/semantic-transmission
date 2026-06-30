@@ -9,19 +9,31 @@ from semantic_transmission.receiver.base import BatchOutput as BatchOutput
 from semantic_transmission.receiver.base import FrameInput as FrameInput
 
 if TYPE_CHECKING:
-    from semantic_transmission.common.config import DiffusersReceiverConfig
+    from semantic_transmission.common.config import (
+        DiffusersReceiverConfig,
+        KleinReceiverConfig,
+    )
     from semantic_transmission.common.model_loader import DiffusersModelLoader
 
 
 def create_receiver(
-    config: DiffusersReceiverConfig | None = None,
+    config: DiffusersReceiverConfig | KleinReceiverConfig | None = None,
     *,
     loader: DiffusersModelLoader | None = None,
+    backend: str = "diffusers",
 ) -> BaseReceiver:
-    """创建 Diffusers 接收端实例。
+    """创建接收端实例。
 
-    可传入 ``loader``（优先）或 ``config``；均为空时使用默认配置。
+    ``backend="diffusers"``（默认/备选）返回 ``DiffusersReceiver``（Z-Image）；
+    ``backend="klein"`` 返回 ``KleinReceiver``（FLUX.2-klein-9B 关键帧主线）。
+    ``config`` 按 backend 解释为对应的接收端配置；``loader`` 仅 diffusers 适用。
     """
-    from semantic_transmission.receiver.diffusers_receiver import DiffusersReceiver
+    if backend == "diffusers":
+        from semantic_transmission.receiver.diffusers_receiver import DiffusersReceiver
 
-    return DiffusersReceiver(config, loader=loader)
+        return DiffusersReceiver(config, loader=loader)
+    if backend == "klein":
+        from semantic_transmission.receiver.klein_receiver import KleinReceiver
+
+        return KleinReceiver(config)
+    raise ValueError(f"未知 backend: {backend!r}（支持 'diffusers' / 'klein'）")
