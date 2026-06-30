@@ -8,6 +8,8 @@
 
 **本 PoC 只记录「单帧 + Canny 参考图」条件下的结构遵循实测发现，不做最终主线裁决。** 关键帧主线选型留到 video→video 全流程评估（看帧间一致性、视觉质量、整段还原），**klein / Z-Image / qwen 三者均为在评候选**。
 
+> **（2026-06-30 更新）** 负责人已据本 PoC 单帧发现 + klein 视觉质量优势，定 **klein 为关键帧主线、Z-Image 备选**。本报告单帧 IoU 结论维持有效；klein 的 video→video 公平复测在 `feature/klein-receiver-backend` 进行（`KleinReceiver` 接入），含帧间一致性与参考帧补偿验证。
+
 - **klein**：单帧边缘 IoU 最低（精细几何不贴 Canny），但**单帧视觉质量好、准确 prompt 下生成场景类型正确的图**（粗粒度跟随）。本 PoC 未量其视觉质量、也未测 video→video 时间一致性机制（上一帧 latent-init 等）的补偿——**仍是主线候选，待全流程实测再评**（接入路径见 §5.3）。
 - **Z-Image-Turbo + ControlNet**：现役生产模型，结构遵循够用、最快、已集成，工程上现成可用的基线候选。
 - **qwen-Image + InstantX ControlNet**：结构保真最强（IoU 是 klein ~3.4x、Z-Image ~1.8x），但 95s/帧（~9x 慢），需重度速度优化才可能上主线。
