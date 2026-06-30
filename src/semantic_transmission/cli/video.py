@@ -58,6 +58,12 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
 )
 @click.option("--seed", default=None, type=int, help="随机种子（透传给每帧）")
 @click.option(
+    "--backend",
+    type=click.Choice(["diffusers", "klein"]),
+    default="diffusers",
+    help="接收端后端（默认 diffusers/Z-Image 备选；klein=FLUX.2-klein-9B 关键帧主线）",
+)
+@click.option(
     "--fps", default=None, type=float, help="输出帧率（默认沿用输入视频 fps）"
 )
 @click.option(
@@ -75,6 +81,7 @@ def video(
     threshold1,
     threshold2,
     seed,
+    backend,
     fps,
     save_artifacts,
 ):
@@ -91,7 +98,7 @@ def video(
         threshold2 = cfg.canny_high_threshold
 
     extractor = LocalCannyExtractor(threshold1=threshold1, threshold2=threshold2)
-    receiver = create_receiver()
+    receiver = create_receiver(backend=backend)
 
     vlm_sender = None
     if auto_prompt:
