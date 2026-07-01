@@ -59,7 +59,9 @@ def test_temporal_report_splits_by_keyframe():
     original = [_textured(0)] * 6
     rep = temporal_report(restored, original, keyframe_indices=[0, 3])
     assert rep["keyframe_count"] == 2
-    # generated_only 排除触及关键帧(0,3)的转移 → 只剩 t=2 和 t=5
-    assert rep["generated_only"]["mae"] is not None
+    # generated_only 排除触及关键帧(0,3)的转移 → 只剩 t=2 和 t=5，
+    # 二者相邻帧均为 _textured(5)，帧差恒为 0，故用精确值断言
+    # （能捕获关键帧排除逻辑 and/or 反转；弱化的 >= 断言无法捕获）
+    assert rep["generated_only"]["mae"] == 0.0
     assert rep["delivered"]["mae"] >= rep["generated_only"]["mae"] - 1e-9
     assert rep["original_reference"]["mae"] == 0.0
