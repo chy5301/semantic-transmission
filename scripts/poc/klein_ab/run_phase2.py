@@ -89,10 +89,13 @@ def smoke_probe(fixture, canny, policy, candidates, seed):
     history: list[dict] = []
     test = fixture[: min(3, len(fixture))]
     for cand in candidates:
+        # 与主跑 _fit_all 一致：按当前候选分辨率归一化测试帧，避免 768 回退时
+        # cond(768) 与未归一化参考帧(原生) 尺寸错配喂进同一次生成（对齐阶段 1 smoke 模式）
+        test_fit = [fit_working_size(f, cand) for f in test]
         for vae_tiling in (False, True):
             label = f"R={cand}, vae_tiling={vae_tiling}"
             log(
-                f"smoke 尝试多参考 {label}（{len(test)} 帧, mode={policy.reference_mode}）"
+                f"smoke 尝试多参考 {label}（{len(test_fit)} 帧, mode={policy.reference_mode}）"
             )
             rec = None
             try:
@@ -101,7 +104,7 @@ def smoke_probe(fixture, canny, policy, candidates, seed):
                 _reset_peak()
                 prev_out = None
                 last_kf = None
-                for i, frame in enumerate(test):
+                for i, frame in enumerate(test_fit):
                     edge = canny.extract(np.asarray(frame))
                     if is_keyframe(i, policy) and policy.keyframe_passthrough:
                         prev_out = frame
