@@ -92,17 +92,26 @@ class KleinReceiver(BaseReceiver):
         edge_image,
         prompt_text,
         seed=None,
+        reference_images=None,
     ) -> Image.Image:
-        """从 Canny 边缘图 + 文本生成还原图像（内部降采样到工作分辨率）。"""
+        """从 Canny 边缘图 + 文本生成还原图像（内部降采样到工作分辨率）。
+
+        ``reference_images`` 给定时接在 canny 之后作额外参考帧（klein 原生多参考，
+        用于时间一致性补偿）；``None`` 或空列表时行为与单 canny 参考一致。
+        参考帧默认已是工作分辨率，不上采样。
+        """
         pipe = self.load()
         cond = fit_working_size(load_as_rgb(edge_image), self.config.max_side)
         width, height = cond.size
+        images = [cond]
+        if reference_images:
+            images.extend(load_as_rgb(ref) for ref in reference_images)
         if seed is None:
             seed = random.randint(0, 2**32 - 1)
         generator = torch.Generator("cpu").manual_seed(seed)
         result = pipe(
             prompt=prompt_text,
-            image=[cond],
+            image=images,
             guidance_scale=self.config.guidance_scale,
             num_inference_steps=self.config.num_inference_steps,
             height=height,

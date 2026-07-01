@@ -137,3 +137,39 @@ def test_process_raises_on_empty_images():
 
     with pytest.raises(RuntimeError, match="未生成图像"):
         rec.process(Image.new("RGB", (64, 64)), "test")
+
+
+# ── reference_images（阶段 2 参考帧能力）──────────────────────────────
+
+
+def test_process_without_reference_images_single_image():
+    rec, fake = _receiver_with_fake_pipe()
+    rec.process(Image.new("RGB", (768, 432)), "x", seed=0)
+    assert len(fake.calls[0]["image"]) == 1  # 仅 canny，行为同阶段 1
+
+
+def test_process_appends_reference_images_after_canny():
+    rec, fake = _receiver_with_fake_pipe()
+    ref = Image.new("RGB", (768, 432), (10, 20, 30))
+    rec.process(Image.new("RGB", (768, 432)), "x", seed=0, reference_images=[ref])
+    imgs = fake.calls[0]["image"]
+    assert len(imgs) == 2
+    assert imgs[0].size == (768, 432)  # canny 在前
+    assert imgs[1].getpixel((0, 0)) == (10, 20, 30)  # 参考帧内容保留
+
+
+def test_process_multiple_reference_images_keep_order():
+    rec, fake = _receiver_with_fake_pipe()
+    r1 = Image.new("RGB", (768, 432), (1, 1, 1))
+    r2 = Image.new("RGB", (768, 432), (2, 2, 2))
+    rec.process(Image.new("RGB", (768, 432)), "x", seed=0, reference_images=[r1, r2])
+    imgs = fake.calls[0]["image"]
+    assert len(imgs) == 3
+    assert imgs[1].getpixel((0, 0)) == (1, 1, 1)
+    assert imgs[2].getpixel((0, 0)) == (2, 2, 2)  # 顺序 canny, r1, r2
+
+
+def test_process_empty_reference_list_single_image():
+    rec, fake = _receiver_with_fake_pipe()
+    rec.process(Image.new("RGB", (768, 432)), "x", seed=0, reference_images=[])
+    assert len(fake.calls[0]["image"]) == 1  # 空列表等价 None
