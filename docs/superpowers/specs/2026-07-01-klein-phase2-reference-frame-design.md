@@ -153,8 +153,12 @@ for i, frame in enumerate(fixture_frames):
 
 ### 5.4 harness 健壮性与显存
 
-- 沿用阶段 1：多参考 **smoke 探显存有界回退**（开跑前 1–2 帧试 896×496 多参考是否 OOM，超了退 768 并
-  **同步重烘 baseline** 保同分辨率公平）、每路独立 try/except、崩溃写 partial results + sentinel、零交互。
+- 沿用阶段 1：多参考 **smoke 探显存有界回退**（开跑前 1–2 帧试 896×496 多参考是否 OOM，超了退 768）、每路
+  独立 try/except、崩溃写 partial results + sentinel、零交互。
+- **分辨率归一化（对抗审核确认的必修点）**：smoke 锁定 R 后，必须把 **fixture（含透传关键帧来源）与
+  baseline 三者统一 `fit_working_size` 到 R**——否则 R≠896 回退时透传帧(原生 896) 与生成帧(R) 尺寸混杂会让
+  `write_frames`/`temporal_report` 崩溃、并把 X@R 与 baseline@896 变成不公平的跨分辨率对照。这才落实「同步
+  重烘 baseline 保同分辨率公平」。评估前**断言全序列同尺寸**，错配 fail-fast 而非静默产出。
 
 ## 6. 执行约束
 
@@ -180,7 +184,7 @@ for i, frame in enumerate(fixture_frames):
 
 | 风险 | 处置 |
 |---|---|
-| 多参考在 896×496 OOM | smoke 有界回退退 768 + 同步重烘 baseline |
+| 多参考在 896×496 OOM | smoke 有界回退退 768 + 把 fixture/透传关键帧/baseline 统一归一化到 R + 评估前尺寸断言 fail-fast |
 | B/prev 链自回归漂移累积 / 过度冻结 | 透传关键帧每 N 帧硬复位；时序指标「生成帧间」两读监测冻结（还原 MAE 远低于原始 = 焊死）|
 | 透传关键帧周期 pop | 时序「交付含边界」读专门暴露；若重则 C（每帧恒挂关键帧）过渡更缓，作为对照 |
 | 静止关键帧 vs 区间末端运动（C）| 消融 X vs C 用证据判，非先验 |
