@@ -1,8 +1,8 @@
-"""C104 三视频案例：各跑 X@N12 + C@N12（复用 run_ab 预处理 + run_phase2 生成）。
+"""C104 三视频案例：各跑 prev-only@N12 + prev+key@N12（复用 run_ab 预处理 + run_phase2 生成）。
 
 裸 .h265 码流无 fps 元数据、imageio 无法直接迭代，先用 ffmpeg 转成 25fps mp4；
 再按 run_ab 的 load_window/bake_fixture/freeze_prompts 造 fixture+prompts（不跑 drop-in
-baseline，用户只要 X/C 两方案 12 帧档），最后调 run_phase2.main 跑 X@N12 与 C@N12。
+baseline，用户只要 prev-only/prev+key 两方案 12 帧档），最后调 run_phase2.main 跑 prev-only@N12 与 prev+key@N12。
 
 以模块方式运行（供 scripts.* 包导入）：
     uv run python -m scripts.poc.klein_ab.run_c104
@@ -97,8 +97,8 @@ def main() -> int:
         try:
             prepdir = prep_case(tag, start, dur, cfg)
             for mode, label in (
-                ("prev", f"{tag}_x_n12"),
-                ("prev_keyframe", f"{tag}_c_n12"),
+                ("prev", f"{tag}_prev_only_n12"),
+                ("prev_keyframe", f"{tag}_prev_key_n12"),
             ):
                 if (_OUT / label / "DONE").is_file():
                     log(f"[{tag}] {label} 已 DONE，跳过（幂等恢复）")
