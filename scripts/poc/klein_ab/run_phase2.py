@@ -9,7 +9,7 @@
 
 用法（长 GPU 任务，须脱离跑；以模块方式运行以便 scripts.* 包导入）：
     uv run python -m scripts.poc.klein_ab.run_phase2 \
-        --reference-mode prev --keyframe-interval 12 --label x_n12
+        --reference-mode prev --keyframe-interval 12 --label prev_only_n12
     # smoke 验证接线（少量帧）：加 --limit 6
 """
 
@@ -76,7 +76,7 @@ def _fit_all(images: list[Image.Image], max_side: int) -> list[Image.Image]:
 
     smoke 若从原生分辨率回退到更小 R，fixture / baseline / 透传关键帧都要同步归一化到 R，
     否则透传帧(原生) 与生成帧(R) 尺寸混杂会让 write_frames/temporal_report 崩溃，并把
-    X@R 与 baseline@原生 变成不公平的跨分辨率对照（落实 spec §5.4/§9 同步重烘 baseline）。
+    输出@R 与 baseline@原生 变成不公平的跨分辨率对照（落实 spec §5.4/§9 同步重烘 baseline）。
     """
     return [fit_working_size(im, max_side) for im in images]
 
@@ -236,9 +236,9 @@ def _cell(img, size):
 
 
 def make_grid(orig, canny, restored, baseline, out_dir, static_window=None, n=5):
-    """抽 n 帧并排 orig｜canny｜drop-in｜X 网格；并对近静止窗口拼连续帧条带。
+    """抽 n 帧并排 orig｜canny｜drop-in｜输出 网格；并对近静止窗口拼连续帧条带。
 
-    baseline（阶段 1 drop-in，长度须等于 orig）作对照列；为空则退回 orig｜canny｜X。
+    baseline（阶段 1 drop-in，长度须等于 orig）作对照列；为空则退回 orig｜canny｜输出。
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     total = len(orig)
@@ -266,14 +266,14 @@ def make_grid(orig, canny, restored, baseline, out_dir, static_window=None, n=5)
             grid.paste(t, (x, 0))
             x += t.size[0]
         grid.save(out_dir / f"grid_{idx:04d}.png")
-    cols = "orig|canny|drop-in|X" if has_base else "orig|canny|X"
+    cols = "orig|canny|drop-in|输出" if has_base else "orig|canny|输出"
     log(f"目视网格完成：{len(idxs)} 张（{cols}）→ {out_dir}")
     if static_window is not None:
         _static_strip(orig, restored, baseline, static_window, out_dir)
 
 
 def _static_strip(orig, restored, baseline, window, out_dir):
-    """近静止窗口 [lo,hi) 连续帧横向拼条带，orig / drop-in / X 各一行纵向叠放，直观看闪烁。"""
+    """近静止窗口 [lo,hi) 连续帧横向拼条带，orig / drop-in / 输出 各一行纵向叠放，直观看闪烁。"""
     lo, hi = window
     hi = min(hi, len(orig))
     if hi - lo < 2:
@@ -281,7 +281,7 @@ def _static_strip(orig, restored, baseline, window, out_dir):
     rows = [("orig", orig)]
     if len(baseline) == len(orig):
         rows.append(("drop-in", baseline))
-    rows.append(("X", restored))
+    rows.append(("输出", restored))
     size = orig[lo].size
     cell_w, cell_h = size
     strips = []
