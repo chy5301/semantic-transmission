@@ -25,3 +25,43 @@ class TestCreateReceiverDiffusers:
     def test_default_transformer_path(self):
         receiver = create_receiver()
         assert receiver.config.transformer_path.endswith("z-image-turbo-Q8_0.gguf")
+
+
+class TestCreateReceiverKlein:
+    def test_returns_klein_receiver(self):
+        from semantic_transmission.receiver.klein_receiver import KleinReceiver
+
+        receiver = create_receiver(backend="klein")
+        assert isinstance(receiver, KleinReceiver)
+        assert isinstance(receiver, BaseReceiver)
+
+    def test_klein_accepts_klein_config(self):
+        from semantic_transmission.common.config import KleinReceiverConfig
+
+        cfg = KleinReceiverConfig(model_dir="/x", max_side=1024)
+        receiver = create_receiver(config=cfg, backend="klein")
+        assert receiver.config.max_side == 1024
+
+    def test_unknown_backend_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="backend"):
+            create_receiver(backend="nope")
+
+    def test_diffusers_rejects_klein_config(self):
+        """backend='diffusers' 收到 KleinReceiverConfig 应抛出 TypeError。"""
+        import pytest
+
+        from semantic_transmission.common.config import KleinReceiverConfig
+
+        with pytest.raises(TypeError, match="diffusers.*KleinReceiverConfig"):
+            create_receiver(
+                config=KleinReceiverConfig(model_dir="/x"), backend="diffusers"
+            )
+
+    def test_klein_rejects_diffusers_config(self):
+        """backend='klein' 收到 DiffusersReceiverConfig 应抛出 TypeError。"""
+        import pytest
+
+        with pytest.raises(TypeError, match="klein.*DiffusersReceiverConfig"):
+            create_receiver(config=DiffusersReceiverConfig(), backend="klein")

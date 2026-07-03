@@ -101,6 +101,8 @@
 
 保底优先+架构预留实时 / 帧生成主线 FLUX.2-klein-9B（Qwen-Image-Edit-2511 对照）/ 图生文 Qwen3-VL-4B（7 月升级）/ 目标版核心 KPI = 压短关键帧周期（接受插帧无法消除的 ~1s 语义滞后）/ 实时帧率靠 DLSS 式分层（关键帧大模型生成 + RIFE 插帧 + 超分）。
 
+> **2026-06-30 关键帧主线选型决策**：负责人定 **FLUX.2-klein-9B 为关键帧主线、Z-Image-Turbo 为备选**。klein 经 `KleinReceiver` 接入 video→video 流程做 A/B 验证（设计见 `docs/superpowers/specs/2026-06-30-klein-receiver-backend-design.md`）。决策可逆：若 klein 帧间一致性即便加参考帧仍不可用，回退 Z-Image。
+
 ### 短期：6 天冲刺（6/22–6/27，激进塞目标版，留 6/28–30 余量）
 
 | 日 | 主线 | ‖ 并行 PoC |
