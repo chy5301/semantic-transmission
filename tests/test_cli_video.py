@@ -49,7 +49,7 @@ def test_video_reports_clean_error_on_pipeline_failure(tmp_path, monkeypatch):
         def process(self, edge_image, prompt_text, seed=None):
             raise RuntimeError("不应被调用")
 
-    monkeypatch.setattr(video_mod, "create_receiver", lambda: _DummyReceiver())
+    monkeypatch.setattr(video_mod, "create_receiver", lambda *a, **k: _DummyReceiver())
 
     # monkeypatch VideoPipeline.run → 直接抛异常
     from semantic_transmission.pipeline import video_pipeline as vp_mod
@@ -64,3 +64,52 @@ def test_video_reports_clean_error_on_pipeline_failure(tmp_path, monkeypatch):
 
     assert result.exit_code != 0
     assert "视频处理失败" in result.output
+
+
+def test_video_rejects_invalid_backend(tmp_path):
+    src = tmp_path / "in.mp4"
+    src.write_bytes(b"x")
+    result = CliRunner().invoke(
+        video, ["--input", str(src), "--prompt", "a", "--backend", "nope"]
+    )
+    assert result.exit_code != 0
+    assert "nope" in result.output or "Invalid" in result.output
+
+
+def test_video_passes_backend_to_factory(tmp_path, monkeypatch):
+    src = tmp_path / "in.mp4"
+    write_frames(
+        src, [Image.new("RGB", (32, 24), color=(0, 0, 0)) for _ in range(2)], fps=8.0
+    )
+
+    import semantic_transmission.cli.video as video_mod
+    from semantic_transmission.receiver.base import BaseReceiver
+
+    captured = {}
+
+    class _Dummy(BaseReceiver):
+        def process(self, edge_image, prompt_text, seed=None):
+            return Image.new("RGB", (16, 16))
+
+    def fake_create(*args, backend="diffusers", **kwargs):
+        captured["backend"] = backend
+        return _Dummy()
+
+    monkeypatch.setattr(video_mod, "create_receiver", fake_create)
+
+    out = tmp_path / "out" / "out.mp4"
+    result = CliRunner().invoke(
+        video,
+        [
+            "--input",
+            str(src),
+            "--output",
+            str(out),
+            "--prompt",
+            "a",
+            "--backend",
+            "klein",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["backend"] == "klein"
