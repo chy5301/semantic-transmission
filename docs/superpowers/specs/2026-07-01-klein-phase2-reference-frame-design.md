@@ -11,7 +11,7 @@
 prompt 重新构图，缺少跨帧锚点 → 漂移失控」**。
 
 阶段 2 就此补上「跨帧真实内容锚点」这块 Canny 丢掉的信息，用 klein 原生 `image=[canny, 参考帧]` 通道做
-时间一致性补偿。**这是 klein 主线成立与否的真正裁决点**（报告 §4）：能压住漂移 → klein 主线坐实；X 与 C
+时间一致性补偿。**这是 klein 主线成立与否的真正裁决点**（报告 §4）：能压住漂移 → klein 主线坐实；prev-only 与 prev+key
 都压不住 → 回退 Z-Image 备选（决策可逆）。
 
 ### 0.1 klein 多参考机制（已核对 `Flux2KleinPipeline.__call__` 源码）
@@ -24,8 +24,8 @@ prompt 重新构图，缺少跨帧锚点 → 漂移失控」**。
 ## 1. 目标
 
 1. 给 `KleinReceiver` 加「在 `image=[canny, +额外参考帧]` 下生成一帧」的通用能力（生产必留，本阶段提前验证）。
-2. 在编排层（harness）实现可配置的参考帧时序策略（X / C / N 全可调），扮演未来 `VideoPipeline` 的角色。
-3. 跑参考帧补偿实验矩阵（先 X 后 C），用量化时序指标 + 目视裁决漂移是否被压到可用。
+2. 在编排层（harness）实现可配置的参考帧时序策略（prev-only / prev+key / N 全可调），扮演未来 `VideoPipeline` 的角色。
+3. 跑参考帧补偿实验矩阵（先 prev-only 后 prev+key），用量化时序指标 + 目视裁决漂移是否被压到可用。
 4. 复用阶段 1 的 fixture / 冻结 prompt / drop-in baseline，控 GPU 预算、保 A/B 公平。
 
 ## 2. 架构与边界
@@ -88,9 +88,9 @@ class TemporalPolicyConfig:
 | 值 | 参考列表 | 方案 |
 |---|---|---|
 | `none` | `[canny]` | 阶段 1 drop-in baseline |
-| `prev` | `[canny, 上一帧输出]` | **X** |
+| `prev` | `[canny, 上一帧输出]` | **prev-only** |
 | `keyframe` | `[canny, 最近关键帧]` | 纯关键帧锚点消融 |
-| `prev_keyframe` | `[canny, 上一帧输出, 最近关键帧]` | **C** |
+| `prev_keyframe` | `[canny, 上一帧输出, 最近关键帧]` | **prev+key** |
 
 harness 主循环（顺序处理，持 `prev_output` 与最近关键帧原图）：
 
@@ -103,7 +103,7 @@ for i, frame in enumerate(fixture_frames):
     else:
         refs = build_refs(reference_mode, prev_output, last_keyframe)
         out = receiver.process(canny(i), prompt(i), seed, reference_images=refs)
-    prev_output = out                    # 关键帧透传后 prev=原图 → X 链首自动复位
+    prev_output = out                    # 关键帧透传后 prev=原图 → prev-only 链首自动复位
 ```
 
 - **首帧 i=0 无歧义**：`keyframe_interval > 0` 时 `0 % N == 0`，i=0 恒为关键帧透传 → prev 链首帧（i=1）
@@ -111,19 +111,19 @@ for i, frame in enumerate(fixture_frames):
   退化为 `[canny]`。
 - `keyframe` 类模式取「最近关键帧下标处的原图」。
 
-## 4. 实验矩阵（先 X 后 C）
+## 4. 实验矩阵（先 prev-only 后 prev+key）
 
 | 跑 | reference_mode | N | 来源 |
 |---|---|---|---|
 | baseline | — | — | **复用**阶段 1 drop-in（`output/poc/klein-ab-phase1/klein`，不重跑）|
-| **X@N12** | `prev` | 12（≈2 关键帧/秒 @25fps）| 生成 |
-| **X@N25** | `prev` | 25（≈1 关键帧/秒 @25fps）| 生成 |
-| C@N12 / C@N25 | `prev_keyframe` | 12 / 25 | X 复盘后再定是否跑 |
+| **prev-only@N12** | `prev` | 12（≈2 关键帧/秒 @25fps）| 生成 |
+| **prev-only@N25** | `prev` | 25（≈1 关键帧/秒 @25fps）| 生成 |
+| prev+key@N12 / prev+key@N25 | `prev_keyframe` | 12 / 25 | prev-only 复盘后再定是否跑 |
 | （可选）keyframe-only | `keyframe` | — | 消融备选 |
 
 - 同 fixture（`fixture_frames/`，250 帧 896×496）/ 同冻结 `prompts.json` / seed=0 / 同分辨率。
 - 透传关键帧不生成 → 每路实际生成帧 ≈ 250 − 250/N（N=12 约 230、N=25 约 240）。
-- **先跑两路 X，停下复盘，再决定 C**（报告 §4 口径：跑完暂停、据证据定下一步）。
+- **先跑两路 prev-only，停下复盘，再决定 prev+key**（报告 §4 口径：跑完暂停、据证据定下一步）。
 
 ## 5. 评估
 
@@ -145,11 +145,11 @@ for i, frame in enumerate(fixture_frames):
 - **副：warp-error**（cv2 Farneback 光流，无新依赖）——在原始帧上算光流 `O[t-1]→O[t]`，warp `R[t-1]` 后比
   `R[t]` 残差，扣掉合法运动、只留闪烁。标注「参考、非主判据」（行车视频光流有噪声）。
 - **两读**：`交付含关键帧边界`（暴露每 N 帧的周期 pop）/ `生成帧间排除边界`（纯看相邻生成帧稳不稳）。
-  交付读若 pop 重，是 X vs C 权衡的真实证据。
+  交付读若 pop 重，是 prev-only vs prev+key 权衡的真实证据。
 
 ### 5.3 目视
 
-条带（重点近静止 120–127）+ 逐帧网格 `orig｜canny｜drop-in｜X`。
+条带（重点近静止 120–127）+ 逐帧网格 `orig｜canny｜drop-in｜输出`。
 
 ### 5.4 harness 健壮性与显存
 
@@ -157,7 +157,7 @@ for i, frame in enumerate(fixture_frames):
   独立 try/except、崩溃写 partial results + sentinel、零交互。
 - **分辨率归一化（对抗审核确认的必修点）**：smoke 锁定 R 后，必须把 **fixture（含透传关键帧来源）与
   baseline 三者统一 `fit_working_size` 到 R**——否则 R≠896 回退时透传帧(原生 896) 与生成帧(R) 尺寸混杂会让
-  `write_frames`/`temporal_report` 崩溃、并把 X@R 与 baseline@896 变成不公平的跨分辨率对照。这才落实「同步
+  `write_frames`/`temporal_report` 崩溃、并把 输出@R 与 baseline@896 变成不公平的跨分辨率对照。这才落实「同步
   重烘 baseline 保同分辨率公平」。评估前**断言全序列同尺寸**，错配 fail-fast 而非静默产出。
 
 ## 6. 执行约束
@@ -166,10 +166,10 @@ for i, frame in enumerate(fixture_frames):
 
 ## 7. 不在本范围（YAGNI）
 
-- 毕业到 `VideoPipeline` / relay 协议的关键帧低频传输（阶段 3，X/C 赢家确定后）。
+- 毕业到 `VideoPipeline` / relay 协议的关键帧低频传输（阶段 3，prev-only/prev+key 赢家确定后）。
 - Z-Image（已锁 klein）、超分还原、fp8 单文件加载、TensorRT / 降步数等速度优化（7 月主攻）。
 - 真正的 latent-init img2img warm-start（父设计 §4 已论证对 klein 性价比差，由参考帧机制替代）。
-- C 只是配置旗标，X 复盘后再决定是否跑。
+- prev+key 只是配置旗标，prev-only 复盘后再决定是否跑。
 
 ## 8. 验收 / 决策口径
 
@@ -177,7 +177,7 @@ for i, frame in enumerate(fixture_frames):
 
 - **能**（时序 MAE / warp-error 显著下降、目视闪烁明显缓解，且未过度冻结/丢失真实运动）→ klein 主线坐实，
   进阶段 3 productionize（策略毕业到 `VideoPipeline` + relay）。
-- **X 与 C 都压不住** → 即「klein 不宜作主线」的实证结论，回退 Z-Image 备选（其结构稳定性本就更适合无补偿
+- **prev-only 与 prev+key 都压不住** → 即「klein 不宜作主线」的实证结论，回退 Z-Image 备选（其结构稳定性本就更适合无补偿
   场景），决策可逆。
 
 ## 9. 风险与开放问题
@@ -186,6 +186,6 @@ for i, frame in enumerate(fixture_frames):
 |---|---|
 | 多参考在 896×496 OOM | smoke 有界回退退 768 + 把 fixture/透传关键帧/baseline 统一归一化到 R + 评估前尺寸断言 fail-fast |
 | B/prev 链自回归漂移累积 / 过度冻结 | 透传关键帧每 N 帧硬复位；时序指标「生成帧间」两读监测冻结（还原 MAE 远低于原始 = 焊死）|
-| 透传关键帧周期 pop | 时序「交付含边界」读专门暴露；若重则 C（每帧恒挂关键帧）过渡更缓，作为对照 |
-| 静止关键帧 vs 区间末端运动（C）| 消融 X vs C 用证据判，非先验 |
+| 透传关键帧周期 pop | 时序「交付含边界」读专门暴露；若重则 prev+key（每帧恒挂关键帧）过渡更缓，作为对照 |
+| 静止关键帧 vs 区间末端运动（prev+key）| 消融 prev-only vs prev+key 用证据判，非先验 |
 | klein 多参考单帧更慢、整段更慢 | 本阶段只验质量/一致性，速度优化 7 月独立工作 |
