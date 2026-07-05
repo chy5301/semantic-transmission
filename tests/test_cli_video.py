@@ -190,6 +190,7 @@ def test_video_klein_defaults_to_prev_policy(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     tp = captured["temporal_policy"]
     assert tp is not None and tp.reference_mode == "prev" and tp.keyframe_interval == 12
+    assert tp.keyframe_passthrough is True
 
 
 def test_video_diffusers_defaults_to_no_temporal(tmp_path, monkeypatch):

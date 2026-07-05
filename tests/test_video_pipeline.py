@@ -313,6 +313,7 @@ class _FakeReferenceReceiver(BaseReceiver):
 
         self.config = SimpleNamespace(max_side=max_side)
         self.calls = []  # 每次 process 调用：{"prompt":..., "refs":[...]}
+        self.returns = []  # 每次 process 调用实际返回的图像对象（用于 is 身份断言）
         self._fail = set(fail_gen_calls)
         self._n = -1
 
@@ -322,7 +323,9 @@ class _FakeReferenceReceiver(BaseReceiver):
         if self._n in self._fail:
             raise RuntimeError("fake gen failure")
         # 返回工作分辨率大小的图（与透传帧尺寸一致：64 长边 → 64x48 源缩不变）
-        return Image.new("RGB", (64, 48), color=(0, 255, 0))
+        result = Image.new("RGB", (64, 48), color=(0, 255, 0))
+        self.returns.append(result)
+        return result
 
 
 def _temporal_cfg(**kw):
@@ -366,6 +369,11 @@ def test_temporal_prev_chain_refs(tmp_path):
     assert len(rec.calls[0]["refs"]) == 1
     assert len(rec.calls[1]["refs"]) == 1
     assert len(rec.calls[2]["refs"]) == 1
+    # 身份断言：帧 2 的 ref 就是帧 1 的输出对象本身（非同值不同对象），
+    # 帧 3 的 ref 就是帧 2 的输出对象本身——证明 prev 链真的串接了输出，
+    # 而不只是凑巧长度都为 1。
+    assert rec.calls[1]["refs"][0] is rec.returns[0]
+    assert rec.calls[2]["refs"][0] is rec.returns[1]
 
 
 def test_temporal_passthrough_keyframe_not_generated(tmp_path):
@@ -383,6 +391,41 @@ def test_temporal_passthrough_keyframe_not_generated(tmp_path):
     )
     # 帧 0、2 透传，仅帧 1 生成 → 1 次 process 调用
     assert len(rec.calls) == 1
+
+
+def test_temporal_all_passthrough_zero_generated(tmp_path):
+    """边界：keyframe_interval=1 → 全部下标都是关键帧、全部透传、0 生成帧。
+
+    覆盖零生成帧场景：receiver.process 一次都不应被调用；统计字段与
+    avg_bytes_per_generated_frame 的除零保护需在此场景下正确。
+    """
+    import json
+
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 4)
+    rec = _FakeReferenceReceiver()
+    pipe = VideoPipeline(rec, LocalCannyExtractor())
+    artifacts = tmp_path / "artifacts"
+
+    stats = pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: "p",
+        temporal_policy=_temporal_cfg(keyframe_interval=1),  # 全部下标为关键帧
+        save_artifacts_to=artifacts,
+    )
+
+    # 全部透传 → receiver.process 零次调用
+    assert len(rec.calls) == 0
+    assert stats.generated_frames == 0
+    assert stats.keyframe_count == 4
+    assert stats.keyframe_indices == list(range(4))
+    # 帧数守恒
+    read, _ = read_frames(tmp_path / "out.mp4")
+    assert len(read) == 4
+
+    data = json.loads((artifacts / "prompts.json").read_text(encoding="utf-8"))
+    assert data["semantic_bitrate"]["avg_bytes_per_generated_frame"] == 0.0
 
 
 def test_temporal_passthrough_skips_prompt_fn(tmp_path):
