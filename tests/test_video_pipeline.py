@@ -254,3 +254,51 @@ def test_batch_result_to_dict_includes_keyframe_fields_when_set():
     assert d["keyframe_count"] == 1
     assert d["generated_frames"] == 4
     assert d["keyframe_indices"] == [0]
+
+
+def test_save_temporal_artifacts_marks_passthrough_and_counts_generated(tmp_path):
+    """透传关键帧标 passthrough、无 edge；码率只计生成帧。"""
+    import json
+    from types import SimpleNamespace
+
+    from semantic_transmission.pipeline.video_pipeline import _save_temporal_artifacts
+    from semantic_transmission.receiver.base import FrameInput
+
+    def _edge():
+        return Image.new("RGB", (16, 12), color=(255, 255, 255))
+
+    # 4 帧：0 为透传关键帧，1/2/3 为生成帧
+    generated = [
+        FrameInput(
+            edge_image=_edge(),
+            prompt_text=f"描述 {i}",
+            metadata={"index": i, "name": f"frame_{i:04d}"},
+        )
+        for i in (1, 2, 3)
+    ]
+    artifacts = tmp_path / "art"
+    _save_temporal_artifacts(
+        artifacts,
+        generated_inputs=generated,
+        passthrough_indices=[0],
+        total_frames=4,
+        meta=SimpleNamespace(fps=25.0),
+    )
+
+    data = json.loads((artifacts / "prompts.json").read_text(encoding="utf-8"))
+    assert data["total_frames"] == 4
+    assert data["generated_frames"] == 3
+    assert data["keyframe_indices"] == [0]
+    # frames 覆盖全部下标；透传帧标记、无 prompt
+    assert data["frames"][0] == {"index": 0, "passthrough": True}
+    assert data["frames"][1]["prompt"] == "描述 1"
+    assert data["frames"][1]["byte_count"] == len("描述 1".encode("utf-8"))
+    # 码率仅计 3 个生成帧
+    expected_total = sum(len(f"描述 {i}".encode("utf-8")) for i in (1, 2, 3))
+    assert data["semantic_bitrate"]["total_bytes"] == expected_total
+    assert data["semantic_bitrate"]["avg_bytes_per_generated_frame"] == round(
+        expected_total / 3, 2
+    )
+    # edges 只有 3 张（生成帧），透传帧 frame_0000 无 edge
+    pngs = sorted(p.name for p in (artifacts / "edges").glob("*.png"))
+    assert pngs == ["frame_0001.png", "frame_0002.png", "frame_0003.png"]

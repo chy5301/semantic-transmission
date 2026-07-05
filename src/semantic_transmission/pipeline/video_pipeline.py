@@ -104,6 +104,65 @@ def _save_artifacts(artifacts_dir, frame_inputs: list[FrameInput], meta) -> None
     )
 
 
+def _save_temporal_artifacts(
+    artifacts_dir,
+    generated_inputs: list[FrameInput],
+    passthrough_indices,
+    total_frames: int,
+    meta,
+) -> None:
+    """时序路径的语义中间产物保存：透传关键帧无描述、码率仅计生成帧。
+
+    与无状态 ``_save_artifacts`` 并存。透传关键帧发整帧、不发 prompt（§5 VLM 跳过），
+    故其在 ``prompts.json`` 中仅留 ``{"index": i, "passthrough": true}``、不产 edge；
+    语义码率（压缩率账本）只累加生成帧的 prompt 字节。
+    """
+    artifacts_dir = Path(artifacts_dir)
+    edges_dir = artifacts_dir / "edges"
+    edges_dir.mkdir(parents=True, exist_ok=True)
+
+    passthrough = set(passthrough_indices or [])
+    by_index = {fi.metadata["index"]: fi for fi in generated_inputs}
+
+    frames_meta: list[dict[str, Any]] = []
+    total_bytes = 0
+    for i in range(total_frames):
+        if i in passthrough:
+            frames_meta.append({"index": i, "passthrough": True})
+            continue
+        fi = by_index[i]
+        prompt = fi.prompt_text
+        byte_count = len(prompt.encode("utf-8"))
+        total_bytes += byte_count
+        frames_meta.append(
+            {
+                "index": i,
+                "prompt": prompt,
+                "char_count": len(prompt),
+                "byte_count": byte_count,
+            }
+        )
+        fi.edge_image.save(edges_dir / f"frame_{i:04d}.png")
+
+    generated = total_frames - len(passthrough)
+    avg_bytes = total_bytes / generated if generated else 0.0
+    payload = {
+        "total_frames": total_frames,
+        "generated_frames": generated,
+        "keyframe_indices": sorted(passthrough),
+        "fps": meta.fps,
+        "semantic_bitrate": {
+            "total_bytes": total_bytes,
+            "avg_bytes_per_generated_frame": round(avg_bytes, 2),
+            "avg_bytes_per_second": round(avg_bytes * meta.fps, 2),
+        },
+        "frames": frames_meta,
+    }
+    (artifacts_dir / "prompts.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
 class VideoPipeline:
     """video→video 编排：解码→逐帧 Canny+构造 FrameInput→process_batch→
     失败帧填充→frame_postprocess→编码。"""
