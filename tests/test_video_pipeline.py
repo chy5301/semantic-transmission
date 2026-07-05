@@ -230,3 +230,27 @@ def test_run_without_artifacts_dir_skips_saving(tmp_path):
 
     assert not (tmp_path / "prompts.json").exists()
     assert not (tmp_path / "edges").exists()
+
+
+def test_batch_result_to_dict_omits_keyframe_fields_by_default():
+    """无状态路径：keyframe_indices 未赋值时 to_dict 不含时序字段（逐字节向后兼容）。"""
+    from semantic_transmission.pipeline.batch_processor import BatchResult
+
+    d = BatchResult(total=3, success=3).to_dict()
+    assert "keyframe_count" not in d
+    assert "generated_frames" not in d
+    assert "keyframe_indices" not in d
+
+
+def test_batch_result_to_dict_includes_keyframe_fields_when_set():
+    """时序路径：赋值后 to_dict 输出三个关键帧统计字段。"""
+    from semantic_transmission.pipeline.batch_processor import BatchResult
+
+    b = BatchResult(total=5, success=5)
+    b.keyframe_count = 1
+    b.generated_frames = 4
+    b.keyframe_indices = [0]
+    d = b.to_dict()
+    assert d["keyframe_count"] == 1
+    assert d["generated_frames"] == 4
+    assert d["keyframe_indices"] == [0]
