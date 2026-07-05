@@ -302,3 +302,184 @@ def test_save_temporal_artifacts_marks_passthrough_and_counts_generated(tmp_path
     # edges 只有 3 张（生成帧），透传帧 frame_0000 无 edge
     pngs = sorted(p.name for p in (artifacts / "edges").glob("*.png"))
     assert pngs == ["frame_0001.png", "frame_0002.png", "frame_0003.png"]
+
+
+class _FakeReferenceReceiver(BaseReceiver):
+    """无 GPU 多参考接收端：记录每帧收到的 reference_images / prompt；
+    可指定某些「生成帧序号」抛异常。带 config.max_side 供透传帧缩放。"""
+
+    def __init__(self, fail_gen_calls=(), max_side=64):
+        from types import SimpleNamespace
+
+        self.config = SimpleNamespace(max_side=max_side)
+        self.calls = []  # 每次 process 调用：{"prompt":..., "refs":[...]}
+        self._fail = set(fail_gen_calls)
+        self._n = -1
+
+    def process(self, edge_image, prompt_text, seed=None, reference_images=None):
+        self._n += 1
+        self.calls.append({"prompt": prompt_text, "refs": list(reference_images or [])})
+        if self._n in self._fail:
+            raise RuntimeError("fake gen failure")
+        # 返回工作分辨率大小的图（与透传帧尺寸一致：64 长边 → 64x48 源缩不变）
+        return Image.new("RGB", (64, 48), color=(0, 255, 0))
+
+
+def _temporal_cfg(**kw):
+    from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
+
+    return TemporalPolicyConfig(**kw)
+
+
+def test_temporal_none_is_backward_compatible(tmp_path):
+    """temporal_policy=None 时输出与旧无状态路径一致（帧数/成功数不变）。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 4)
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())
+
+    stats = pipe.run(
+        src, tmp_path / "out.mp4", prompt_fn=lambda i, f: "t", temporal_policy=None
+    )
+    read, _ = read_frames(tmp_path / "out.mp4")
+    assert len(read) == 4
+    assert stats.total == 4 and stats.success == 4
+    assert stats.keyframe_indices is None  # 无状态路径不带时序字段
+
+
+def test_temporal_prev_chain_refs(tmp_path):
+    """prev 模式：第 i 生成帧收到的 refs == [上一帧输出]。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 4)
+    rec = _FakeReferenceReceiver()
+    pipe = VideoPipeline(rec, LocalCannyExtractor())
+
+    # interval=12 → 仅帧 0 是关键帧（透传）；帧 1/2/3 生成
+    pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: f"p{i}",
+        temporal_policy=_temporal_cfg(keyframe_interval=12, reference_mode="prev"),
+    )
+    # 3 次生成调用（帧 1/2/3）
+    assert len(rec.calls) == 3
+    # 帧 1 的 refs = [帧 0 透传图]；帧 2 的 refs = [帧 1 输出]；帧 3 = [帧 2 输出]
+    assert len(rec.calls[0]["refs"]) == 1
+    assert len(rec.calls[1]["refs"]) == 1
+    assert len(rec.calls[2]["refs"]) == 1
+
+
+def test_temporal_passthrough_keyframe_not_generated(tmp_path):
+    """关键帧透传：is_keyframe 下标不调用 process，输出为原图（缩放后）。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 3)
+    rec = _FakeReferenceReceiver()
+    pipe = VideoPipeline(rec, LocalCannyExtractor())
+
+    pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: "p",
+        temporal_policy=_temporal_cfg(keyframe_interval=2),  # 关键帧 {0, 2}
+    )
+    # 帧 0、2 透传，仅帧 1 生成 → 1 次 process 调用
+    assert len(rec.calls) == 1
+
+
+def test_temporal_passthrough_skips_prompt_fn(tmp_path):
+    """透传关键帧下标不调用 prompt_fn（§5 VLM 跳过优化）。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 4)
+    described = []
+    pipe = VideoPipeline(_FakeReferenceReceiver(), LocalCannyExtractor())
+
+    pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: described.append(i) or "p",
+        temporal_policy=_temporal_cfg(keyframe_interval=2),  # 关键帧 {0, 2} 透传
+    )
+    # 只有生成帧 1、3 被描述
+    assert described == [1, 3]
+
+
+def test_temporal_failed_frame_does_not_poison_prev_chain(tmp_path):
+    """某生成帧失败 → 下一帧 refs 仍指向上一成功帧、非 None。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 4)
+    # 关键帧 {0}；生成帧调用序 0->帧1, 1->帧2, 2->帧3；令第 1 次（帧2）失败
+    rec = _FakeReferenceReceiver(fail_gen_calls=[1])
+    pipe = VideoPipeline(rec, LocalCannyExtractor())
+
+    stats = pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: "p",
+        temporal_policy=_temporal_cfg(keyframe_interval=12, reference_mode="prev"),
+    )
+    # 帧3（第 2 次调用）的 refs 必须非空（用帧1 的成功输出，而非帧2 的 None）
+    assert len(rec.calls[2]["refs"]) == 1
+    assert rec.calls[2]["refs"][0] is not None
+    assert stats.failed == 1
+
+
+def test_temporal_stats_and_size_consistency(tmp_path):
+    """时序统计字段正确 + 透传帧与生成帧输出尺寸一致（帧数守恒）。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 4)
+    pipe = VideoPipeline(_FakeReferenceReceiver(), LocalCannyExtractor())
+
+    stats = pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: "p",
+        temporal_policy=_temporal_cfg(keyframe_interval=2),  # 关键帧 {0,2} 透传
+    )
+    read, _ = read_frames(tmp_path / "out.mp4")
+    assert len(read) == 4  # 帧数守恒
+    assert stats.keyframe_count == 2
+    assert stats.generated_frames == 2
+    assert stats.keyframe_indices == [0, 2]
+
+
+def test_temporal_requires_reference_capable_receiver(tmp_path):
+    """能力门控：receiver.process 不接受 reference_images 时抛明确错误、不静默降级。"""
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 2)
+    pipe = VideoPipeline(_FakeReceiver(), LocalCannyExtractor())  # 无 reference_images
+
+    with pytest.raises(TypeError, match="reference_images"):
+        pipe.run(
+            src,
+            tmp_path / "out.mp4",
+            prompt_fn=lambda i, f: "p",
+            temporal_policy=_temporal_cfg(),
+        )
+
+
+def test_temporal_non_passthrough_keyframe_updates_anchor(tmp_path):
+    """passthrough=False：关键帧不透传但仍更新 last_kf 锚点，全部帧都生成。
+
+    覆盖 `if i in kf_set` 非透传关键帧分支（其余测试均 passthrough=True，从不触发它）。
+    """
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 4)
+    rec = _FakeReferenceReceiver()
+    pipe = VideoPipeline(rec, LocalCannyExtractor())
+
+    # 关键帧 {0,2}，passthrough 关，reference_mode=keyframe → refs=[last_kf 锚点]
+    stats = pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: "p",
+        temporal_policy=_temporal_cfg(
+            keyframe_interval=2, keyframe_passthrough=False, reference_mode="keyframe"
+        ),
+    )
+    # 无透传 → 4 帧全部走 process（触发锚点更新分支）
+    assert len(rec.calls) == 4
+    # 锚点在 i=0（帧0）与 i=2（帧2）各更新一次 → 帧1、帧3 的参考锚点是不同对象
+    assert rec.calls[1]["refs"][0] is not rec.calls[3]["refs"][0]
+    # 非透传：无透传关键帧 → keyframe_count=0、全部帧计入 generated（与 total 对账）
+    assert stats.keyframe_count == 0
+    assert stats.generated_frames == 4
+    assert stats.keyframe_indices == []
