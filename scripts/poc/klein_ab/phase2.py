@@ -1,51 +1,19 @@
-"""阶段 2 参考帧时序策略 + 质量两栏拆分（编排层纯逻辑，可单测）。
+"""阶段 2 质量两栏拆分（评估期关注点，留在 PoC 不进生产管道）。
 
-时序策略不进接收端：接收端保持无状态单帧契约，此处只做"给定跨帧状态 →
-构造参考帧列表 / 判定关键帧 / 拆分质量指标"的纯函数，由 run_phase2.py 持状态编排。
+时序纯逻辑（TemporalPolicyConfig / is_keyframe / build_reference_images）已毕业到
+src/semantic_transmission/pipeline/temporal_policy.py，此处重导出以保持 run_phase2.py
+及其单测的导入路径不变、不重复实现。split_summary 依赖 baseline 对照做质量拆分，
+属评估期工具，留在 PoC。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from semantic_transmission.evaluation.video_eval import summarize_metrics
-
-_VALID_MODES = {"none", "prev", "keyframe", "prev_keyframe"}
-
-
-@dataclass
-class TemporalPolicyConfig:
-    """参考帧时序策略配置。
-
-    - keyframe_interval: N；<=0 关闭关键帧（退回 drop-in）。
-    - reference_mode: none | prev | keyframe | prev_keyframe。
-    - keyframe_passthrough: 关键帧那一帧是否直接透传原图（不生成）。
-    """
-
-    keyframe_interval: int = 12
-    reference_mode: str = "prev"
-    keyframe_passthrough: bool = True
-
-
-def is_keyframe(index: int, config: TemporalPolicyConfig) -> bool:
-    """index 是否为关键帧下标（interval>0 且 index 整除 interval）。"""
-    return config.keyframe_interval > 0 and index % config.keyframe_interval == 0
-
-
-def build_reference_images(mode: str, prev_output, last_keyframe) -> list:
-    """构造接在 canny 之后的额外参考帧列表。
-
-    顺序：prev 在前、keyframe 在后（对齐设计 C = [canny, prev, keyframe]）。
-    prev_output / last_keyframe 为 None 时该项跳过。
-    """
-    if mode not in _VALID_MODES:
-        raise ValueError(f"未知 reference_mode: {mode!r}，支持 {sorted(_VALID_MODES)}")
-    refs = []
-    if mode in ("prev", "prev_keyframe") and prev_output is not None:
-        refs.append(prev_output)
-    if mode in ("keyframe", "prev_keyframe") and last_keyframe is not None:
-        refs.append(last_keyframe)
-    return refs
+from semantic_transmission.pipeline.temporal_policy import (
+    TemporalPolicyConfig,
+    build_reference_images,
+    is_keyframe,
+)
 
 
 def split_summary(frames: list[dict], keyframe_indices) -> dict:
