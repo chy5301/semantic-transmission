@@ -95,7 +95,7 @@
 
 **目标**：交付输入视频流、输出生成视频流的程序，逼近遥控可用的延迟/清晰度/一致性
 
-**状态**：进行中。**保底版 M1 单机闭环已达成（2026-06-28）**，目标版顺延 7 月（见下方「实际进展」）。详细编排、风险兜底、验收口径见 [6 天冲刺规划设计](superpowers/specs/2026-06-21-video-stream-6day-plan-design.md)；技术选型依据见 [视频流技术方案](research/2026-06-21-video-stream-tech-scout.md) 与 [2026-06 综合评估](research/2026-06-reevaluation.md)；测试方案与实测基线见 [测试方案 spec](superpowers/specs/2026-06-28-video-stream-test-plan-design.md)。
+**状态**：进行中。**保底版 M1 单机闭环已达成（2026-06-28）**；目标版 klein 关键帧主线 7 月持续推进——H1 结构遵循度 PoC、阶段 2 参考帧时间一致性补偿、阶段 3（一）时序策略毕业到生产管道均已合并 main（见下方「klein 目标版主线进展」）；RIFE 插帧/超分/流式 I/O 尚未启动。详细编排、风险兜底、验收口径见 [6 天冲刺规划设计](superpowers/specs/2026-06-21-video-stream-6day-plan-design.md)；技术选型依据见 [视频流技术方案](research/2026-06-21-video-stream-tech-scout.md) 与 [2026-06 综合评估](research/2026-06-reevaluation.md)；测试方案与实测基线见 [测试方案 spec](superpowers/specs/2026-06-28-video-stream-test-plan-design.md)。
 
 ### 核心决策（已与负责人确认）
 
@@ -129,7 +129,19 @@
 
 **关键实测洞察**（详见 [测试方案 spec](superpowers/specs/2026-06-28-video-stream-test-plan-design.md)）：VLM 瓶颈在 prefill（降 `--vlm-max-tokens` 无效）；Diffusers 阶段显存 23.3GB / 距上限仅 1GB；单视频 ~33min、10 个 ~5.5h；完整码流压缩率仅 1.5x（边缘图比文本码流还大）。
 
-**目标版（D4–D6 + H1/H2/H3 PoC）顺延 7 月**：关键帧主线、RIFE 插帧、超分、klein 结构遵循度 PoC（IoU>0.4 判据）、帧间一致性主线裁决等，**均未启动**。
+**目标版（D4–D6）在冲刺表中顺延 7 月**——但关键帧主线已于 7 月独立推进（见下节）；RIFE 插帧、超分、流式 I/O 仍未启动。
+
+### klein 目标版主线进展（2026-07）
+
+关键帧主线 FLUX.2-klein-9B 经三个阶段验证并全部合并 main：
+
+- ✅ **H1 结构遵循度 PoC**（PR #59）：klein / Z-Image / Qwen-Image-Edit 三方结构遵循度对比（IoU 判据），确认 klein 具备作关键帧主线的结构可控性。harness 在 `scripts/poc/h1_h2/`，报告见 [`docs/test-reports/2026-06-29-h1-klein-structure-poc-report.md`](test-reports/2026-06-29-h1-klein-structure-poc-report.md)。
+- ✅ **阶段 2 参考帧时间一致性补偿**（PR #60/#64）：用 klein 原生 `image=[canny, 参考帧]` 通道补跨帧锚点，相对逐帧独立生成 **帧间闪烁 MAE 降约 76%**，坐实 klein 作主线（选型可逆裁决点被证否）；多参考峰值 ≤20.6GB/24GB 无 OOM。默认 **prev-only@N12**（快、省算力），prev+key 保真更优但 ~28% 慢。报告见 [`docs/test-reports/2026-07-03-klein-c104-scheme-compare.md`](test-reports/2026-07-03-klein-c104-scheme-compare.md)。
+- ✅ **阶段 3（一）时序策略毕业到生产管道**（PR #65）：已验证的有状态串行时序策略（关键帧透传 + prev 链参考帧补偿）从 PoC harness 毕业到 `VideoPipeline`，`semantic-tx video --backend klein` 默认走 prev-only@N12；GPU 冒烟验收通过（帧数守恒、关键帧透传标记、`keyframe_count/generated_frames/keyframe_indices` 时序统计齐全）。
+
+**仍未启动**：RIFE 插帧、超分、流式 I/O、帧间一致性主线多场景终裁；速度仍是实时瓶颈（klein 稳定态 7–9s/帧 vs 目标 ~1–1.5s，fp8/降步数/TensorRT 属独立轨）。
+
+**下一步 = 阶段 3（二）**：把时序策略接入 relay 双机协议（关键帧低频整帧传输 + 生成帧走语义码流）。
 
 ### 中期：目标版工程化（7 月）
 
