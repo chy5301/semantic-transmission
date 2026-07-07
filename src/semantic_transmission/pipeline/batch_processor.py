@@ -54,6 +54,10 @@ class BatchResult:
     skipped: int = 0
     total_time: float = 0.0
     samples: list[SampleResult] = field(default_factory=list)
+    # 时序（temporal）路径专用统计；无状态路径保持 None，to_dict 不输出这些键。
+    keyframe_count: int | None = None
+    generated_frames: int | None = None
+    keyframe_indices: list[int] | None = None
 
     def add_sample(self, result: SampleResult) -> None:
         """添加一张图片的处理结果。"""
@@ -67,7 +71,7 @@ class BatchResult:
 
     def to_dict(self) -> dict:
         """转换为字典用于 JSON 序列化。"""
-        return {
+        d = {
             "total": self.total,
             "success": self.success,
             "failed": self.failed,
@@ -76,6 +80,14 @@ class BatchResult:
             "success_rate": (self.success / self.total * 100) if self.total > 0 else 0,
             "samples": [s.to_dict() for s in self.samples],
         }
+        # 时序路径才输出关键帧统计。三字段由 _run_temporal 作为一个整体同时赋值，
+        # 故以 keyframe_indices 是否为 None 作单一存在性判据；无状态路径三者均 None，
+        # to_dict 逐字节兼容旧输出。
+        if self.keyframe_indices is not None:
+            d["keyframe_count"] = self.keyframe_count
+            d["generated_frames"] = self.generated_frames
+            d["keyframe_indices"] = self.keyframe_indices
+        return d
 
 
 class BatchImageDiscoverer:
