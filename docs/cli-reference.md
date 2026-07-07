@@ -19,6 +19,7 @@ uv sync
 | `semantic-tx receiver` | 接收端：监听端口接收数据 → Diffusers 本地还原 |
 | `semantic-tx demo` | 端到端演示：图像 → 边缘提取 → 语义还原 |
 | `semantic-tx batch-demo` | 批量端到端演示：目录中所有图片 → 逐一处理 |
+| `semantic-tx video` | 单机端到端视频语义传输：video → 逐帧语义还原 → video |
 | `semantic-tx check vlm` | 检查发送端 VLM 模型是否就绪 |
 | `semantic-tx check diffusers` | 检查接收端 Diffusers 模型是否就绪 |
 | `semantic-tx check relay` | 测试双机部署对端 TCP 可达性 |
@@ -163,6 +164,60 @@ semantic-tx batch-demo --input-dir resources/test_images --auto-prompt
 # 批量手动描述（所有图共用）
 semantic-tx batch-demo --input-dir resources/test_images --prompt "A scenic view" --skip-errors
 ```
+
+---
+
+## semantic-tx video
+
+单机端到端视频语义传输（video → video）。发送端逐帧本地 Canny 提取边缘图 + 语义描述
+（手动整段共用或 VLM 逐帧自动），接收端逐帧/时序还原并编码为输出视频。
+
+### 参数
+
+| 参数 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `--input` | PATH | 是 | - | 输入视频路径 |
+| `--output` | PATH | 否 | output/video/out.mp4 | 输出视频路径 |
+| `--prompt` | TEXT | 与 --auto-prompt 二选一 | - | 手动指定描述文本（整段共用） |
+| `--auto-prompt` | FLAG | 与 --prompt 二选一 | - | 使用 VLM (Qwen2.5-VL) 为每帧自动生成描述 |
+| `--vlm-max-tokens` | INT | 否 | 512 | auto-prompt 时 VLM 每帧描述的最大 token 数（调小可显著提速，代价是描述更简略；仅 --auto-prompt 时生效） |
+| `--threshold1` | INT | 否 | 读 `config.toml` `[sender].canny_low_threshold` | Canny 低阈值 |
+| `--threshold2` | INT | 否 | 读 `config.toml` `[sender].canny_high_threshold` | Canny 高阈值 |
+| `--seed` | INT | 否 | - | 随机种子（透传给每帧） |
+| `--backend` | `diffusers\|klein` | 否 | diffusers | 接收端后端（diffusers=Z-Image 备选；klein=FLUX.2-klein-9B 关键帧主线） |
+| `--reference-mode` | `none\|prev\|keyframe\|prev_keyframe` | 否 | 按 backend 解析（klein→prev，diffusers→none） | 时序参考帧模式，仅 klein 支持；none 复现 drop-in baseline |
+| `--keyframe-interval` | INT | 否 | 12 | 关键帧间隔 N（每 N 帧一个关键帧） |
+| `--keyframe-passthrough` / `--no-keyframe-passthrough` | FLAG | 否 | 开 | 关键帧是否直接透传原图（不生成、跳过 VLM 描述） |
+| `--fps` | FLOAT | 否 | 沿用输入视频 fps | 输出帧率 |
+| `--save-artifacts` / `--no-save-artifacts` | FLAG | 否 | 开 | 是否保存语义中间产物（`prompts.json` 逐帧描述 + 码率统计、`edges/` 边缘图）到输出目录 |
+
+默认行为：`--backend klein` 缺省即启用 prev-only@N12 时序补偿（已验证闪烁 MAE 降 ~76%）；
+`--backend diffusers` 显式传时序参数（`--reference-mode` 非 none）会报错。
+
+### 示例
+
+```bash
+# 手动 prompt，diffusers 后端（默认，无时序）
+semantic-tx video --input sample.mp4 --prompt "a driving scene on a city road"
+
+# VLM 自动描述，klein 后端默认 prev-only@N12 时序补偿
+semantic-tx video --input sample.mp4 --auto-prompt --backend klein
+
+# 显式指定关键帧间隔与透传行为
+semantic-tx video --input sample.mp4 --prompt "..." --backend klein --keyframe-interval 8 --no-keyframe-passthrough
+
+# reference-mode none：klein 后端复现无时序的 drop-in baseline
+semantic-tx video --input sample.mp4 --prompt "..." --backend klein --reference-mode none
+```
+
+### 输出文件
+
+| 文件 | 说明 |
+|------|------|
+| `out.mp4`（或 `--output` 指定路径） | 还原后的输出视频 |
+| `summary.json` | 逐帧统计（成功/失败数、总耗时；klein 时序模式下另含 `keyframe_count` / `generated_frames` / `keyframe_indices`） |
+| `prompts.json` | 逐帧描述 + 码率统计（`--save-artifacts` 时生成；透传关键帧标记 `passthrough: true`，码率统计仅计生成帧） |
+| `edges/` | 逐帧 Canny 边缘图（`--save-artifacts` 时生成，透传关键帧不产出） |
 
 ---
 

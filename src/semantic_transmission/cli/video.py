@@ -10,6 +10,7 @@ from pathlib import Path
 import click
 
 from semantic_transmission.common.config import load_config
+from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
 from semantic_transmission.pipeline.video_pipeline import VideoPipeline
 from semantic_transmission.receiver import create_receiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
@@ -64,6 +65,24 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
     help="接收端后端（默认 diffusers/Z-Image 备选；klein=FLUX.2-klein-9B 关键帧主线）",
 )
 @click.option(
+    "--reference-mode",
+    type=click.Choice(["none", "prev", "keyframe", "prev_keyframe"]),
+    default=None,
+    help="时序参考帧模式（仅 klein 支持）。缺省按 backend 解析："
+    "klein→prev（默认时序补偿），diffusers→none（无时序）。none=复现 drop-in baseline。",
+)
+@click.option(
+    "--keyframe-interval",
+    default=12,
+    type=int,
+    help="关键帧间隔 N（每 N 帧一个关键帧，默认 12）",
+)
+@click.option(
+    "--keyframe-passthrough/--no-keyframe-passthrough",
+    default=True,
+    help="关键帧是否直接透传原图（不生成、跳过 VLM 描述，默认开）",
+)
+@click.option(
     "--fps", default=None, type=float, help="输出帧率（默认沿用输入视频 fps）"
 )
 @click.option(
@@ -82,6 +101,9 @@ def video(
     threshold2,
     seed,
     backend,
+    reference_mode,
+    keyframe_interval,
+    keyframe_passthrough,
     fps,
     save_artifacts,
 ):
@@ -90,6 +112,22 @@ def video(
         raise click.UsageError("必须指定 --prompt 或 --auto-prompt 之一")
     if prompt and auto_prompt:
         raise click.UsageError("--prompt 和 --auto-prompt 不能同时使用")
+
+    # 时序参考帧默认解析与 backend 门控：
+    # - 未显式指定 --reference-mode（None 哨兵）时：klein→prev，diffusers→none。
+    # - diffusers 显式传非 none 时序参数直接报错（Z-Image 非多参考模型，不支持时序）。
+    if reference_mode is None:
+        reference_mode = "prev" if backend == "klein" else "none"
+    elif backend != "klein" and reference_mode != "none":
+        raise click.UsageError("时序补偿仅 klein 后端支持（--backend klein）")
+
+    temporal_policy = None
+    if reference_mode != "none":
+        temporal_policy = TemporalPolicyConfig(
+            keyframe_interval=keyframe_interval,
+            reference_mode=reference_mode,
+            keyframe_passthrough=keyframe_passthrough,
+        )
 
     cfg = load_config()
     if threshold1 is None:
@@ -134,6 +172,7 @@ def video(
             fps=fps,
             on_prompts_ready=on_prompts_ready,
             save_artifacts_to=output_path.parent if save_artifacts else None,
+            temporal_policy=temporal_policy,
         )
     except Exception as e:
         raise click.ClickException(f"视频处理失败: {e}") from e
