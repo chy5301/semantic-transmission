@@ -22,6 +22,10 @@ from semantic_transmission.pipeline.relay import (
     SocketRelaySender,
     TransmissionPacket,
 )
+from semantic_transmission.pipeline.temporal_policy import (
+    TemporalPolicyConfig,
+    is_keyframe,
+)
 from semantic_transmission.pipeline.video_pipeline import PromptFn, _fill_failed_frames
 from semantic_transmission.receiver.base import BaseReceiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
@@ -36,16 +40,25 @@ def _encode_edge_png(edge_img: Image.Image) -> bytes:
 
 @dataclass
 class VideoSendStats:
-    """发送端统计：总帧数 + 逐帧耗时/体积。"""
+    """发送端统计：总帧数 + 逐帧耗时/体积 + 时序码率账本。"""
 
     total_frames: int
     total_time: float = 0.0
     frames: list[dict] = field(default_factory=list)
+    # 时序路径码率账本：关键帧整帧 vs 生成帧语义码流的帧数与字节数。
+    keyframe_count: int = 0
+    generated_count: int = 0
+    keyframe_bytes: int = 0
+    generated_bytes: int = 0
 
     def to_dict(self) -> dict:
         return {
             "total_frames": self.total_frames,
             "total_time": self.total_time,
+            "keyframe_count": self.keyframe_count,
+            "generated_count": self.generated_count,
+            "keyframe_bytes": self.keyframe_bytes,
+            "generated_bytes": self.generated_bytes,
             "frames": self.frames,
         }
 
@@ -66,6 +79,7 @@ class VideoRelaySender:
         seed: int | None = None,
         fps: float | None = None,
         save_frames_dir: Path | None = None,
+        temporal_policy: "TemporalPolicyConfig | None" = None,
     ) -> VideoSendStats:
         """跑通发送端：解码视频、逐帧提边缘+取 prompt、逐帧发送。
 
@@ -77,10 +91,23 @@ class VideoRelaySender:
             seed: 透传给每帧（写入 metadata.seed）。
             fps: 输出帧率，None 时沿用输入 fps，写入 metadata.fps。
             save_frames_dir: 非 None 时把每帧边缘图存盘（调试用）。
+            temporal_policy: 非 None 时按 is_keyframe 分流——关键帧发整帧 RGB
+                PNG（空 prompt），生成帧发 Canny 边缘图 + prompt；metadata 打
+                frame_type 标签。None 时保持无状态逐帧路径（不加 frame_type）。
 
         Returns:
-            VideoSendStats 逐帧统计。
+            VideoSendStats 逐帧统计（含时序码率账本）。
+
+        Raises:
+            ValueError: temporal_policy 非 None 且 keyframe_passthrough=False
+                （relay 时序路径仅支持关键帧整帧透传）。
         """
+        # relay 时序路径仅支持 keyframe_passthrough=True（关键帧整帧传输）——
+        # 库层 fail-fast 守卫，与 CLI 不暴露 --no-keyframe-passthrough 一致（S3）。
+        if temporal_policy is not None and not temporal_policy.keyframe_passthrough:
+            raise ValueError(
+                "relay 时序路径仅支持 keyframe_passthrough=True（关键帧整帧传输）"
+            )
         frames, meta = read_frames(input_path)
         out_fps = fps if fps is not None else meta.fps
         total = len(frames)
@@ -92,13 +119,7 @@ class VideoRelaySender:
         t_all = time.time()
         with SocketRelaySender(host, port) as relay:
             for i, frame in enumerate(frames):
-                edge_np = self.extractor.extract(frame)
-                edge_img = load_as_rgb(edge_np)
-                try:
-                    prompt_text = prompt_fn(i, frame)
-                except Exception:
-                    prompt_text = ""
-                edge_bytes = _encode_edge_png(edge_img)
+                is_kf = temporal_policy is not None and is_keyframe(i, temporal_policy)
                 metadata: dict = {
                     "frame_index": i,
                     "total_frames": total,
@@ -107,8 +128,31 @@ class VideoRelaySender:
                 }
                 if seed is not None:
                     metadata["seed"] = seed
+
+                if is_kf:
+                    # 关键帧透传：发整帧 RGB PNG、空 prompt、不提 Canny 不调 prompt_fn。
+                    frame_bytes = _encode_edge_png(load_as_rgb(frame))
+                    prompt_text = ""
+                    metadata["frame_type"] = "keyframe"
+                    payload_bytes = frame_bytes
+                    stats.keyframe_count += 1
+                    stats.keyframe_bytes += len(frame_bytes)
+                else:
+                    edge_img = load_as_rgb(self.extractor.extract(frame))
+                    try:
+                        prompt_text = prompt_fn(i, frame)
+                    except Exception:
+                        prompt_text = ""
+                    payload_bytes = _encode_edge_png(edge_img)
+                    if temporal_policy is not None:
+                        metadata["frame_type"] = "generated"
+                        stats.generated_count += 1
+                        stats.generated_bytes += len(payload_bytes) + len(
+                            prompt_text.encode("utf-8")
+                        )
+
                 packet = TransmissionPacket(
-                    edge_image=edge_bytes,
+                    edge_image=payload_bytes,
                     prompt_text=prompt_text,
                     metadata=metadata,
                 )
@@ -117,14 +161,14 @@ class VideoRelaySender:
                 relay_elapsed = time.time() - t0
                 if save_frames_dir is not None:
                     (save_frames_dir / f"frame_{i:04d}_edge.png").write_bytes(
-                        edge_bytes
+                        payload_bytes
                     )
                 stats.frames.append(
                     {
                         "index": i,
                         "relay": relay_elapsed,
                         "prompt_len": len(prompt_text),
-                        "packet_bytes": len(edge_bytes)
+                        "packet_bytes": len(payload_bytes)
                         + len(prompt_text.encode("utf-8")),
                     }
                 )
