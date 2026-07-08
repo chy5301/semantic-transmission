@@ -21,6 +21,7 @@ from semantic_transmission.pipeline.temporal_policy import (
     TemporalPolicyConfig,
     build_reference_images,
     is_keyframe,
+    require_temporal_capable,
 )
 from semantic_transmission.receiver.base import BaseReceiver, FrameInput
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
@@ -285,17 +286,10 @@ class VideoPipeline:
         # 只在时序路径需要，避免无状态路径被动引入重依赖。
         from semantic_transmission.receiver.klein_receiver import fit_working_size
 
-        # 能力门控：串行路径要求 receiver.process 接受 reference_images（§3.3/§8）。
-        import inspect
-
-        params = inspect.signature(self.receiver.process).parameters
-        if "reference_images" not in params:
-            raise TypeError(
-                "时序补偿要求 receiver.process 接受 reference_images 参数，"
-                f"当前接收端 {type(self.receiver).__name__} 不支持——请用 --backend klein"
-            )
-
-        max_side = self.receiver.config.max_side
+        # 能力门控：串行路径要求 receiver.process 接受 reference_images（§3.3/§8），
+        # 与双机 VideoRelayReceiver._run_temporal 共用同一门控
+        # （temporal_policy.require_temporal_capable），保证提示文案一致。
+        max_side = require_temporal_capable(self.receiver)
         frames, meta = read_frames(input_path)
         n = len(frames)
         kf_set = {i for i in range(n) if is_keyframe(i, policy)}

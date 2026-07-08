@@ -139,9 +139,11 @@
 - ✅ **阶段 2 参考帧时间一致性补偿**（PR #60/#64）：用 klein 原生 `image=[canny, 参考帧]` 通道补跨帧锚点，相对逐帧独立生成 **帧间闪烁 MAE 降约 76%**，坐实 klein 作主线（选型可逆裁决点被证否）；多参考峰值 ≤20.6GB/24GB 无 OOM。默认 **prev-only@N12**（快、省算力），prev+key 保真更优但 ~28% 慢。报告见 [`docs/test-reports/2026-07-03-klein-c104-scheme-compare.md`](test-reports/2026-07-03-klein-c104-scheme-compare.md)。
 - ✅ **阶段 3（一）时序策略毕业到生产管道**（PR #65）：已验证的有状态串行时序策略（关键帧透传 + prev 链参考帧补偿）从 PoC harness 毕业到 `VideoPipeline`，`semantic-tx video --backend klein` 默认走 prev-only@N12；GPU 冒烟验收通过（帧数守恒、关键帧透传标记、`keyframe_count/generated_frames/keyframe_indices` 时序统计齐全）。
 
+- ✅ **阶段 3（二）时序策略接入 relay 双机协议**（本 PR）：`video-sender`/`video-receiver` 接入时序策略——关键帧低频整帧传输 + 生成帧走语义码流（`frame_type` 随包过线、状态留接收端），限定 `keyframe_passthrough=True`；接收端默认 klein、无状态路径加 `frame_type` fail-fast 守卫。单机 loopback（真实 TCP + 真实 klein）验收通过：16/16 帧、码率账本坐实关键帧整帧约为生成帧 46×、**parity 逐帧 MAE=0（与单机基线像素级完全一致）**，证明「切一刀到网络两侧」无偏差。报告见 [`docs/test-reports/2026-07-08-relay-temporal-policy-report.md`](test-reports/2026-07-08-relay-temporal-policy-report.md)（补上 M1 遗留的双机 relay 视频演示，loopback 口径）。
+
 **仍未启动**：RIFE 插帧、超分、流式 I/O、帧间一致性主线多场景终裁；速度仍是实时瓶颈（klein 稳定态 7–9s/帧 vs 目标 ~1–1.5s，fp8/降步数/TensorRT 属独立轨）。
 
-**下一步 = 阶段 3（二）**：把时序策略接入 relay 双机协议（关键帧低频整帧传输 + 生成帧走语义码流）。
+**下一步**：真机双机 relay 演示（需两台机器、全流程 `--auto-prompt`，VLM 与 klein 分处两机）；RIFE 插帧 / 超分 / 流式 I/O（DLSS 式实时分层，中期项）。
 
 ### 中期：目标版工程化（7 月）
 
