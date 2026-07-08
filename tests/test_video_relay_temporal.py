@@ -107,16 +107,18 @@ class _ConfigStub:
 
 
 class _RefRecordingReceiver(BaseReceiver):
-    """记录每次 process 收到的 reference_images 数量，返回可辨识纯色图。"""
+    """记录每次 process 收到的 reference_images（数量 + 实际对象），返回可辨识纯色图。"""
 
     config = _ConfigStub()
 
     def __init__(self):
         self.calls = []  # list[(prompt_text, num_refs)]
+        self.ref_images = []  # list[list[Image.Image]]，与 calls 逐条对应
 
     def process(self, edge_image, prompt_text, seed=None, reference_images=None):
         n_refs = len(reference_images) if reference_images else 0
         self.calls.append((prompt_text, n_refs))
+        self.ref_images.append(list(reference_images) if reference_images else [])
         # 必须与关键帧透传尺寸一致（输入 64x48，fit_working_size(64x48,512)=64x48），
         # 否则 write_frames 混合尺寸抛 ValueError（B2）。
         return Image.new("RGB", (64, 48), color=(0, 0, 255))
@@ -153,6 +155,26 @@ def test_receiver_temporal_passthrough_and_refs(tmp_path):
     # 生成帧 index 1,3 各调一次 process；prev 链在关键帧后有 prev → refs=1。
     assert [c[0] for c in recv.calls] == ["p1", "p3"]
     assert all(n == 1 for _, n in recv.calls)  # prev-only：每个生成帧带 1 个参考帧
+
+    # 身份断言（承重）：仅凭 n_refs==1 无法区分"prev_out 正确复位为前一关键帧"
+    # 与"prev_out 残留了错误对象"——两种情况长度都是 1。需比对参考帧的实际像素
+    # 内容：生成帧 index1 的参考帧应为 index0 关键帧，index3 的参考帧应为 index2
+    # 关键帧（prev-only + interval=2）。关键帧在接收端 = fit_working_size(发送端
+    # 解码得到的原始帧, max_side)，用同一份视频解码结果构造期望值逐像素比对，
+    # 避免假设视频编解码器对纯色帧完全无损。
+    from semantic_transmission.common.video_io import read_frames
+    from semantic_transmission.receiver.klein_receiver import fit_working_size
+
+    src_frames, _ = read_frames(src)
+    expected_kf0 = fit_working_size(Image.fromarray(src_frames[0]).convert("RGB"), 512)
+    expected_kf2 = fit_working_size(Image.fromarray(src_frames[2]).convert("RGB"), 512)
+    ref_for_index1 = recv.ref_images[0][0]  # 生成帧 index1 的唯一参考帧
+    ref_for_index3 = recv.ref_images[1][0]  # 生成帧 index3 的唯一参考帧
+    assert ref_for_index1.size == (64, 48)
+    assert ref_for_index1.tobytes() == expected_kf0.tobytes()
+    assert ref_for_index3.size == (64, 48)
+    assert ref_for_index3.tobytes() == expected_kf2.tobytes()
+
     result = box[0]
     assert result.stats.keyframe_count == 3
     assert result.stats.generated_frames == 2
