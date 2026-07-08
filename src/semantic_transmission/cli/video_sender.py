@@ -10,6 +10,10 @@ from pathlib import Path
 import click
 
 from semantic_transmission.common.config import load_config
+from semantic_transmission.pipeline.temporal_policy import (
+    TemporalPolicyConfig,
+    is_keyframe,
+)
 from semantic_transmission.pipeline.video_relay import VideoRelaySender
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
@@ -48,6 +52,19 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
     type=click.Path(path_type=Path),
     help="发送端统计 JSON 输出路径",
 )
+@click.option(
+    "--prompts-json",
+    "prompts_json",
+    default=None,
+    type=click.Path(exists=True, path_type=Path),
+    help="从预生成 prompts.json 逐帧读取描述（不加载 VLM，供 loopback 测试）",
+)
+@click.option(
+    "--keyframe-interval",
+    default=12,
+    type=int,
+    help="关键帧间隔 N（每 N 帧一个关键帧透传整帧，默认 12；<=0 关闭时序退回逐帧）",
+)
 def video_sender(
     input_path,
     relay_host,
@@ -60,12 +77,17 @@ def video_sender(
     fps,
     save_frames_dir,
     summary_path,
+    prompts_json,
+    keyframe_interval,
 ):
     """视频流双机发送端：逐帧 Canny + 描述 → 经 relay 发送。"""
-    if prompt is None and not auto_prompt:
-        raise click.UsageError("必须指定 --prompt 或 --auto-prompt 之一")
-    if prompt is not None and auto_prompt:
-        raise click.UsageError("--prompt 和 --auto-prompt 不能同时使用")
+    sources = [prompt is not None, auto_prompt, prompts_json is not None]
+    if sum(sources) == 0:
+        raise click.UsageError(
+            "必须指定 --prompt / --auto-prompt / --prompts-json 之一"
+        )
+    if sum(sources) > 1:
+        raise click.UsageError("--prompt / --auto-prompt / --prompts-json 只能指定一个")
 
     cfg = load_config()
     if threshold1 is None:
@@ -86,10 +108,45 @@ def video_sender(
 
         def prompt_fn(index, frame):
             return vlm_sender.describe(frame).text
+    elif prompts_json is not None:
+        payload = json.loads(prompts_json.read_text(encoding="utf-8"))
+        # 时序 prompts.json（_save_temporal_artifacts 产出）含顶层 keyframe_indices：
+        # 若重放 --keyframe-interval 与生成时不一致，原关键帧下标会被误判为生成帧，
+        # by_index.get(index, "") 对其静默返回空 prompt。此处校验关键帧集一致，
+        # 不一致直接 fail-fast，而非静默送空 prompt 进生成。非时序 prompts.json
+        # （无 keyframe_indices 字段，全帧有 prompt）跳过此项校验。
+        if "keyframe_indices" in payload:
+            total = payload.get("total_frames")
+            if total is None:
+                raise click.UsageError(
+                    "prompts.json 含 keyframe_indices 但缺少 total_frames 字段，"
+                    "无法校验 --keyframe-interval"
+                )
+            check_policy = TemporalPolicyConfig(keyframe_interval=keyframe_interval)
+            expected_kf = {i for i in range(total) if is_keyframe(i, check_policy)}
+            payload_kf = set(payload["keyframe_indices"])
+            if payload_kf != expected_kf:
+                raise click.UsageError(
+                    "prompts.json 的关键帧集与 --keyframe-interval 不匹配，"
+                    "请用生成时相同的 --keyframe-interval 重放"
+                )
+        # prompts.json 的 frames: [{index, prompt?, passthrough?}]；关键帧无 prompt。
+        by_index = {f["index"]: f.get("prompt", "") for f in payload.get("frames", [])}
+
+        def prompt_fn(index, frame):
+            return by_index.get(index, "")
     else:
 
         def prompt_fn(index, frame):
             return prompt
+
+    temporal_policy = None
+    if keyframe_interval > 0:
+        temporal_policy = TemporalPolicyConfig(
+            keyframe_interval=keyframe_interval,
+            reference_mode="prev",
+            keyframe_passthrough=True,
+        )
 
     click.echo(f"发送视频: {input_path} → {relay_host}:{relay_port}")
     sender = VideoRelaySender(extractor)
@@ -102,6 +159,7 @@ def video_sender(
             seed=seed,
             fps=fps,
             save_frames_dir=save_frames_dir,
+            temporal_policy=temporal_policy,
         )
     except Exception as e:
         raise click.ClickException(f"发送失败: {e}") from e

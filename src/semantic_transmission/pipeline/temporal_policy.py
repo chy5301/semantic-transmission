@@ -7,9 +7,17 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
+from typing import Any
 
 _VALID_MODES = {"none", "prev", "keyframe", "prev_keyframe"}
+
+FRAME_TYPE_KEYFRAME = "keyframe"
+"""relay metadata.frame_type 取值：整帧透传的关键帧包。"""
+
+FRAME_TYPE_GENERATED = "generated"
+"""relay metadata.frame_type 取值：Canny 边缘图 + prompt 的生成帧包。"""
 
 
 @dataclass
@@ -47,8 +55,62 @@ def build_reference_images(mode: str, prev_output, last_keyframe) -> list:
     return refs
 
 
+def resolve_reference_mode(backend: str, reference_mode: str | None) -> str | None:
+    """把 CLI 的 --backend/--reference-mode 解析为规范化的时序模式。
+
+    返回 None 表示无时序（走无状态/逐帧路径）；返回 "prev"/"keyframe"/"prev_keyframe"
+    表示对应时序补偿模式。缺省(None)时按 backend 解析：klein→"prev"，其余→None。
+    显式 "none" 归一为 None。diffusers 后端显式传非 none 时序模式 → 抛 ValueError。
+
+    单机 video.py 与双机 video_receiver.py 共用此函数，避免默认解析 + backend
+    门控逻辑在两处 CLI 各写一份、哨兵写法（"none" vs None）漂移不一致。
+
+    注意：本模块不依赖 click，此处抛 ValueError 而非 click.UsageError，由各 CLI
+    捕获后自行转换为 click.UsageError。
+    """
+    if reference_mode is None:
+        return "prev" if backend == "klein" else None
+    if reference_mode == "none":
+        return None
+    if backend != "klein":
+        raise ValueError("时序补偿仅 klein 后端支持（--backend klein）")
+    return reference_mode
+
+
+def require_temporal_capable(receiver: Any) -> int:
+    """时序补偿能力门控：校验 receiver 支持串行参考帧补偿，返回工作分辨率上限。
+
+    单机 VideoPipeline._run_temporal 与双机 VideoRelayReceiver._run_temporal
+    共用此函数，保证两处门控文案一致（不重复内联 inspect 检查）。
+
+    Returns:
+        receiver.config.max_side（时序路径用于关键帧缩放的工作分辨率上限）。
+
+    Raises:
+        TypeError: receiver.process 不接受 reference_images 参数（提示改用
+            --backend klein）；或 receiver 无 config 属性、或 config 无
+            max_side 属性（时序补偿前提不满足）。
+    """
+    params = inspect.signature(receiver.process).parameters
+    if "reference_images" not in params:
+        raise TypeError(
+            "时序补偿要求 receiver.process 接受 reference_images 参数，"
+            f"当前接收端 {type(receiver).__name__} 不支持——请用 --backend klein"
+        )
+    if not hasattr(receiver, "config") or not hasattr(receiver.config, "max_side"):
+        raise TypeError(
+            "时序补偿要求 receiver.config.max_side 存在（用于关键帧缩放工作分辨率），"
+            f"当前接收端 {type(receiver).__name__} 的 config 不支持时序补偿"
+        )
+    return receiver.config.max_side
+
+
 __all__ = [
     "TemporalPolicyConfig",
     "is_keyframe",
     "build_reference_images",
+    "require_temporal_capable",
+    "resolve_reference_mode",
+    "FRAME_TYPE_KEYFRAME",
+    "FRAME_TYPE_GENERATED",
 ]

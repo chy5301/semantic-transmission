@@ -9,6 +9,7 @@ from pathlib import Path
 
 import click
 
+from semantic_transmission.pipeline.temporal_policy import resolve_reference_mode
 from semantic_transmission.pipeline.video_relay import VideoRelayReceiver
 from semantic_transmission.receiver import create_receiver
 
@@ -29,15 +30,44 @@ from semantic_transmission.receiver import create_receiver
     type=float,
     help="accept/receive 超时秒数（默认无限等待）",
 )
-def video_receiver(relay_host, relay_port, output_path, timeout):
+@click.option(
+    "--backend",
+    type=click.Choice(["diffusers", "klein"]),
+    default="klein",
+    help="接收端后端（默认 klein，关键帧主线时序补偿；可选 diffusers 无状态逐帧）。"
+    "默认 klein 需 klein 模型就位，否则运行时加载失败；只装 Z-Image 的环境应显式 "
+    "--backend diffusers。",
+)
+@click.option(
+    "--reference-mode",
+    type=click.Choice(["none", "prev", "keyframe", "prev_keyframe"]),
+    default=None,
+    help="时序参考帧模式（仅 klein）。缺省：klein→prev，diffusers→无时序",
+)
+def video_receiver(
+    relay_host, relay_port, output_path, timeout, backend, reference_mode
+):
     """视频流双机接收端：逐帧接收还原 → 收齐合成视频。"""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # 时序参考帧默认解析与 backend 门控（共享实现见
+    # pipeline.temporal_policy.resolve_reference_mode，与单机 video.py 对齐）。
+    try:
+        reference_mode = resolve_reference_mode(backend, reference_mode)
+    except ValueError as e:
+        raise click.UsageError(str(e)) from e
+
     click.echo(f"监听 {relay_host}:{relay_port}，输出 → {output_path}")
-    recv = create_receiver()
+    recv = create_receiver(backend=backend)
     receiver = VideoRelayReceiver(recv)
     try:
-        result = receiver.run(relay_host, relay_port, output_path, timeout=timeout)
+        result = receiver.run(
+            relay_host,
+            relay_port,
+            output_path,
+            timeout=timeout,
+            reference_mode=reference_mode,
+        )
     except Exception as e:
         raise click.ClickException(f"接收失败: {e}") from e
     finally:
