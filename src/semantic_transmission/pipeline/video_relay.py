@@ -24,6 +24,7 @@ from semantic_transmission.pipeline.relay import (
 )
 from semantic_transmission.pipeline.temporal_policy import (
     TemporalPolicyConfig,
+    build_reference_images,
     is_keyframe,
 )
 from semantic_transmission.pipeline.video_pipeline import PromptFn, _fill_failed_frames
@@ -207,6 +208,7 @@ class VideoRelayReceiver:
         output_path,
         *,
         timeout: float | None = None,
+        reference_mode: str | None = None,
     ) -> VideoReceiveResult:
         """监听端口、逐帧接收并还原，收齐 total_frames 后合成视频。
 
@@ -215,6 +217,9 @@ class VideoRelayReceiver:
             port: 监听端口。
             output_path: 输出视频路径。
             timeout: accept/receive 超时秒数，None 为无限等待。
+            reference_mode: 非 None 时走 ``_run_temporal``（持状态串行参考帧
+                补偿，按 metadata.frame_type 分支）；None 时保持无状态路径
+                （逐字节向后兼容）。
 
         Returns:
             VideoReceiveResult（含 BatchResult、fps、逐帧 prompt、输出路径）。
@@ -222,7 +227,13 @@ class VideoRelayReceiver:
         Raises:
             ConnectionError: 收齐前连接中断。
             ValueError: 全部帧失败（无可用帧合成）。
+            TypeError: reference_mode 非 None 但 receiver.process 不接受
+                reference_images（能力门控，提示改用 --backend klein）。
         """
+        if reference_mode is not None:
+            return self._run_temporal(
+                host, port, output_path, reference_mode, timeout=timeout
+            )
         relay = SocketRelayReceiver(host, port)
 
         buffer: dict[int, Image.Image | None] = {}
@@ -280,6 +291,135 @@ class VideoRelayReceiver:
         if batch is None or total is None:
             raise ValueError("未收到任何数据包，无法合成视频")
         batch.total_time = time.time() - t_start
+        ordered = _order_buffer(buffer, total)
+        filled = _fill_failed_frames(ordered)
+        write_frames(output_path, filled, fps=fps)
+        prompts = [prompt_buffer.get(i, "") for i in range(total)]
+        return VideoReceiveResult(
+            stats=batch,
+            fps=fps,
+            prompts=prompts,
+            output_path=output_path,
+            failed_indices=sorted(failed_indices),
+        )
+
+    def _run_temporal(
+        self,
+        host: str,
+        port: int,
+        output_path,
+        reference_mode: str,
+        *,
+        timeout: float | None = None,
+    ) -> VideoReceiveResult:
+        """有状态串行时序路径：关键帧透传复位锚点 + 生成帧带参考帧补偿。
+
+        与单机 VideoPipeline._run_temporal 对称——状态（prev_out/last_kf）留在
+        接收端，输入改自网络，按 metadata.frame_type 分支。依赖单 TCP 流有序性
+        保证帧序到达（prev 链前提）。
+        """
+        from semantic_transmission.receiver.klein_receiver import fit_working_size
+
+        # 能力门控：串行补偿要求 process 接受 reference_images。
+        import inspect
+
+        params = inspect.signature(self.receiver.process).parameters
+        if "reference_images" not in params:
+            raise TypeError(
+                "时序补偿要求 receiver.process 接受 reference_images 参数，"
+                f"当前接收端 {type(self.receiver).__name__} 不支持——请用 --backend klein"
+            )
+        max_side = self.receiver.config.max_side
+
+        relay = SocketRelayReceiver(host, port)
+        buffer: dict[int, Image.Image | None] = {}
+        prompt_buffer: dict[int, str] = {}
+        total: int | None = None
+        fps: float = 30.0
+        batch: BatchResult | None = None
+        failed_indices: list[int] = []
+        keyframe_indices: list[int] = []
+        prev_out: Image.Image | None = None
+        last_kf: Image.Image | None = None
+
+        try:
+            relay.start()
+            relay.accept(timeout=timeout)
+            t_start = time.time()
+            while total is None or len(buffer) < total:
+                try:
+                    packet = relay.receive(timeout=timeout)
+                except ConnectionError:
+                    raise
+                except (TimeoutError, OSError, EOFError) as exc:
+                    raise ConnectionError("收齐前连接中断") from exc
+                md = packet.metadata
+                if (
+                    md.get("frame_index") is None
+                    or md.get("total_frames") is None
+                    or md.get("fps") is None
+                    or md.get("frame_type") is None
+                ):
+                    raise ConnectionError("收到缺少必要 metadata 字段的包")
+                idx = int(md["frame_index"])
+                if total is None:
+                    total = int(md["total_frames"])
+                    fps = float(md["fps"])
+                    batch = BatchResult(total=total)
+                if idx in buffer:
+                    continue  # 去重：重复 frame_index 不重复处理
+                seed = md.get("seed")
+
+                if md["frame_type"] == "keyframe":
+                    kf = fit_working_size(
+                        Image.open(io.BytesIO(packet.edge_image)).convert("RGB"),
+                        max_side,
+                    )
+                    buffer[idx] = kf
+                    prompt_buffer[idx] = ""
+                    keyframe_indices.append(idx)
+                    prev_out = kf  # 链首复位到真关键帧
+                    last_kf = kf
+                    batch.add_sample(
+                        SampleResult(
+                            name=f"frame_{idx:04d}",
+                            status="success",
+                            timings={"process": 0.0},
+                        )
+                    )
+                    continue
+
+                # 生成帧：带参考帧补偿。
+                refs = build_reference_images(reference_mode, prev_out, last_kf)
+                sample = SampleResult(name=f"frame_{idx:04d}", status="success")
+                t0 = time.time()
+                try:
+                    img = self.receiver.process(
+                        packet.edge_image,
+                        packet.prompt_text,
+                        seed=seed,
+                        reference_images=refs,
+                    )
+                except Exception as e:
+                    img = None
+                    sample.status = "failed"
+                    sample.error = str(e)
+                    failed_indices.append(idx)
+                sample.timings["process"] = time.time() - t0
+                batch.add_sample(sample)
+                buffer[idx] = img
+                prompt_buffer[idx] = packet.prompt_text
+                prev_out = img if img is not None else prev_out  # 失败帧不污染 prev 链
+        finally:
+            relay.close()
+
+        if batch is None or total is None:
+            raise ValueError("未收到任何数据包，无法合成视频")
+        batch.total_time = time.time() - t_start
+        batch.keyframe_count = len(keyframe_indices)
+        batch.generated_frames = total - len(keyframe_indices)
+        batch.keyframe_indices = sorted(keyframe_indices)
+
         ordered = _order_buffer(buffer, total)
         filled = _fill_failed_frames(ordered)
         write_frames(output_path, filled, fps=fps)

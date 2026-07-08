@@ -9,7 +9,11 @@ from PIL import Image
 from semantic_transmission.common.video_io import write_frames
 from semantic_transmission.pipeline.relay import SocketRelayReceiver
 from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
-from semantic_transmission.pipeline.video_relay import VideoRelaySender
+from semantic_transmission.pipeline.video_relay import (
+    VideoRelayReceiver,
+    VideoRelaySender,
+)
+from semantic_transmission.receiver.base import BaseReceiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
 
@@ -95,4 +99,125 @@ def test_sender_temporal_rejects_non_passthrough(tmp_path):
     with pytest.raises(ValueError, match="keyframe_passthrough"):
         VideoRelaySender(LocalCannyExtractor()).run(
             src, "127.0.0.1", 9999, prompt_fn=lambda i, f: "x", temporal_policy=policy
+        )
+
+
+class _ConfigStub:
+    max_side = 512
+
+
+class _RefRecordingReceiver(BaseReceiver):
+    """记录每次 process 收到的 reference_images 数量，返回可辨识纯色图。"""
+
+    config = _ConfigStub()
+
+    def __init__(self):
+        self.calls = []  # list[(prompt_text, num_refs)]
+
+    def process(self, edge_image, prompt_text, seed=None, reference_images=None):
+        n_refs = len(reference_images) if reference_images else 0
+        self.calls.append((prompt_text, n_refs))
+        # 必须与关键帧透传尺寸一致（输入 64x48，fit_working_size(64x48,512)=64x48），
+        # 否则 write_frames 混合尺寸抛 ValueError（B2）。
+        return Image.new("RGB", (64, 48), color=(0, 0, 255))
+
+    def process_batch(self, frames):  # 抽象方法占位，本测试不用
+        raise NotImplementedError
+
+
+def test_receiver_temporal_passthrough_and_refs(tmp_path):
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 5, fps=8.0)
+    out = tmp_path / "out.mp4"
+    port = _find_free_port()
+    recv = _RefRecordingReceiver()
+    box = []
+
+    def recv_thread():
+        box.append(
+            VideoRelayReceiver(recv).run(
+                "127.0.0.1", port, out, timeout=10.0, reference_mode="prev"
+            )
+        )
+
+    t = threading.Thread(target=recv_thread)
+    t.start()
+    time.sleep(0.2)
+    policy = TemporalPolicyConfig(keyframe_interval=2, reference_mode="prev")
+    VideoRelaySender(LocalCannyExtractor()).run(
+        src, "127.0.0.1", port, prompt_fn=lambda i, f: f"p{i}", temporal_policy=policy
+    )
+    t.join(timeout=15.0)
+    assert not t.is_alive(), "receiver thread timed out"
+
+    # 生成帧 index 1,3 各调一次 process；prev 链在关键帧后有 prev → refs=1。
+    assert [c[0] for c in recv.calls] == ["p1", "p3"]
+    assert all(n == 1 for _, n in recv.calls)  # prev-only：每个生成帧带 1 个参考帧
+    result = box[0]
+    assert result.stats.keyframe_count == 3
+    assert result.stats.generated_frames == 2
+    assert result.stats.keyframe_indices == [0, 2, 4]
+    assert result.output_path == out
+
+
+class _FailingRefReceiver(_RefRecordingReceiver):
+    """生成帧全部抛异常，验证失败帧填充 + prev 链不被污染。"""
+
+    def process(self, edge_image, prompt_text, seed=None, reference_images=None):
+        self.calls.append((prompt_text, len(reference_images or [])))
+        raise RuntimeError("fake gen failure")
+
+
+def test_receiver_temporal_failed_generated_frames(tmp_path):
+    from semantic_transmission.common.video_io import read_frames
+
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 5, fps=8.0)
+    out = tmp_path / "out.mp4"
+    port = _find_free_port()
+    box = []
+
+    def recv_thread():
+        box.append(
+            VideoRelayReceiver(_FailingRefReceiver()).run(
+                "127.0.0.1", port, out, timeout=10.0, reference_mode="prev"
+            )
+        )
+
+    t = threading.Thread(target=recv_thread)
+    t.start()
+    time.sleep(0.2)
+    policy = TemporalPolicyConfig(keyframe_interval=2, reference_mode="prev")
+    VideoRelaySender(LocalCannyExtractor()).run(
+        src, "127.0.0.1", port, prompt_fn=lambda i, f: f"p{i}", temporal_policy=policy
+    )
+    t.join(timeout=15.0)
+    assert not t.is_alive()
+
+    frames, _ = read_frames(out)
+    assert len(frames) == 5  # 失败生成帧被关键帧填充，帧数守恒
+    assert box[0].failed_indices == [1, 3]
+    assert box[0].stats.keyframe_count == 3
+
+
+class _NoRefReceiver(BaseReceiver):
+    """process 不接受 reference_images——触发能力门控。"""
+
+    config = _ConfigStub()
+
+    def process(self, edge_image, prompt_text, seed=None):
+        return Image.new("RGB", (512, 384))
+
+    def process_batch(self, frames):
+        raise NotImplementedError
+
+
+def test_receiver_temporal_capability_gate(tmp_path):
+    import pytest
+
+    out = tmp_path / "out.mp4"
+    port = _find_free_port()
+    with pytest.raises(TypeError, match="reference_images"):
+        VideoRelayReceiver(_NoRefReceiver()).run(
+            "127.0.0.1", port, out, timeout=1.0, reference_mode="prev"
         )
