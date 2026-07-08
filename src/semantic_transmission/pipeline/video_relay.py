@@ -132,12 +132,11 @@ class VideoRelaySender:
 
                 if is_kf:
                     # 关键帧透传：发整帧 RGB PNG、空 prompt、不提 Canny 不调 prompt_fn。
-                    frame_bytes = _encode_edge_png(load_as_rgb(frame))
+                    payload_bytes = _encode_edge_png(load_as_rgb(frame))
                     prompt_text = ""
                     metadata["frame_type"] = "keyframe"
-                    payload_bytes = frame_bytes
                     stats.keyframe_count += 1
-                    stats.keyframe_bytes += len(frame_bytes)
+                    stats.keyframe_bytes += len(payload_bytes)
                 else:
                     edge_img = load_as_rgb(self.extractor.extract(frame))
                     try:
@@ -148,9 +147,11 @@ class VideoRelaySender:
                     if temporal_policy is not None:
                         metadata["frame_type"] = "generated"
                         stats.generated_count += 1
-                        stats.generated_bytes += len(payload_bytes) + len(
-                            prompt_text.encode("utf-8")
-                        )
+
+                # prompt 字节只算一次，generated_bytes 与 packet_bytes 复用同一个值。
+                prompt_bytes = len(prompt_text.encode("utf-8"))
+                if temporal_policy is not None and not is_kf:
+                    stats.generated_bytes += len(payload_bytes) + prompt_bytes
 
                 packet = TransmissionPacket(
                     edge_image=payload_bytes,
@@ -169,8 +170,7 @@ class VideoRelaySender:
                         "index": i,
                         "relay": relay_elapsed,
                         "prompt_len": len(prompt_text),
-                        "packet_bytes": len(payload_bytes)
-                        + len(prompt_text.encode("utf-8")),
+                        "packet_bytes": len(payload_bytes) + prompt_bytes,
                     }
                 )
         stats.total_time = time.time() - t_all
@@ -379,10 +379,28 @@ class VideoRelayReceiver:
                 seed = md.get("seed")
 
                 if md["frame_type"] == "keyframe":
-                    kf = fit_working_size(
-                        Image.open(io.BytesIO(packet.edge_image)).convert("RGB"),
-                        max_side,
-                    )
+                    t0 = time.time()
+                    try:
+                        kf = fit_working_size(load_as_rgb(packet.edge_image), max_side)
+                    except Exception as e:
+                        # 畸形关键帧包（relay 裸 TCP 无校验，Image 解码可能抛
+                        # UnidentifiedImageError/OSError 等）：仅废弃该帧——
+                        # 不复位 prev_out/last_kf（保留上一有效锚点，畸形帧不
+                        # 污染串行链），也不计入 keyframe_indices（失败关键帧
+                        # 不计关键帧统计，generated_frames=total-len(
+                        # keyframe_indices) 不变量仍成立）。与生成帧失败分支对称。
+                        buffer[idx] = None
+                        prompt_buffer[idx] = ""
+                        failed_indices.append(idx)
+                        batch.add_sample(
+                            SampleResult(
+                                name=f"frame_{idx:04d}",
+                                status="failed",
+                                error=str(e),
+                                timings={"process": time.time() - t0},
+                            )
+                        )
+                        continue
                     buffer[idx] = kf
                     prompt_buffer[idx] = ""
                     keyframe_indices.append(idx)
@@ -392,7 +410,7 @@ class VideoRelayReceiver:
                         SampleResult(
                             name=f"frame_{idx:04d}",
                             status="success",
-                            timings={"process": 0.0},
+                            timings={"process": time.time() - t0},
                         )
                     )
                     continue

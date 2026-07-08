@@ -245,6 +245,105 @@ def test_receiver_temporal_capability_gate(tmp_path):
         )
 
 
+def _valid_kf_png(size=(64, 48), color=(10, 20, 30)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", size, color=color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_receiver_temporal_malformed_keyframe_does_not_abort(tmp_path):
+    """畸形关键帧包（frame_type=keyframe 但 edge_image 非法字节，relay 裸 TCP
+    无校验，真实场景可能出现）：该帧应记为失败，不能让 Image 解码异常从 while
+    循环冒泡、作废已缓存的所有帧；prev_out/last_kf 也不应被畸形帧污染。
+    """
+    from semantic_transmission.common.video_io import read_frames
+    from semantic_transmission.pipeline.relay import (
+        SocketRelaySender,
+        TransmissionPacket,
+    )
+
+    out = tmp_path / "out.mp4"
+    port = _find_free_port()
+    recv = _RefRecordingReceiver()
+    box = []
+
+    def recv_thread():
+        box.append(
+            VideoRelayReceiver(recv).run(
+                "127.0.0.1", port, out, timeout=10.0, reference_mode="prev"
+            )
+        )
+
+    t = threading.Thread(target=recv_thread)
+    t.start()
+    time.sleep(0.2)
+
+    total = 3
+    with SocketRelaySender("127.0.0.1", port) as s:
+        # idx0：合法关键帧
+        s.send(
+            TransmissionPacket(
+                edge_image=_valid_kf_png(),
+                prompt_text="",
+                metadata={
+                    "frame_index": 0,
+                    "total_frames": total,
+                    "fps": 8.0,
+                    "frame_type": "keyframe",
+                },
+            )
+        )
+        # idx1：畸形关键帧——非法字节，Image.open 会抛 UnidentifiedImageError。
+        s.send(
+            TransmissionPacket(
+                edge_image=b"not a png",
+                prompt_text="",
+                metadata={
+                    "frame_index": 1,
+                    "total_frames": total,
+                    "fps": 8.0,
+                    "frame_type": "keyframe",
+                },
+            )
+        )
+        # idx2：正常生成帧，携 prompt。
+        edge_buf = io.BytesIO()
+        Image.new("RGB", (64, 48), color=(5, 6, 7)).save(edge_buf, format="PNG")
+        s.send(
+            TransmissionPacket(
+                edge_image=edge_buf.getvalue(),
+                prompt_text="p2",
+                metadata={
+                    "frame_index": 2,
+                    "total_frames": total,
+                    "fps": 8.0,
+                    "frame_type": "generated",
+                },
+            )
+        )
+
+    t.join(timeout=15.0)
+    assert not t.is_alive(), "receiver thread timed out"
+
+    result = box[0]
+    # 畸形关键帧记为失败，其余帧不受影响、整段仍成功合成。
+    assert result.failed_indices == [1]
+    # 失败关键帧不计入 keyframe_indices/keyframe_count（与生成帧失败分支对称）。
+    assert result.stats.keyframe_indices == [0]
+    assert result.stats.keyframe_count == 1
+    assert result.stats.generated_frames == total - 1
+
+    # prev_out/last_kf 未被畸形帧污染：生成帧 idx2 的参考帧应仍是 idx0 的关键帧
+    # （身份断言：若 prev_out 被畸形帧复位为 None/污染对象，refs 长度或内容会变）。
+    assert recv.calls == [("p2", 1)]
+    ref = recv.ref_images[0][0]
+    assert ref.tobytes() == Image.new("RGB", (64, 48), color=(10, 20, 30)).tobytes()
+
+    # 帧数守恒：整段仍合成，输出帧数 == total（畸形帧未作废已缓存的帧）。
+    frames, _ = read_frames(out)
+    assert len(frames) == total
+
+
 def test_stateless_receiver_rejects_temporal_packet(tmp_path):
     """无状态接收端（reference_mode=None）收到带 frame_type 的时序包应 fail-fast。
 
