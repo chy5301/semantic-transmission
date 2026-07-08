@@ -39,6 +39,18 @@ def _collect_packets(port, count, out):
             out.append(r.receive(timeout=5.0))
 
 
+class _FakeStatelessReceiver(BaseReceiver):
+    """无 config/max_side、process 不接受 reference_images 的最简接收端——
+    用于验证 reference_mode="none" 走无状态路径时不会误触发时序能力门控。
+    """
+
+    def process(self, edge_image, prompt_text, seed=None):
+        return Image.new("RGB", (64, 48), color=(0, 255, 0))
+
+    def process_batch(self, frames):
+        raise NotImplementedError
+
+
 def test_sender_temporal_tags_keyframe_and_generated(tmp_path):
     src = tmp_path / "in.mp4"
     _make_input_video(src, 5, fps=8.0)
@@ -395,3 +407,83 @@ def test_stateless_receiver_rejects_temporal_packet(tmp_path):
     assert isinstance(errors[0], ConnectionError)
     msg = str(errors[0])
     assert "无状态" in msg and "frame_type" in msg
+
+
+def test_temporal_receiver_rejects_unknown_frame_type(tmp_path):
+    """时序接收端收到未知 frame_type（既非 keyframe 也非 generated）应 fail-fast，
+    而不是隐式落入生成帧分支静默当生成帧处理（拼写漂移等场景的防御）。
+    """
+    from semantic_transmission.pipeline.relay import (
+        SocketRelaySender,
+        TransmissionPacket,
+    )
+
+    out = tmp_path / "out.mp4"
+    port = _find_free_port()
+    errors = []
+
+    def recv_thread():
+        try:
+            VideoRelayReceiver(_RefRecordingReceiver()).run(
+                "127.0.0.1", port, out, timeout=5.0, reference_mode="prev"
+            )
+        except Exception as e:
+            errors.append(e)
+
+    t = threading.Thread(target=recv_thread)
+    t.start()
+    time.sleep(0.2)
+
+    with SocketRelaySender("127.0.0.1", port) as s:
+        s.send(
+            TransmissionPacket(
+                edge_image=_valid_kf_png(),
+                prompt_text="",
+                metadata={
+                    "frame_index": 0,
+                    "total_frames": 1,
+                    "fps": 8.0,
+                    "frame_type": "bogus",
+                },
+            )
+        )
+    t.join(timeout=10.0)
+    assert not t.is_alive(), "receiver thread timed out"
+
+    assert len(errors) == 1
+    assert isinstance(errors[0], ConnectionError)
+    msg = str(errors[0])
+    assert "frame_type" in msg
+
+
+def test_run_normalizes_reference_mode_none_to_stateless(tmp_path):
+    """reference_mode="none"（库层直调，非 CLI）须归一为无状态路径，不误触发
+    时序能力门控——CLI 已把 "none" 转成 None，但库层自身也须防御裸调用。
+    """
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 2, fps=8.0)
+    out = tmp_path / "out.mp4"
+    port = _find_free_port()
+    # 无 reference_images 参数、无 config.max_side——若误入时序路径会立刻
+    # 因能力门控抛 TypeError；走无状态路径则不会触碰能力门控。
+    recv = _FakeStatelessReceiver()
+    box = []
+
+    def recv_thread():
+        box.append(
+            VideoRelayReceiver(recv).run(
+                "127.0.0.1", port, out, timeout=10.0, reference_mode="none"
+            )
+        )
+
+    t = threading.Thread(target=recv_thread)
+    t.start()
+    time.sleep(0.2)
+    VideoRelaySender(LocalCannyExtractor()).run(
+        src, "127.0.0.1", port, prompt_fn=lambda i, f: f"p{i}"
+    )
+    t.join(timeout=15.0)
+    assert not t.is_alive(), "receiver thread timed out"
+
+    assert box[0].stats.total == 2
+    assert box[0].stats.success == 2

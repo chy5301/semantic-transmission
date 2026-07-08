@@ -23,9 +23,12 @@ from semantic_transmission.pipeline.relay import (
     TransmissionPacket,
 )
 from semantic_transmission.pipeline.temporal_policy import (
+    FRAME_TYPE_GENERATED,
+    FRAME_TYPE_KEYFRAME,
     TemporalPolicyConfig,
     build_reference_images,
     is_keyframe,
+    require_temporal_capable,
 )
 from semantic_transmission.pipeline.video_pipeline import PromptFn, _fill_failed_frames
 from semantic_transmission.receiver.base import BaseReceiver
@@ -134,7 +137,7 @@ class VideoRelaySender:
                     # 关键帧透传：发整帧 RGB PNG、空 prompt、不提 Canny 不调 prompt_fn。
                     payload_bytes = _encode_edge_png(load_as_rgb(frame))
                     prompt_text = ""
-                    metadata["frame_type"] = "keyframe"
+                    metadata["frame_type"] = FRAME_TYPE_KEYFRAME
                     stats.keyframe_count += 1
                     stats.keyframe_bytes += len(payload_bytes)
                 else:
@@ -145,7 +148,7 @@ class VideoRelaySender:
                         prompt_text = ""
                     payload_bytes = _encode_edge_png(edge_img)
                     if temporal_policy is not None:
-                        metadata["frame_type"] = "generated"
+                        metadata["frame_type"] = FRAME_TYPE_GENERATED
                         stats.generated_count += 1
 
                 # prompt 字节只算一次，generated_bytes 与 packet_bytes 复用同一个值。
@@ -230,6 +233,11 @@ class VideoRelayReceiver:
             TypeError: reference_mode 非 None 但 receiver.process 不接受
                 reference_images（能力门控，提示改用 --backend klein）。
         """
+        # 库层防御性归一：CLI 已把 "none" 转成 None 再调用，但直接调库传字符串
+        # "none"（Click Choice 的合法取值）会因 "none" is not None 误入时序
+        # 分支——在分派前统一归一，保证库层单独调用也安全。
+        if reference_mode == "none":
+            reference_mode = None
         if reference_mode is not None:
             return self._run_temporal(
                 host, port, output_path, reference_mode, timeout=timeout
@@ -328,16 +336,9 @@ class VideoRelayReceiver:
         """
         from semantic_transmission.receiver.klein_receiver import fit_working_size
 
-        # 能力门控：串行补偿要求 process 接受 reference_images。
-        import inspect
-
-        params = inspect.signature(self.receiver.process).parameters
-        if "reference_images" not in params:
-            raise TypeError(
-                "时序补偿要求 receiver.process 接受 reference_images 参数，"
-                f"当前接收端 {type(self.receiver).__name__} 不支持——请用 --backend klein"
-            )
-        max_side = self.receiver.config.max_side
+        # 能力门控：与单机 VideoPipeline._run_temporal 共用同一门控
+        # （temporal_policy.require_temporal_capable），保证提示文案一致。
+        max_side = require_temporal_capable(self.receiver)
 
         relay = SocketRelayReceiver(host, port)
         buffer: dict[int, Image.Image | None] = {}
@@ -378,7 +379,7 @@ class VideoRelayReceiver:
                     continue  # 去重：重复 frame_index 不重复处理
                 seed = md.get("seed")
 
-                if md["frame_type"] == "keyframe":
+                if md["frame_type"] == FRAME_TYPE_KEYFRAME:
                     t0 = time.time()
                     try:
                         kf = fit_working_size(load_as_rgb(packet.edge_image), max_side)
@@ -414,28 +415,34 @@ class VideoRelayReceiver:
                         )
                     )
                     continue
-
-                # 生成帧：带参考帧补偿。
-                refs = build_reference_images(reference_mode, prev_out, last_kf)
-                sample = SampleResult(name=f"frame_{idx:04d}", status="success")
-                t0 = time.time()
-                try:
-                    img = self.receiver.process(
-                        packet.edge_image,
-                        packet.prompt_text,
-                        seed=seed,
-                        reference_images=refs,
-                    )
-                except Exception as e:
-                    img = None
-                    sample.status = "failed"
-                    sample.error = str(e)
-                    failed_indices.append(idx)
-                sample.timings["process"] = time.time() - t0
-                batch.add_sample(sample)
-                buffer[idx] = img
-                prompt_buffer[idx] = packet.prompt_text
-                prev_out = img if img is not None else prev_out  # 失败帧不污染 prev 链
+                elif md["frame_type"] == FRAME_TYPE_GENERATED:
+                    # 生成帧：带参考帧补偿。
+                    refs = build_reference_images(reference_mode, prev_out, last_kf)
+                    sample = SampleResult(name=f"frame_{idx:04d}", status="success")
+                    t0 = time.time()
+                    try:
+                        img = self.receiver.process(
+                            packet.edge_image,
+                            packet.prompt_text,
+                            seed=seed,
+                            reference_images=refs,
+                        )
+                    except Exception as e:
+                        img = None
+                        sample.status = "failed"
+                        sample.error = str(e)
+                        failed_indices.append(idx)
+                    sample.timings["process"] = time.time() - t0
+                    batch.add_sample(sample)
+                    buffer[idx] = img
+                    prompt_buffer[idx] = packet.prompt_text
+                    prev_out = (
+                        img if img is not None else prev_out
+                    )  # 失败帧不污染 prev 链
+                else:
+                    # 未知 frame_type：fail-fast，不静默当生成帧处理（拼写漂移等
+                    # 场景的防御——隐式 else 会悄悄吞掉未来协议漂移）。
+                    raise ConnectionError(f"未知 frame_type: {md['frame_type']!r}")
         finally:
             relay.close()
 
