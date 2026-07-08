@@ -55,6 +55,8 @@ def test_video_receiver_help_lists_options():
 def test_video_sender_prompts_json_conflicts_with_prompt(tmp_path):
     src = tmp_path / "in.mp4"
     src.write_bytes(b"fake")
+    prompts_json = tmp_path / "p.json"
+    prompts_json.write_text("{}", encoding="utf-8")
     runner = CliRunner()
     result = runner.invoke(
         video_sender,
@@ -66,11 +68,31 @@ def test_video_sender_prompts_json_conflicts_with_prompt(tmp_path):
             "--prompt",
             "x",
             "--prompts-json",
-            str(tmp_path / "p.json"),
+            str(prompts_json),
         ],
     )
     assert result.exit_code != 0
     assert "只能指定" in result.output
+
+
+def test_video_sender_prompts_json_missing_file_friendly_error(tmp_path):
+    src = tmp_path / "in.mp4"
+    src.write_bytes(b"fake")
+    runner = CliRunner()
+    result = runner.invoke(
+        video_sender,
+        [
+            "--input",
+            str(src),
+            "--relay-host",
+            "127.0.0.1",
+            "--prompts-json",
+            str(tmp_path / "missing.json"),
+        ],
+    )
+    assert result.exit_code == 2
+    assert not isinstance(result.exception, FileNotFoundError)
+    assert "does not exist" in result.output
 
 
 def test_video_sender_help_lists_temporal_options():

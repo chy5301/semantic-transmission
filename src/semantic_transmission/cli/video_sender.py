@@ -53,10 +53,7 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
     "--prompts-json",
     "prompts_json",
     default=None,
-    # 不设 exists=True：Click 会按命令行出现顺序校验全部选项，若与 --prompt
-    # 同时传入，需先命中互斥校验报错，而非在此处报"文件不存在"（真正读取时
-    # 若文件缺失，read_text() 会自然抛错）。
-    type=click.Path(path_type=Path),
+    type=click.Path(exists=True, path_type=Path),
     help="从预生成 prompts.json 逐帧读取描述（不加载 VLM，供 loopback 测试）",
 )
 @click.option(
