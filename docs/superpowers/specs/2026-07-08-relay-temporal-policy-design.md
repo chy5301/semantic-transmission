@@ -77,7 +77,7 @@ sequenceDiagram
 
 接收端按 `metadata["frame_type"]` 分支解读 `edge_image` 字段。
 
-**向后兼容**：无 `frame_type` 的旧包（现有无状态 relay）视为 `generated`——现有逐帧独立生成路径保持可用。
+**向后兼容**：向后兼容由**无状态路径**承担——`reference_mode=None` 时接收端走原有逐帧路径，不读 `frame_type`，与现有 relay 逐字节一致。**时序路径**（`reference_mode` 非空）则**要求每包带 `frame_type` 标签**，缺失即 fail-fast 报错（`ConnectionError`），不做隐式降级——时序发送端与时序接收端必须成对使用。
 
 ## 5. 组件改动
 
@@ -86,9 +86,12 @@ sequenceDiagram
 **`VideoRelaySender`**
 
 - 构造或 `run()` 接受可选 `TemporalPolicyConfig`；为 `None` 时保持现有无状态逐帧路径（逐字节向后兼容）。
+- **限定 `keyframe_passthrough=True`**（见下方「设计收紧」）：`run()` 入口对时序 policy fail-fast 断言，`keyframe_passthrough=False` 直接报错。
 - 逐帧 `is_keyframe(i)` 分流：
-  - 关键帧且 `keyframe_passthrough`：编码**整帧 RGB PNG**，`prompt_text=""`，`frame_type=keyframe`，**不调 `prompt_fn`、不提 Canny**（省 VLM，对齐单机 §5）。
-  - 否则（生成帧 / passthrough 关闭的关键帧）：Canny + `prompt_fn`，`frame_type=generated`。
+  - 关键帧：编码**整帧 RGB PNG**，`prompt_text=""`，`frame_type=keyframe`，**不调 `prompt_fn`、不提 Canny**（省 VLM，对齐单机 §5）。
+  - 生成帧：Canny + `prompt_fn`，`frame_type=generated`。
+
+> **设计收紧（规划期发现）**：relay 时序路径仅支持 `keyframe_passthrough=True`。原因：非透传关键帧走生成帧通道，接收端**没有原始整帧**，无法设置 `last_kf` 锚点，会破坏 `keyframe`/`prev_keyframe` 模式；且「关键帧低频整帧传输」的核心前提本身就等于透传。故 relay CLI 不暴露 `--no-keyframe-passthrough`（与单机 `video` 不同）。
 - `VideoSendStats` 扩展**码率账本**：区分 keyframe/generated 帧数与字节数，输出 `keyframe_bytes` / `generated_bytes` / 平均语义码率，验证「低频整帧」论点。
 
 **`VideoRelayReceiver`**
@@ -105,8 +108,9 @@ sequenceDiagram
 新增：
 
 - `--keyframe-interval N`（默认 12；`<=0` 关闭时序，退回无状态逐帧）
-- `--no-keyframe-passthrough`（默认透传开）
 - `--prompts-json PATH`：从预生成 `prompts.json` 逐帧读 prompt，**不加载 VLM**（loopback 测试规避 VLM+klein 同驻 OOM）。与 `--prompt` / `--auto-prompt` 三选一。
+
+（**不提供** `--no-keyframe-passthrough`——relay 时序限定透传，见 §5.1 设计收紧。）
 
 保持：`--auto-prompt` 为默认全流程 prompt 策略（真机双机 VLM 与 klein 分处两机，天然不冲突）。
 
