@@ -684,7 +684,8 @@ VideoRelayReceiver.run 加 reference_mode，非 None 时走 _run_temporal：
 - Consumes: Task 1 的 `VideoRelaySender.run(..., temporal_policy=)`；Task 2 的 `VideoRelayReceiver.run(..., reference_mode=)`；`create_receiver(backend=)`；`TemporalPolicyConfig`。
 - Produces:
   - `video-sender` 新增 `--keyframe-interval`（默认 12）、`--prompts-json PATH`（预生成 prompt，不加载 VLM，与 `--prompt`/`--auto-prompt` 三选一）。`--keyframe-interval > 0` 时构造 `TemporalPolicyConfig(keyframe_interval, reference_mode="prev", keyframe_passthrough=True)` 传入。
-  - `video-receiver` 新增 `--backend`（默认 `diffusers`，`Choice(["diffusers","klein"])`）、`--reference-mode`（默认 `None`，`Choice(["none","prev","keyframe","prev_keyframe"])`）。传入 `create_receiver(backend=)` 与 `run(reference_mode=)`。
+  - `video-receiver` 新增 `--backend`（默认 `klein`——两端默认均时序，符合 klein 主线定位，`Choice(["diffusers","klein"])`）、`--reference-mode`（默认 `None`，`Choice(["none","prev","keyframe","prev_keyframe"])`）。传入 `create_receiver(backend=)` 与 `run(reference_mode=)`。
+  - **无状态路径安全网**：`VideoRelayReceiver.run()` 无状态分支（`reference_mode is None`）新增 `frame_type` fail-fast 守卫——收到带 `metadata.frame_type` 的包时抛 `ConnectionError`，提示改用 `--backend klein --reference-mode prev`，兜底用户显式选 `--backend diffusers` 但对端仍是时序发送端的场景（与默认改 klein 是正交的两层防护）。
 
 - [ ] **Step 1: 更新既有断言 + 写 CLI 参数校验失败测试**
 
@@ -835,14 +836,14 @@ from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
 
 - [ ] **Step 4: 改 `video_receiver.py`**
 
-加 `--backend` / `--reference-mode` 选项与形参，传入 `create_receiver` 与 `run`：
+加 `--backend` / `--reference-mode` 选项与形参，传入 `create_receiver` 与 `run`（**默认改 klein**——修复最终 review 发现的默认组合问题：`video-sender` 默认时序（`--keyframe-interval 12`）+ 旧版 `video-receiver` 默认 `diffusers`（无状态）= 关键帧整帧包被无状态路径当 Canny 边缘图静默劣化不报错；两端默认都改为时序 klein 消除该默认组合陷阱）：
 
 ```python
 @click.option(
     "--backend",
     type=click.Choice(["diffusers", "klein"]),
-    default="diffusers",
-    help="接收端后端（时序补偿需 klein）",
+    default="klein",
+    help="接收端后端（默认 klein，关键帧主线时序补偿；可选 diffusers 无状态逐帧）",
 )
 @click.option(
     "--reference-mode",
@@ -871,6 +872,8 @@ from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
             timeout=timeout, reference_mode=reference_mode,
         )
 ```
+
+**无状态路径安全网**（`video_relay.py`，与默认改 klein 正交的第二层防护）：`VideoRelayReceiver.run()` 的无状态分支（`reference_mode is None`）在收包循环中新增 `frame_type` fail-fast 守卫——收到 `packet.metadata.get("frame_type")` 非 `None` 的包（说明对端是时序发送端）时抛 `ConnectionError("收到时序包（含 frame_type）但接收端为无状态模式，请用 --backend klein --reference-mode prev")`，兜底用户显式选 `--backend diffusers` 但对端仍是时序发送端的场景，避免关键帧整帧包被当 Canny 边缘图静默喂给无状态生成器。
 
 - [ ] **Step 5: 运行测试确认通过**
 

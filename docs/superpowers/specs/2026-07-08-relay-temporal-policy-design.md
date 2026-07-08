@@ -118,8 +118,10 @@ sequenceDiagram
 
 新增：
 
-- `--backend klein`（时序路径必需；透传给 `create_receiver`）
-- `--reference-mode {none,prev,keyframe,prev_keyframe}`（默认 `prev`）
+- `--backend {diffusers,klein}`（默认 `klein`——两端默认均时序，符合 klein 主线定位；透传给 `create_receiver`）
+- `--reference-mode {none,prev,keyframe,prev_keyframe}`（缺省 `None`；klein 下解析为 `prev`，diffusers 下为无时序）
+
+**无状态路径安全网**：`VideoRelayReceiver.run()` 的无状态分支（`reference_mode is None`）新增 `frame_type` fail-fast 守卫——收到带 `metadata.frame_type` 的包（说明对端是时序发送端）时直接抛 `ConnectionError` 并提示改用 `--backend klein --reference-mode prev`，防止时序发送端的关键帧整帧包被当 Canny 边缘图静默喂给无状态生成器（第 0/N/2N... 帧静默劣化不报错）。该守卫与两端默认改 klein 是正交的两层防护：默认对齐消除常见场景下的误配置，守卫兜底用户显式选择 diffusers 但对端仍是时序发送端的场景。
 
 ## 6. 测试与验收
 
