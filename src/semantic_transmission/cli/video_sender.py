@@ -10,6 +10,7 @@ from pathlib import Path
 import click
 
 from semantic_transmission.common.config import load_config
+from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
 from semantic_transmission.pipeline.video_relay import VideoRelaySender
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
@@ -48,6 +49,22 @@ from semantic_transmission.sender.local_condition_extractor import LocalCannyExt
     type=click.Path(path_type=Path),
     help="发送端统计 JSON 输出路径",
 )
+@click.option(
+    "--prompts-json",
+    "prompts_json",
+    default=None,
+    # 不设 exists=True：Click 会按命令行出现顺序校验全部选项，若与 --prompt
+    # 同时传入，需先命中互斥校验报错，而非在此处报"文件不存在"（真正读取时
+    # 若文件缺失，read_text() 会自然抛错）。
+    type=click.Path(path_type=Path),
+    help="从预生成 prompts.json 逐帧读取描述（不加载 VLM，供 loopback 测试）",
+)
+@click.option(
+    "--keyframe-interval",
+    default=12,
+    type=int,
+    help="关键帧间隔 N（每 N 帧一个关键帧透传整帧，默认 12；<=0 关闭时序退回逐帧）",
+)
 def video_sender(
     input_path,
     relay_host,
@@ -60,12 +77,17 @@ def video_sender(
     fps,
     save_frames_dir,
     summary_path,
+    prompts_json,
+    keyframe_interval,
 ):
     """视频流双机发送端：逐帧 Canny + 描述 → 经 relay 发送。"""
-    if prompt is None and not auto_prompt:
-        raise click.UsageError("必须指定 --prompt 或 --auto-prompt 之一")
-    if prompt is not None and auto_prompt:
-        raise click.UsageError("--prompt 和 --auto-prompt 不能同时使用")
+    sources = [prompt is not None, auto_prompt, prompts_json is not None]
+    if sum(sources) == 0:
+        raise click.UsageError(
+            "必须指定 --prompt / --auto-prompt / --prompts-json 之一"
+        )
+    if sum(sources) > 1:
+        raise click.UsageError("--prompt / --auto-prompt / --prompts-json 只能指定一个")
 
     cfg = load_config()
     if threshold1 is None:
@@ -86,10 +108,25 @@ def video_sender(
 
         def prompt_fn(index, frame):
             return vlm_sender.describe(frame).text
+    elif prompts_json is not None:
+        payload = json.loads(prompts_json.read_text(encoding="utf-8"))
+        # prompts.json 的 frames: [{index, prompt?, passthrough?}]；关键帧无 prompt。
+        by_index = {f["index"]: f.get("prompt", "") for f in payload.get("frames", [])}
+
+        def prompt_fn(index, frame):
+            return by_index.get(index, "")
     else:
 
         def prompt_fn(index, frame):
             return prompt
+
+    temporal_policy = None
+    if keyframe_interval > 0:
+        temporal_policy = TemporalPolicyConfig(
+            keyframe_interval=keyframe_interval,
+            reference_mode="prev",
+            keyframe_passthrough=True,
+        )
 
     click.echo(f"发送视频: {input_path} → {relay_host}:{relay_port}")
     sender = VideoRelaySender(extractor)
@@ -102,6 +139,7 @@ def video_sender(
             seed=seed,
             fps=fps,
             save_frames_dir=save_frames_dir,
+            temporal_policy=temporal_policy,
         )
     except Exception as e:
         raise click.ClickException(f"发送失败: {e}") from e

@@ -29,15 +29,46 @@ from semantic_transmission.receiver import create_receiver
     type=float,
     help="accept/receive 超时秒数（默认无限等待）",
 )
-def video_receiver(relay_host, relay_port, output_path, timeout):
+@click.option(
+    "--backend",
+    type=click.Choice(["diffusers", "klein"]),
+    default="diffusers",
+    help="接收端后端（时序补偿需 klein）",
+)
+@click.option(
+    "--reference-mode",
+    type=click.Choice(["none", "prev", "keyframe", "prev_keyframe"]),
+    default=None,
+    help="时序参考帧模式（仅 klein）。缺省：klein→prev，diffusers→无时序",
+)
+def video_receiver(
+    relay_host, relay_port, output_path, timeout, backend, reference_mode
+):
     """视频流双机接收端：逐帧接收还原 → 收齐合成视频。"""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # 时序参考帧默认解析与 backend 门控（对齐单机 video.py 口径）：
+    # - 未显式指定 --reference-mode（None 哨兵）时：klein→prev，diffusers→无时序。
+    # - diffusers 显式传非 none 时序参数直接报错。
+    if reference_mode is None:
+        reference_mode = "prev" if backend == "klein" else None
+    elif backend != "klein" and reference_mode != "none":
+        raise click.UsageError("时序补偿仅 klein 后端支持（--backend klein）")
+    # none 归一为 None（无时序，走无状态路径）
+    if reference_mode == "none":
+        reference_mode = None
+
     click.echo(f"监听 {relay_host}:{relay_port}，输出 → {output_path}")
-    recv = create_receiver()
+    recv = create_receiver(backend=backend)
     receiver = VideoRelayReceiver(recv)
     try:
-        result = receiver.run(relay_host, relay_port, output_path, timeout=timeout)
+        result = receiver.run(
+            relay_host,
+            relay_port,
+            output_path,
+            timeout=timeout,
+            reference_mode=reference_mode,
+        )
     except Exception as e:
         raise click.ClickException(f"接收失败: {e}") from e
     finally:
