@@ -32,8 +32,8 @@ from semantic_transmission.receiver import create_receiver
 @click.option(
     "--backend",
     type=click.Choice(["diffusers", "klein"]),
-    default="diffusers",
-    help="接收端后端（时序补偿需 klein）",
+    default="klein",
+    help="接收端后端（默认 klein，关键帧主线时序补偿；可选 diffusers 无状态逐帧）",
 )
 @click.option(
     "--reference-mode",

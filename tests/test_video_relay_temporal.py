@@ -243,3 +243,56 @@ def test_receiver_temporal_capability_gate(tmp_path):
         VideoRelayReceiver(_NoRefReceiver()).run(
             "127.0.0.1", port, out, timeout=1.0, reference_mode="prev"
         )
+
+
+def test_stateless_receiver_rejects_temporal_packet(tmp_path):
+    """无状态接收端（reference_mode=None）收到带 frame_type 的时序包应 fail-fast。
+
+    对应真实误配置场景：发送端默认时序（video-sender --keyframe-interval 12
+    发关键帧整帧包 + metadata.frame_type），若接收端被显式配成
+    --backend diffusers（无状态），整帧包会被当 Canny 边缘图静默喂给生成器，
+    第 0/12/24... 帧静默劣化不报错。此处验证接收端能识别并 loud 报错。
+    """
+    from semantic_transmission.pipeline.relay import (
+        SocketRelaySender,
+        TransmissionPacket,
+    )
+
+    out = tmp_path / "out.mp4"
+    port = _find_free_port()
+    errors = []
+
+    def recv_thread():
+        try:
+            VideoRelayReceiver(_RefRecordingReceiver()).run(
+                "127.0.0.1", port, out, timeout=5.0, reference_mode=None
+            )
+        except Exception as e:
+            errors.append(e)
+
+    t = threading.Thread(target=recv_thread)
+    t.start()
+    time.sleep(0.2)
+
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), color=(1, 1, 1)).save(buf, format="PNG")
+    with SocketRelaySender("127.0.0.1", port) as s:
+        s.send(
+            TransmissionPacket(
+                edge_image=buf.getvalue(),
+                prompt_text="",
+                metadata={
+                    "frame_index": 0,
+                    "total_frames": 1,
+                    "fps": 8.0,
+                    "frame_type": "keyframe",
+                },
+            )
+        )
+    t.join(timeout=10.0)
+    assert not t.is_alive(), "receiver thread timed out"
+
+    assert len(errors) == 1
+    assert isinstance(errors[0], ConnectionError)
+    msg = str(errors[0])
+    assert "无状态" in msg and "frame_type" in msg

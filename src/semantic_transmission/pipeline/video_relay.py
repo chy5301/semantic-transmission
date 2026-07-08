@@ -254,6 +254,14 @@ class VideoRelayReceiver:
                     raise
                 except (TimeoutError, OSError, EOFError) as exc:
                     raise ConnectionError("收齐前连接中断") from exc
+                if packet.metadata.get("frame_type") is not None:
+                    # 无状态路径收到时序包（对端是时序发送端）：整帧透传的关键帧
+                    # 包若被当 Canny 边缘图喂给无状态 process，会静默劣化而不报错
+                    # （见设计文档风险项）。fail-fast 提示改用时序接收端。
+                    raise ConnectionError(
+                        "收到时序包（含 frame_type）但接收端为无状态模式，"
+                        "请用 --backend klein --reference-mode prev"
+                    )
                 if (
                     packet.metadata.get("frame_index") is None
                     or packet.metadata.get("total_frames") is None

@@ -109,3 +109,9 @@ def test_video_receiver_help_lists_backend_and_reference_mode():
     assert result.exit_code == 0
     assert "--backend" in result.output
     assert "--reference-mode" in result.output
+
+
+def test_video_receiver_backend_defaults_to_klein():
+    """两端默认均时序（klein 主线定位）：video-receiver 默认 --backend klein。"""
+    backend_param = next(p for p in video_receiver.params if p.name == "backend")
+    assert backend_param.default == "klein"
