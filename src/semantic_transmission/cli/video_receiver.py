@@ -9,6 +9,7 @@ from pathlib import Path
 
 import click
 
+from semantic_transmission.pipeline.temporal_policy import resolve_reference_mode
 from semantic_transmission.pipeline.video_relay import VideoRelayReceiver
 from semantic_transmission.receiver import create_receiver
 
@@ -33,7 +34,9 @@ from semantic_transmission.receiver import create_receiver
     "--backend",
     type=click.Choice(["diffusers", "klein"]),
     default="klein",
-    help="接收端后端（默认 klein，关键帧主线时序补偿；可选 diffusers 无状态逐帧）",
+    help="接收端后端（默认 klein，关键帧主线时序补偿；可选 diffusers 无状态逐帧）。"
+    "默认 klein 需 klein 模型就位，否则运行时加载失败；只装 Z-Image 的环境应显式 "
+    "--backend diffusers。",
 )
 @click.option(
     "--reference-mode",
@@ -47,16 +50,12 @@ def video_receiver(
     """视频流双机接收端：逐帧接收还原 → 收齐合成视频。"""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # 时序参考帧默认解析与 backend 门控（对齐单机 video.py 口径）：
-    # - 未显式指定 --reference-mode（None 哨兵）时：klein→prev，diffusers→无时序。
-    # - diffusers 显式传非 none 时序参数直接报错。
-    if reference_mode is None:
-        reference_mode = "prev" if backend == "klein" else None
-    elif backend != "klein" and reference_mode != "none":
-        raise click.UsageError("时序补偿仅 klein 后端支持（--backend klein）")
-    # none 归一为 None（无时序，走无状态路径）
-    if reference_mode == "none":
-        reference_mode = None
+    # 时序参考帧默认解析与 backend 门控（共享实现见
+    # pipeline.temporal_policy.resolve_reference_mode，与单机 video.py 对齐）。
+    try:
+        reference_mode = resolve_reference_mode(backend, reference_mode)
+    except ValueError as e:
+        raise click.UsageError(str(e)) from e
 
     click.echo(f"监听 {relay_host}:{relay_port}，输出 → {output_path}")
     recv = create_receiver(backend=backend)

@@ -10,6 +10,7 @@ from semantic_transmission.pipeline.temporal_policy import (
     build_reference_images,
     is_keyframe,
     require_temporal_capable,
+    resolve_reference_mode,
 )
 
 
@@ -129,3 +130,25 @@ def test_require_temporal_capable_rejects_missing_config():
 
 def test_require_temporal_capable_returns_max_side():
     assert require_temporal_capable(_CapableReceiver()) == 768
+
+
+def test_resolve_reference_mode_klein_default_is_prev():
+    assert resolve_reference_mode("klein", None) == "prev"
+
+
+def test_resolve_reference_mode_diffusers_default_is_none():
+    assert resolve_reference_mode("diffusers", None) is None
+
+
+def test_resolve_reference_mode_explicit_none_normalizes_to_none_for_any_backend():
+    assert resolve_reference_mode("diffusers", "none") is None
+    assert resolve_reference_mode("klein", "none") is None
+
+
+def test_resolve_reference_mode_diffusers_explicit_temporal_raises():
+    with pytest.raises(ValueError, match="klein"):
+        resolve_reference_mode("diffusers", "prev")
+
+
+def test_resolve_reference_mode_klein_explicit_keyframe_passthrough():
+    assert resolve_reference_mode("klein", "keyframe") == "keyframe"

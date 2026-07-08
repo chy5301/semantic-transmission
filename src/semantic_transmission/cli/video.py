@@ -10,7 +10,10 @@ from pathlib import Path
 import click
 
 from semantic_transmission.common.config import load_config
-from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
+from semantic_transmission.pipeline.temporal_policy import (
+    TemporalPolicyConfig,
+    resolve_reference_mode,
+)
 from semantic_transmission.pipeline.video_pipeline import VideoPipeline
 from semantic_transmission.receiver import create_receiver
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
@@ -113,16 +116,15 @@ def video(
     if prompt and auto_prompt:
         raise click.UsageError("--prompt 和 --auto-prompt 不能同时使用")
 
-    # 时序参考帧默认解析与 backend 门控：
-    # - 未显式指定 --reference-mode（None 哨兵）时：klein→prev，diffusers→none。
-    # - diffusers 显式传非 none 时序参数直接报错（Z-Image 非多参考模型，不支持时序）。
-    if reference_mode is None:
-        reference_mode = "prev" if backend == "klein" else "none"
-    elif backend != "klein" and reference_mode != "none":
-        raise click.UsageError("时序补偿仅 klein 后端支持（--backend klein）")
+    # 时序参考帧默认解析与 backend 门控（共享实现见
+    # pipeline.temporal_policy.resolve_reference_mode，与双机 video_receiver 对齐）。
+    try:
+        reference_mode = resolve_reference_mode(backend, reference_mode)
+    except ValueError as e:
+        raise click.UsageError(str(e)) from e
 
     temporal_policy = None
-    if reference_mode != "none":
+    if reference_mode is not None:
         temporal_policy = TemporalPolicyConfig(
             keyframe_interval=keyframe_interval,
             reference_mode=reference_mode,

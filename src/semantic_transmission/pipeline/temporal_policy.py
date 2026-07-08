@@ -55,6 +55,28 @@ def build_reference_images(mode: str, prev_output, last_keyframe) -> list:
     return refs
 
 
+def resolve_reference_mode(backend: str, reference_mode: str | None) -> str | None:
+    """把 CLI 的 --backend/--reference-mode 解析为规范化的时序模式。
+
+    返回 None 表示无时序（走无状态/逐帧路径）；返回 "prev"/"keyframe"/"prev_keyframe"
+    表示对应时序补偿模式。缺省(None)时按 backend 解析：klein→"prev"，其余→None。
+    显式 "none" 归一为 None。diffusers 后端显式传非 none 时序模式 → 抛 ValueError。
+
+    单机 video.py 与双机 video_receiver.py 共用此函数，避免默认解析 + backend
+    门控逻辑在两处 CLI 各写一份、哨兵写法（"none" vs None）漂移不一致。
+
+    注意：本模块不依赖 click，此处抛 ValueError 而非 click.UsageError，由各 CLI
+    捕获后自行转换为 click.UsageError。
+    """
+    if reference_mode is None:
+        return "prev" if backend == "klein" else None
+    if reference_mode == "none":
+        return None
+    if backend != "klein":
+        raise ValueError("时序补偿仅 klein 后端支持（--backend klein）")
+    return reference_mode
+
+
 def require_temporal_capable(receiver: Any) -> int:
     """时序补偿能力门控：校验 receiver 支持串行参考帧补偿，返回工作分辨率上限。
 
@@ -88,6 +110,7 @@ __all__ = [
     "is_keyframe",
     "build_reference_images",
     "require_temporal_capable",
+    "resolve_reference_mode",
     "FRAME_TYPE_KEYFRAME",
     "FRAME_TYPE_GENERATED",
 ]
