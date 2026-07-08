@@ -10,7 +10,10 @@ from pathlib import Path
 import click
 
 from semantic_transmission.common.config import load_config
-from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
+from semantic_transmission.pipeline.temporal_policy import (
+    TemporalPolicyConfig,
+    is_keyframe,
+)
 from semantic_transmission.pipeline.video_relay import VideoRelaySender
 from semantic_transmission.sender.local_condition_extractor import LocalCannyExtractor
 
@@ -107,6 +110,26 @@ def video_sender(
             return vlm_sender.describe(frame).text
     elif prompts_json is not None:
         payload = json.loads(prompts_json.read_text(encoding="utf-8"))
+        # 时序 prompts.json（_save_temporal_artifacts 产出）含顶层 keyframe_indices：
+        # 若重放 --keyframe-interval 与生成时不一致，原关键帧下标会被误判为生成帧，
+        # by_index.get(index, "") 对其静默返回空 prompt。此处校验关键帧集一致，
+        # 不一致直接 fail-fast，而非静默送空 prompt 进生成。非时序 prompts.json
+        # （无 keyframe_indices 字段，全帧有 prompt）跳过此项校验。
+        if "keyframe_indices" in payload:
+            total = payload.get("total_frames")
+            if total is None:
+                raise click.UsageError(
+                    "prompts.json 含 keyframe_indices 但缺少 total_frames 字段，"
+                    "无法校验 --keyframe-interval"
+                )
+            check_policy = TemporalPolicyConfig(keyframe_interval=keyframe_interval)
+            expected_kf = {i for i in range(total) if is_keyframe(i, check_policy)}
+            payload_kf = set(payload["keyframe_indices"])
+            if payload_kf != expected_kf:
+                raise click.UsageError(
+                    "prompts.json 的关键帧集与 --keyframe-interval 不匹配，"
+                    "请用生成时相同的 --keyframe-interval 重放"
+                )
         # prompts.json 的 frames: [{index, prompt?, passthrough?}]；关键帧无 prompt。
         by_index = {f["index"]: f.get("prompt", "") for f in payload.get("frames", [])}
 
