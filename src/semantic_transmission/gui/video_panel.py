@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Callable
 
 from semantic_transmission.common.config import ProjectConfig
+from semantic_transmission.common.video_io import read_frames
+from semantic_transmission.evaluation.video_eval import evaluate_video
 from semantic_transmission.pipeline.temporal_policy import (
     TemporalPolicyConfig,
     resolve_reference_mode,
@@ -176,3 +178,23 @@ def poll_video(state):
     if last is not None:
         return f"生成中 {last[0] + 1}/{last[1]}", None, [], ""
     return "准备/加载模型中...", None, [], ""
+
+
+def run_video_evaluation(input_video, output_video) -> tuple[list, str]:
+    """输入视频 vs 输出视频逐帧评估（PSNR/SSIM/LPIPS）。
+
+    CLIP 需逐帧 prompt（evaluate_video 的 with_clip 门控要求 prompts），单机路径
+    未透出逐帧 prompt，故 with_clip=False、不列恒空的 CLIP 列。
+    """
+    if not input_video or not output_video:
+        return [], "错误：需要先完成一次视频生成（缺输入或输出视频）\n"
+    orig, _ = read_frames(input_video)
+    rest, _ = read_frames(output_video)
+    report = evaluate_video(orig, rest, with_lpips=True, with_clip=False)
+    summary = report["summary"]
+    label = {"psnr": "PSNR", "ssim": "SSIM", "lpips": "LPIPS"}
+    rows = []
+    for key, name in label.items():
+        mean = summary.get(key, {}).get("mean")
+        rows.append([name, f"{mean:.4f}" if mean is not None else "—"])
+    return rows, "质量评估完成\n"

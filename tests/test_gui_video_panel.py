@@ -7,6 +7,7 @@ from semantic_transmission.gui.video_panel import (
     build_video_prompt_fn,
     start_video,
     poll_video,
+    run_video_evaluation,
 )
 
 
@@ -169,3 +170,34 @@ def test_poll_video_error():
     state = {"progress_q": _q.Queue(), "done": True, "error": "boom", "result": None}
     text, out, rows, log = poll_video(state)
     assert "boom" in text and out is None
+
+
+class TestRunVideoEvaluation:
+    def test_missing_inputs_returns_error(self):
+        rows, log = run_video_evaluation(None, None)
+        assert rows == [] and "需要" in log
+
+    def test_summary_rows_no_clip_column(self):
+        fake_report = {
+            "summary": {
+                "psnr": {"mean": 15.0, "count": 2},
+                "ssim": {"mean": 0.75, "count": 2},
+                "lpips": {"mean": 0.45, "count": 2},
+            }
+        }
+        with (
+            patch(
+                "semantic_transmission.gui.video_panel.read_frames",
+                return_value=([1, 2], MagicMock()),
+            ),
+            patch(
+                "semantic_transmission.gui.video_panel.evaluate_video",
+                return_value=fake_report,
+            ) as ev,
+        ):
+            rows, log = run_video_evaluation("in.mp4", "out.mp4")
+        # with_clip 默认 False，不列 CLIP
+        assert ev.call_args.kwargs.get("with_clip") is False
+        assert ["PSNR", "15.0000"] in rows
+        assert all(r[0] != "CLIP" for r in rows)
+        assert "评估完成" in log
