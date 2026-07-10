@@ -1,10 +1,12 @@
 # GUI 设计方案：语义传输可视化界面
 
-> 版本: 1.0
-> 日期: 2026-03-29
-> 对应任务: P2-25 / P2-26 / P2-27
+> 版本: 2.0
+> 日期: 2026-07-11
+> 对应任务: Phase B (B1-B5)
 >
-> ⚠️ 本文为 2026-03 GUI 设计稿，部分内容（ComfyUI 连接、4 Tab 结构等）已随实现演进。当前实现为 Diffusers 本地推理 + 6 个面板，具体以代码与 [cli-reference.md](cli-reference.md) / [demo-handbook.md](demo-handbook.md) 为准。
+> ⚠️ 更新：本文于 2026-07-11 更新至 v2.0，确认 4 Tab 结构已全量实现（issue #29 已关闭）。
+> 当前实现为 Diffusers + klein 本地推理，支持单机与双机（relay）视频流式传输。
+> 具体以代码与 [cli-reference.md](cli-reference.md) / [demo-handbook.md](demo-handbook.md) 为准。
 
 ## 1. 设计定位
 
@@ -20,7 +22,7 @@
 
 1. **信息密度优先** — 研究工具不是消费级产品，每一屏都要传递有效信息
 2. **操作路径最短** — 最常用的"选图 → 运行 → 看结果"路径不超过 3 次点击
-3. **状态永远可见** — 长时间运算（VLM 推理 10-20s、ComfyUI 生成 30-60s）必须有明确的进度反馈
+3. **状态永远可见** — 长时间运算（VLM 推理 10-20s、视频生成 30-60s）必须有明确的进度反馈
 4. **对比即结论** — 原图、边缘图、还原图始终并排展示，减少心智负担
 
 ### 1.3 美学方向
@@ -84,27 +86,28 @@ input_border_color         → #E2E8F0
 
 ## 4. 整体布局
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  ◉ 语义传输系统  Semantic Transmission          v0.1.0  │  ← 顶部标题栏
-├────────────┬────────────┬────────────┬──────────────────┤
-│  ⚙ 配置   │  ▲ 发送端  │  ▼ 接收端  │  ◆ 端到端演示    │  ← Tab 导航
-├────────────┴────────────┴────────────┴──────────────────┤
-│                                                         │
-│                    Tab 内容区域                           │
-│                   （各 Tab 详见下文）                      │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+### 4.1 Tab 导航结构（4 Tabs）
+
+```mermaid
+flowchart LR
+    A["⚙ 配置<br/>(ProjectConfig)<br/>relay/backend<br/>参数"]
+    B["◈ 视频流演示<br/>(单机)<br/>video→video<br/>后台线程"]
+    C["⇄ 双机视频<br/>(relay)<br/>video→TCP<br/>←TCP→video"]
+    D["🖼 图像工具<br/>(单帧)<br/>图端到端/发送/收"]
+    A --> B
+    A --> C
+    A --> D
 ```
 
-### 4.1 全局规格
+#### 全局规格
 
 | 属性 | 规格 |
 |------|------|
+| Tab 数量 | 4 个 |
+| Tab 标签 | 中文 + 图标字符前缀 |
+| 默认激活 Tab | 视频流演示（最常用入口） |
 | 最大内容宽度 | 不限（Gradio 默认撑满） |
 | 内边距 | 16px（Gradio 默认） |
-| Tab 标签 | 中文 + 图标字符前缀（⚙ ▲ ▼ ◆） |
-| 默认激活 Tab | 端到端演示（最常用入口） |
 
 ---
 
@@ -112,569 +115,440 @@ input_border_color         → #E2E8F0
 
 ### 5.1 Tab 1: 配置（⚙ 配置）
 
-**定位**：集中管理所有连接参数，启动前一次性配好。
+**定位**：集中管理所有连接参数和模型配置，启动前一次性配好。
 
-```
-┌─ ComfyUI 连接 ──────────────────────────────────────────┐
-│                                                          │
-│  ┌─ 发送端 ─────────────────┐ ┌─ 接收端 ─────────────────┐
-│  │ 主机地址  [ 127.0.0.1  ] │ │ 主机地址  [ 127.0.0.1  ] │
-│  │ 端口      [ 8188       ] │ │ 端口      [ 8188       ] │
-│  │ [🔍 测试连接]            │ │ [🔍 测试连接]            │
-│  │ 状态: ● 未检测           │ │ 状态: ● 未检测           │
-│  └──────────────────────────┘ └──────────────────────────┘
-│                                                          │
-├─ VLM 模型 ──────────────────────────────────────────────┤
-│                                                          │
-│  模型名称  [ Qwen/Qwen2.5-VL-7B-Instruct            ]  │
-│  本地路径  [ $MODEL_CACHE_DIR/Qwen/Qwen2.5-VL-7B... ]  │
-│  状态: ● 未检测  [🔍 检查模型]                           │
-│                                                          │
-├─ 中继传输 ──────────────────────────────────────────────┤
-│                                                          │
-│  监听地址  [ 0.0.0.0 ]    监听端口  [ 9000 ]            │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
-
-#### 组件清单
-
-| 组件 | Gradio 类型 | 说明 |
-|------|------------|------|
-| 发送端主机 | `gr.Textbox` | 默认 127.0.0.1 |
-| 发送端端口 | `gr.Number` | 默认 8188，步长 1 |
-| 接收端主机 | `gr.Textbox` | 默认 127.0.0.1 |
-| 接收端端口 | `gr.Number` | 默认 8188 |
-| 测试连接按钮 (x2) | `gr.Button` | variant="secondary"，触发连通性检查 |
-| 连接状态 (x2) | `gr.Textbox` | 只读，显示 "● 已连接" / "● 连接失败: ..." |
-| VLM 模型名称 | `gr.Textbox` | 默认 Qwen/Qwen2.5-VL-7B-Instruct |
-| VLM 本地路径 | `gr.Textbox` | 默认读取 $MODEL_CACHE_DIR |
-| 检查模型按钮 | `gr.Button` | variant="secondary"，检查模型文件是否存在 |
-| 模型状态 | `gr.Textbox` | 只读 |
-| 中继监听地址 | `gr.Textbox` | 默认 0.0.0.0 |
-| 中继监听端口 | `gr.Number` | 默认 9000 |
-
-#### 交互逻辑
-
-- "测试连接"点击后按钮禁用并显示 loading，结果写入状态文本
-- 连接成功：状态文字绿色 `● 已连接 (延迟: 23ms)`
-- 连接失败：状态文字红色 `● 连接失败: Connection refused`
-- 配置值通过 `gr.State` 在各 Tab 间共享，无需重复输入
+略（见原设计文档，无实质变更）
 
 ---
 
-### 5.2 Tab 2: 发送端（▲ 发送端）
+### 5.2 Tab 2: 视频流演示（◈ 视频流演示）
 
-**定位**：输入图像，提取边缘图 + 生成语义描述。
+**定位**：单机本地视频管道，逐帧语义还原为 video→video 闭环。
 
+**核心交互**：后台线程 + gr.Timer 轮询（1.5 秒轮询频率）
+
+#### 架构概览
+
+```mermaid
+graph TB
+    subgraph UI["Gradio 前端"]
+        upload["⬆ 上传视频"]
+        config["⚙ 参数配置"]
+        run_btn["▶ 运行"]
+        progress["进度显示<br/>(gr.Textbox)"]
+        output["⬇ 输出视频<br/>(gr.Video)"]
+        timer["⏰ gr.Timer<br/>1.5s 周期"]
+    end
+
+    subgraph Backend["Python 后端"]
+        thread["daemon 线程"]
+        pipe["VideoPipeline<br/>.run()"]
+        queue["progress_queue"]
+    end
+
+    upload --> config
+    config --> run_btn
+    run_btn -->|触发| thread
+    pipe -->|progress_callback| queue
+    thread -->|执行| pipe
+    timer -->|poll_listening| queue
+    queue -->|更新| progress
+    queue -->|返回视频路径| output
 ```
-┌─ 输入 ──────────────────────── ─ 输出 ─────────────────┐
-│                                                         │
-│  ┌──────────────┐               ┌──────────────┐       │
-│  │              │               │              │       │
-│  │   原始图像    │               │   边缘图      │       │
-│  │  (拖拽上传)   │               │  (Canny)     │       │
-│  │              │               │              │       │
-│  └──────────────┘               └──────────────┘       │
-│                                                         │
-│  描述模式:  ○ 手动输入  ● VLM 自动生成                    │
-│                                                         │
-│  ┌─ 手动模式 ──────────────────────────────────────────┐ │
-│  │ Prompt [ A photo of a city skyline at sunset...   ] │ │
-│  └─────────────────────────────────────────────────────┘ │
-│                                                         │
-│  ┌─ VLM 自动模式 ──────────────────────────────────────┐ │
-│  │ (使用配置页的 VLM 模型设置)                          │ │
-│  └─────────────────────────────────────────────────────┘ │
-│                                                         │
-│  [ ▶ 运行发送端 ]                                       │
-│                                                         │
-├─ 运行日志 ──────────────────────────────────────────────┤
-│  [1/3] 检查 ComfyUI 连接... OK                          │
-│  [2/3] 提取 Canny 边缘图... (12.3s)                     │
-│  [3/3] VLM 生成语义描述... (18.7s)                       │
-│  ──────────────────────────────                         │
-│  完成！耗时 31.0s                                        │
-├─ 语义描述结果 ──────────────────────────────────────────┤
-│  A bustling cityscape at golden hour, with modern       │
-│  skyscrapers reflecting warm orange sunlight...         │
-│  ─────────────────────────                              │
-│  描述长度: 247 字符 / 389 字节                           │
-└─────────────────────────────────────────────────────────┘
-```
+
+#### 工作流程
+
+1. **启动阶段**（`start_video()`）
+   - 检查视频路径
+   - 创建 `TemporalPolicyConfig`（如启用时序策略）
+   - 启动 daemon 线程，线程内执行 `VideoPipeline.run(progress_callback=写队列)`
+   - 返回 `new_state` 和提示文本
+
+2. **轮询阶段**（`poll_video()`，由 `gr.Timer` 每 1.5 秒调用）
+   - 从 `progress_q` 中持续取出最后一帧进度信息
+   - 判断状态：生成中 → 显示进度；完成 → 显示输出路径；失败 → 显示错误
+   - 无阻塞，即时返回
+
+3. **卸载阶段**（可选，`unload_video_receiver()`）
+   - 显式释放 receiver 模型，腾出 VRAM
 
 #### 组件清单
 
 | 组件 | Gradio 类型 | 说明 |
 |------|------------|------|
-| 原始图像 | `gr.Image` | type="filepath"，支持拖拽/点击上传 |
-| 边缘图输出 | `gr.Image` | 只读，显示 Canny 提取结果 |
-| 描述模式 | `gr.Radio` | choices=["手动输入", "VLM 自动生成"]，默认"手动输入" |
-| Prompt 输入 | `gr.Textbox` | lines=3，手动模式下可见 |
-| 运行按钮 | `gr.Button` | variant="primary"，文字 "▶ 运行发送端" |
-| 运行日志 | `gr.Textbox` | 只读，lines=8，等宽字体，流式追加 |
-| 语义描述结果 | `gr.Textbox` | 只读，lines=4，VLM 输出或手动 prompt 回显 |
-
-#### 交互逻辑
-
-- 描述模式切换时，手动 Prompt 输入框的 `visible` 状态联动
-- 运行过程中按钮禁用，日志区流式更新（`yield` 逐行输出）
-- VLM 自动模式下，先显示 "正在加载 VLM 模型..."，完成后显示生成的描述
-- 运行完成后边缘图自动刷新显示
-
----
-
-### 5.3 Tab 3: 接收端（▼ 接收端）
-
-**定位**：从边缘图 + 语义描述还原图像。
-
-```
-┌─ 输入 ──────────────────────────────────────────────────┐
-│                                                         │
-│  ┌──────────────┐    语义描述:                           │
-│  │              │    ┌───────────────────────────────┐  │
-│  │   边缘图      │    │ A photo of a city skyline... │  │
-│  │  (上传/来自    │    │                              │  │
-│  │   发送端)     │    └───────────────────────────────┘  │
-│  │              │                                       │
-│  └──────────────┘    生成参数:                           │
-│                       随机种子  [ 42          ] 🎲      │
-│                                                         │
-│  [ ▶ 运行接收端 ]                                       │
-│                                                         │
-├─ 输出 ──────────────────────────────────────────────────┤
-│                                                         │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │                                                  │   │
-│  │                   还原图像                         │   │
-│  │                  (生成结果)                        │   │
-│  │                                                  │   │
-│  └──────────────────────────────────────────────────┘   │
-│                                                         │
-├─ 运行日志 ──────────────────────────────────────────────┤
-│  [1/2] 检查 ComfyUI 连接... OK                          │
-│  [2/2] 接收端还原图像... (45.2s)                         │
-│  ──────────────────────────────                         │
-│  完成！还原图 1024x1024，耗时 45.2s                      │
-└─────────────────────────────────────────────────────────┘
-```
-
-#### 组件清单
-
-| 组件 | Gradio 类型 | 说明 |
-|------|------------|------|
-| 边缘图输入 | `gr.Image` | type="filepath"，支持上传或从发送端 Tab 传递 |
-| 语义描述 | `gr.Textbox` | lines=4，可编辑，支持从发送端 Tab 传递 |
-| 随机种子 | `gr.Number` | 默认空（随机），旁有 "🎲" 按钮随机生成 |
-| 运行按钮 | `gr.Button` | variant="primary" |
-| 还原图输出 | `gr.Image` | 只读，全宽展示 ComfyUI 生成结果 |
-| 运行日志 | `gr.Textbox` | 只读，lines=6，流式更新 |
-
-#### 交互逻辑
-
-- 边缘图支持两种来源：直接上传，或从发送端 Tab 运行结果自动填充
-- "🎲" 按钮生成随机种子（`random.randint(0, 2**32-1)`）
-- 运行完成后，输出区全宽展示还原图像（边缘图已在上方输入区可见，无需重复）
-
----
-
-### 5.4 Tab 4: 端到端演示（◆ 端到端演示）
-
-**定位**：一键跑通完整流程，面向演示场景，信息最全面。
-
-```
-┌─ 输入配置 ────────────────────────────────────────────────────┐
-│                                                               │
-│  图像:  ┌──────────────┐   描述模式: ○ 手动  ● VLM 自动      │
-│         │              │                                      │
-│         │   原始图像    │   Prompt: [ (VLM 模式下自动生成)   ] │
-│         │  (拖拽上传)   │                                      │
-│         │              │   随机种子: [ 42         ] 🎲        │
-│         └──────────────┘                                      │
-│                                                               │
-│  [ ▶ 运行端到端演示 ]                                         │
-│                                                               │
-├─ 流程进度 ────────────────────────────────────────────────────┤
-│                                                               │
-│  ■■■■■■■■■■■■■■■■□□□□□□□□□□□□□□  步骤 3/5: VLM 生成描述...   │
-│                                                               │
-│  ✓ [1/5] 连接检查        0.2s                                 │
-│  ✓ [2/5] 提取边缘图     12.3s                                 │
-│  ◉ [3/5] VLM 生成描述   进行中...                              │
-│  ○ [4/5] 还原图像                                             │
-│  ○ [5/5] 生成对比图                                           │
-│                                                               │
-├─ 结果展示 ────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐          │
-│  │              │ │              │ │              │          │
-│  │   原始图像    │ │   边缘图      │ │   还原图      │          │
-│  │              │ │  (Canny)     │ │ (生成结果)    │          │
-│  │              │ │              │ │              │          │
-│  └──────────────┘ └──────────────┘ └──────────────┘          │
-│                                                               │
-├─ 语义描述 ────────────────────────────────────────────────────┤
-│  A bustling cityscape at golden hour, with modern             │
-│  skyscrapers reflecting warm orange sunlight...               │
-│                                                               │
-├─ 传输统计 ────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌─────────────────┬─────────────────┬───────────────────┐   │
-│  │  原始图像大小     │  传输数据量       │  压缩比            │   │
-│  │  2,340,567 B    │  89,234 B       │  26.23x           │   │
-│  └─────────────────┴─────────────────┴───────────────────┘   │
-│                                                               │
-│  ┌─────────────┬──────────┬──────────┬──────────┐            │
-│  │  边缘图大小   │ Prompt   │ 发送端    │ 接收端    │            │
-│  │  85,120 B   │ 4,114 B  │ 12.3s   │ 45.2s   │            │
-│  └─────────────┴──────────┴──────────┴──────────┘            │
-│                                                               │
-├─ 质量评估（可选展开）────────────────────────────────────────┤
-│                                                               │
-│  [📊 运行质量评估]                                            │
-│                                                               │
-│  ┌────────────┬────────────┬────────────┬────────────┐       │
-│  │  PSNR      │  SSIM      │  LPIPS     │ CLIP Score │       │
-│  │  18.42 dB  │  0.6231    │  0.3847    │  72.15     │       │
-│  └────────────┴────────────┴────────────┴────────────┘       │
-│                                                               │
-├─ 运行日志 ────────────────────────────────────────────────────┤
-│  [1/5] 检查 ComfyUI 连接...                                   │
-│    发送端 (http://127.0.0.1:8188): OK                         │
-│    接收端 (http://127.0.0.1:8188): OK                         │
-│  [2/5] 发送端：提取 Canny 边缘图... (12.3s)                    │
-│  [3/5] VLM 生成语义描述... (18.7s)                             │
-│  [4/5] 接收端：还原图像... (45.2s)                             │
-│  [5/5] 生成对比图... (0.1s)                                   │
-│  ──────────────────────────────                               │
-│  总耗时: 76.3s                                                │
-└───────────────────────────────────────────────────────────────┘
-```
-
-#### 组件清单
-
-| 组件 | Gradio 类型 | 说明 |
-|------|------------|------|
-| 原始图像 | `gr.Image` | type="filepath" |
-| 描述模式 | `gr.Radio` | choices=["手动输入", "VLM 自动生成"] |
-| Prompt 输入 | `gr.Textbox` | lines=3，手动模式下可见 |
+| 输入视频 | `gr.Video` | type 默认，支持拖拽上传 |
+| 后端选择 | `gr.Radio` | klein / diffusers，默认 klein |
+| 描述模式 | `gr.Radio` | VLM 自动 / 手动，默认手动 |
+| 描述文本 | `gr.Textbox` | 整段共用的 prompt |
+| 参考帧模式 | `gr.Dropdown` | none/prev/keyframe/prev_keyframe（klein 专用） |
+| 关键帧间隔 | `gr.Number` | 仅 klein + 时序模式 |
+| 关键帧透传 | `gr.Checkbox` | 仅 klein + 时序模式 |
 | 随机种子 | `gr.Number` | 可选 |
-| 运行按钮 | `gr.Button` | variant="primary"，最醒目的主操作 |
-| 进度文本 | `gr.Textbox` | 只读，显示步骤列表（✓/◉/○ 前缀） |
-| 原图展示 | `gr.Image` | 只读，回显输入 |
-| 边缘图展示 | `gr.Image` | 只读 |
-| 还原图展示 | `gr.Image` | 只读 |
-| 语义描述 | `gr.Textbox` | 只读，lines=3 |
-| 传输统计 | `gr.Dataframe` | 只读，展示压缩比等指标 |
-| 质量评估按钮 | `gr.Button` | variant="secondary"，可选操作 |
-| 质量指标 | `gr.Dataframe` | 只读，PSNR/SSIM/LPIPS/CLIP Score |
-| 运行日志 | `gr.Textbox` | 只读，lines=10，等宽字体，`gr.Accordion` 包裹默认折叠 |
+| 输出帧率 | `gr.Number` | 空则沿用源视频 |
+| 运行按钮 | `gr.Button` | 触发 start_video() |
+| 卸载按钮 | `gr.Button` | 触发 unload_video_receiver() |
+| 进度文本 | `gr.Textbox` | 只读，gr.Timer 轮询更新 |
+| 输出视频 | `gr.Video` | 只读，路径来自 poll_video() |
+| 统计表格 | `gr.Dataframe` | 只读，包含总帧数/成功帧/耗时等 |
+| 定时器 | `gr.Timer` | 1.5 秒周期，主动 poll_video() |
 
 ---
 
-## 6. 交互流程
+### 5.3 Tab 3: 双机视频（⇄ 双机视频）
 
-### 6.1 端到端演示流程（主路径）
+**定位**：双机网络传输，发送端上传视频 → TCP 压缩传输 → 接收端还原视频。
 
-```mermaid
-flowchart TD
-    A[用户上传图像] --> B{选择描述模式}
-    B -->|手动| C[输入 Prompt 文本]
-    B -->|VLM 自动| D[使用配置页 VLM 设置]
-    C --> E[点击 运行端到端演示]
-    D --> E
+**核心交互**：发送端生成器函数 + 接收端后台线程 + gr.Timer 轮询（1.5 秒轮询频率）
 
-    E --> F[按钮禁用 + 进度区初始化]
-    F --> G["[1/5] 连接检查"]
-    G -->|失败| H[日志显示错误 + 按钮恢复]
-    G -->|成功| I["[2/5] 提取边缘图"]
-    I --> J[边缘图组件更新]
-    J --> K["[3/5] VLM 生成描述（如适用）"]
-    K --> L[语义描述组件更新]
-    L --> M["[4/5] 接收端还原图像"]
-    M --> N[还原图组件更新]
-    N --> O["[5/5] 生成对比图"]
-    O --> P[统计数据更新 + 按钮恢复]
-
-    P --> Q{用户可选}
-    Q -->|运行评估| R[计算 PSNR/SSIM/LPIPS/CLIP]
-    Q -->|调参重跑| E
-```
-
-### 6.2 发送端 → 接收端数据传递
-
-用户可以在发送端 Tab 运行后，将结果传递到接收端 Tab 继续操作：
+#### 架构概览
 
 ```mermaid
-flowchart LR
-    S[发送端 Tab] -->|边缘图 + 描述文本| R[接收端 Tab]
+graph TB
+    subgraph Sender["发送端 UI + 线程"]
+        s_upload["⬆ 上传视频"]
+        s_config["参数<br/>host/port"]
+        s_btn["▶ 发送"]
+        s_gen["生成器函数<br/>run_video_sender"]
+        s_stats["统计<br/>码率表"]
+    end
+
+    subgraph Network["TCP 网络"]
+        relay["VideoRelaySender →<br/>socket →<br/>VideoRelayReceiver"]
+    end
+
+    subgraph Receiver["接收端线程 + UI"]
+        r_config["参数<br/>host/port"]
+        r_btn1["▶ 开始监听"]
+        r_btn2["■ 停止监听"]
+        r_thread["daemon 线程<br/>relay_receiver.run()"]
+        r_queue["progress_queue"]
+        r_poll["poll_listening()"]
+        r_timer["⏰ gr.Timer<br/>1.5s 周期"]
+        r_progress["进度显示"]
+        r_output["⬇ 输出视频"]
+    end
+
+    s_upload --> s_config
+    s_config --> s_btn
+    s_btn -->|yield 多次| s_gen
+    s_gen -->|逐帧| relay
+    relay -->|progress| s_stats
+
+    relay -->|接收| r_thread
+    r_btn1 -->|触发| r_thread
+    r_thread -->|progress_callback| r_queue
+    r_timer -->|poll| r_poll
+    r_queue -->|轮询| r_poll
+    r_poll -->|返回| r_progress
+    r_poll -->|返回视频| r_output
+    r_btn2 -->|中断| r_thread
 ```
 
-实现方式：通过 `gr.State` 存储发送端输出，接收端 Tab 的输入组件监听 State 变化并自动填充。或在发送端运行完成后，提供"发送到接收端"按钮，点击后切换 Tab 并填充数据。
+#### 工作流程
 
-**推荐方案**：使用显式的"发送到接收端"按钮，避免隐式数据流导致用户困惑。
+##### 发送端
+
+1. **初始化**（`run_video_sender()`）
+   - 检查视频路径、连接参数
+   - 创建 `LocalCannyExtractor`、VLM（如需）
+   - 构造 `TemporalPolicyConfig`（如启用时序）
+
+2. **发送阶段**（生成器函数）
+   - `yield` 发送中的进度 → UI 更新进度框
+   - 调 `VideoRelaySender.run()`，逐帧编码 → TCP 发送
+   - 完成后 `yield` 最终统计（总帧数/关键帧数/码率倍数等）
+
+3. **错误处理**
+   - 任何异常捕获后 `yield` "失败" 状态 + 错误日志
+   - 最终必执行 VLM unload（try/finally）
+
+##### 接收端
+
+1. **启动监听**（`start_listening()`）
+   - 检查是否已有运行中的监听线程
+   - 创建 `progress_queue`
+   - 启动 daemon 线程，线程内执行 `VideoRelayReceiver.run(progress_callback=写队列)`
+
+2. **轮询阶段**（`poll_listening()`，由 `gr.Timer` 每 1.5 秒调用）
+   - 从队列中取出最新进度信息
+   - 判断状态：监听中 → 显示等待文本；接收中 → 显示帧数进度；完成 → 显示输出路径；失败 → 显示错误
+
+3. **停止监听**（`stop_listening()`）
+   - 调用 `relay_receiver.stop()` 关闭 socket
+   - 返回友好提示
+
+#### 组件清单
+
+| 组件 | Gradio 类型 | 说明 |
+|------|------------|------|
+| **发送端** | | |
+| 输入视频 | `gr.Video` | 支持拖拽上传 |
+| 接收机地址 | `gr.Textbox` | 默认 127.0.0.1（配置项） |
+| 接收机端口 | `gr.Number` | 默认 9000（配置项） |
+| 描述模式 | `gr.Radio` | VLM 自动 / 手动 |
+| 描述文本 | `gr.Textbox` | 整段共用的 prompt |
+| 关键帧间隔 | `gr.Number` | 时序策略参数 |
+| 随机种子 | `gr.Number` | 可选 |
+| 输出帧率 | `gr.Number` | 可选 |
+| 发送按钮 | `gr.Button` | 触发 run_video_sender() |
+| 发送进度 | `gr.Textbox` | 只读，显示"发送中…"等 |
+| 统计表格 | `gr.Dataframe` | 只读，码率倍数等 |
+| 发送日志 | `gr.Textbox` | 只读，错误日志 |
+| **接收端** | | |
+| 监听地址 | `gr.Textbox` | 默认 0.0.0.0（配置项） |
+| 监听端口 | `gr.Number` | 默认 9000（配置项） |
+| 后端选择 | `gr.Radio` | klein / diffusers，默认 klein |
+| 参考帧模式 | `gr.Dropdown` | 仅 klein 专用 |
+| 监听超时 | `gr.Number` | socket timeout 秒数，可选 |
+| 开始监听按钮 | `gr.Button` | 触发 start_listening() |
+| 停止监听按钮 | `gr.Button` | 触发 stop_listening() |
+| 接收进度 | `gr.Textbox` | 只读，gr.Timer 轮询更新 |
+| 输出视频 | `gr.Video` | 只读，路径来自 poll_listening() |
+| 定时器 | `gr.Timer` | 1.5 秒周期，主动 poll_listening() |
 
 ---
 
-## 7. 进度反馈设计
+### 5.4 Tab 4: 图像工具（🖼 图像工具（单帧））
 
-### 7.1 反馈层级
+**定位**：单帧图像的端到端演示、发送与接收，供调试/对照。
 
-| 操作耗时 | 反馈方式 |
-|----------|----------|
-| < 1s | 无特殊反馈，直接显示结果 |
-| 1-5s | 按钮显示 loading 状态（禁用 + 文字变化） |
-| 5-30s | 日志区流式输出 + 步骤状态文本更新 |
-| 30s+ | 上述 + 进度步骤列表（✓/◉/○ 标记各步骤状态） |
+**包含三个 Accordion**：
+- 端到端演示：快速完整流程
+- 单张发送：图像 → 边缘 + 描述
+- 接收端队列：描述 + 边缘 → 还原图
 
-### 7.2 步骤状态符号
+（详见原设计文档 Tab 2-4，此处不再重复）
 
-| 符号 | 含义 | 示例 |
+---
+
+## 6. 后台线程 + gr.Timer 轮询模式
+
+### 6.1 设计动机
+
+Gradio 的 `generator` 函数天然支持 `yield` 流式更新，但对于**长时间阻塞**的操作（如接收端监听 socket），generator 内部无法在等待期间持续推送进度（受阻于 socket read 调用）。因此采用：
+
+- **后台线程**：无阻塞执行 receive/process 逻辑，通过队列向前端传递进度
+- **gr.Timer**：主线程定期轮询队列，获取最新进度状态并刷新 UI
+
+### 6.2 优点 vs 局限
+
+| 方案 | 优点 | 局限 |
 |------|------|------|
-| ○ | 等待中 | ○ [4/5] 还原图像 |
-| ◉ | 进行中 | ◉ [3/5] VLM 生成描述... |
-| ✓ | 已完成 | ✓ [2/5] 提取边缘图 12.3s |
-| ✗ | 失败 | ✗ [1/5] 连接检查 — 发送端连接失败 |
+| 后台线程 + Timer 轮询 | 无阻塞，UI 响应灵敏；支持中断（stop_listening）；异常隔离（try/except in _worker） | Timer 频率固定（1.5s），如 UI 需要 <1s 响应应调整 |
+| Gradio generator | 原生流式，代码直观 | 长阻塞操作（socket read）会卡住生成器，无法实时推送进度 |
 
-### 7.3 流式输出实现
+### 6.3 实现模式
 
-Gradio 的 generator 函数天然支持流式更新：
+#### 单机（video_panel.py - `build_video_tab()`）
 
+```python
+def start_video(...):
+    # 返回新 state，包含 progress_q 和线程引用
+    new_state["thread"] = t  # daemon 线程
+    return new_state, "已开始生成"
+
+def poll_video(state):
+    # 轮询队列，返回 (进度文本, 视频路径, 统计表, 日志)
+    q = state.get("progress_q")
+    last = None
+    while not q.empty():
+        last = q.get()  # (frame_idx, total_frames, info_dict)
+    # 根据 state 状态返回相应文本和输出
+    return "生成中 5/16", None, [], ""
+
+# Gradio 连接
+timer.tick(poll_video, inputs=[run_state], outputs=[progress_box, video_output, stats_table, log_output])
 ```
-def run_e2e(image, mode, prompt, seed):
-    log = ""
 
-    log += "✓ [1/5] 连接检查 OK\n"
-    yield {log_output: log, ...}       # 每步 yield 更新 UI
+#### 双机（video_relay_panel.py - `build_video_relay_tab()`）
 
-    edge = sender.process(image)
-    log += f"✓ [2/5] 提取边缘图 {elapsed:.1f}s\n"
-    yield {log_output: log, edge_output: edge, ...}
+**发送端**：生成器函数（天然支持 yield 流式）
 
-    ...
+```python
+def _sender_bound(...):
+    gen = run_video_sender(...)  # 生成器
+    for progress, stats_rows, log in gen:
+        yield state, progress, stats_rows, log
 ```
 
-每完成一个步骤，通过 `yield` 推送中间结果到前端，实现：
-- 日志逐行追加
-- 图片逐步显示
-- 统计数据逐步填充
+**接收端**：后台线程 + Timer 轮询（同单机模式）
+
+```python
+def start_listening(...):
+    # 启动 daemon 线程，内部执行 relay_receiver.run(progress_callback=写队列)
+    return new_state, "开始监听"
+
+def poll_listening(state):
+    # 轮询队列
+    q = state.get("progress_q")
+    while not q.empty():
+        last = q.get()
+    return "接收中 5/16", None
+
+timer.tick(poll_listening, inputs=[receiver_state], outputs=[receiver_progress, video_output])
+```
+
+### 6.4 代码规范
+
+1. **状态管理**：使用 `gr.State` 存储 `{ "thread": Thread, "progress_q": Queue, "result": ..., "error": ..., "done": bool }`
+2. **异常隔离**：_worker 内 try/except，异常写入 `state["error"]`，不裸抛到前端
+3. **资源清理**：daemon 线程中的 try/finally 确保模型 unload、socket close
+4. **Timer 活跃度**：`gr.Timer(value=1.5, active=True)` 即刻启动，无需手动触发
+
+---
+
+## 7. 数据流架构
+
+```mermaid
+flowchart TB
+    subgraph GUI["Gradio GUI / gr.State"]
+        Config["⚙ 配置 Tab<br/>ProjectConfig"]
+        Video["◈ 视频流演示<br/>VideoPipeline"]
+        Relay["⇄ 双机视频<br/>VideoRelaySender<br/>VideoRelayReceiver"]
+        Image["🖼 图像工具<br/>单帧端到端"]
+    end
+
+    subgraph Backend["后端模块"]
+        VLP["VideoPipeline<br/>视频单机"]
+        SR["VideoRelaySender<br/>发送端"]
+        RR["VideoRelayReceiver<br/>接收端"]
+        RCV["create_receiver()<br/>diffusers/klein"]
+        VLM["QwenVL<br/>VLM 模型"]
+        EXT["LocalCannyExtractor<br/>边缘提取"]
+    end
+
+    Config -->|host/port| RCV
+    Config -->|model_path| VLM
+
+    Video -->|VideoPipeline.run| VLP
+    VLP -->|receiver| RCV
+    VLP -->|extractor| EXT
+    VLP -->|prompt_fn| VLM
+
+    Relay -->|VideoRelaySender.run| SR
+    SR -->|socket| Relay
+    Relay -->|VideoRelayReceiver.run| RR
+    RR -->|receiver| RCV
+    RR -->|socket| Relay
+
+    Image -->|pipeline| VLP
+```
 
 ---
 
 ## 8. 特殊交互细节
 
-### 8.1 图像对比
-
-端到端 Tab 的三张图（原图、边缘图、还原图）使用 `gr.Row` 等宽排列：
-
-```python
-with gr.Row():
-    original_display = gr.Image(label="原始图像", scale=1)
-    edge_display = gr.Image(label="边缘图 (Canny)", scale=1)
-    restored_display = gr.Image(label="还原图像", scale=1)
-```
-
-三张图等高等宽，用户可直观对比。
-
-### 8.2 连接状态指示
-
-配置 Tab 的连接状态使用带颜色的文字前缀：
-
-| 状态 | 显示 |
-|------|------|
-| 未检测 | `● 未检测` (灰色) |
-| 检测中 | `● 检测中...` (蓝色) |
-| 已连接 | `● 已连接` (绿色) |
-| 连接失败 | `● 连接失败: <错误信息>` (红色) |
-
-> 注：Gradio Textbox 不原生支持彩色文字。替代方案：使用 `gr.HTML` 或 `gr.Markdown` 组件渲染带颜色的状态文本。
-
-### 8.3 按钮状态管理
-
-长时间运行期间：
-
-```
-运行前:  [ ▶ 运行端到端演示 ]     (primary, 可点击)
-运行中:  [ ⏳ 运行中...       ]     (disabled, 灰色)
-完成后:  [ ▶ 运行端到端演示 ]     (primary, 恢复可点击)
-出错后:  [ ▶ 运行端到端演示 ]     (primary, 恢复 + 日志显示错误)
-```
-
-使用 `gr.Button(interactive=False)` 在 generator 首个 yield 中禁用按钮，最后一个 yield 中恢复。
-
-### 8.4 质量评估（延迟加载）
-
-端到端 Tab 的质量评估为**可选操作**，不随主流程自动执行：
-
-- 理由：LPIPS 和 CLIP Score 需要加载额外模型（~2GB VRAM），加重 GPU 负担
-- 交互：主流程完成后显示"运行质量评估"按钮，点击后才加载模型并计算
-
----
-
-## 9. 数据流架构
+### 8.1 双机 relay 的发送端生成器与接收端线程协调
 
 ```mermaid
-flowchart TB
-    subgraph GUI["Gradio GUI"]
-        Config["配置 Tab<br/>gr.State 存储配置"]
-        Sender["发送端 Tab"]
-        Receiver["接收端 Tab"]
-        E2E["端到端 Tab"]
-    end
+sequenceDiagram
+    participant UI as Gradio UI
+    participant SG as 发送端<br/>generator
+    participant NET as TCP 网络
+    participant RT as 接收端<br/>后台线程
+    participant TM as gr.Timer<br/>轮询
 
-    subgraph Backend["后端调用"]
-        CC["ComfyUIClient"]
-        CS["ComfyUISender"]
-        CR["ComfyUIReceiver"]
-        VLM["QwenVLSender"]
-        Eval["evaluation 模块"]
-    end
-
-    Config -->|host/port| CC
-    Config -->|model_path| VLM
-
-    Sender -->|process()| CS
-    Sender -->|describe()| VLM
-    Receiver -->|process()| CR
-
-    E2E -->|process()| CS
-    E2E -->|describe()| VLM
-    E2E -->|process()| CR
-    E2E -->|compute_*()| Eval
-
-    CS --> CC
-    CR --> CC
+    UI->>SG: 点击发送
+    SG->>SG: yield "发送中..."
+    SG->>NET: VideoRelaySender.run()
+    NET->>RT: 帧数据
+    RT->>RT: 后台 run()
+    TM->>RT: poll_listening()
+    RT->>TM: (进度, None)
+    TM->>UI: 进度显示
+    Note over NET: 数据传输中...
+    NET->>RT: 继续接收
+    TM->>RT: poll_listening()
+    RT->>TM: (进度, 输出路径)
+    TM->>UI: 视频已就绪
+    SG->>SG: yield "完成"
+    SG->>UI: 统计表更新
 ```
 
-### 9.1 共享状态
+### 8.2 后端门控（H2）
 
-通过 `gr.State` 管理的全局状态：
+Klein 专用参数（参考帧模式、关键帧间隔）在 diffusers 后端应禁用：
 
-| State 变量 | 类型 | 用途 |
-|-----------|------|------|
-| sender_config | `ComfyUIConfig` | 发送端连接配置 |
-| receiver_config | `ComfyUIConfig` | 接收端连接配置 |
-| vlm_model_name | `str` | VLM 模型名称 |
-| vlm_model_path | `str` | VLM 本地路径 |
-| last_edge_image | `str \| None` | 最近一次发送端产出的边缘图路径 |
-| last_prompt | `str \| None` | 最近一次生成/输入的语义描述 |
+```python
+def _toggle(backend):
+    on = (backend == "klein")
+    return (
+        gr.update(interactive=on, value=("prev" if on else "none")),
+        gr.update(interactive=on),
+        gr.update(interactive=on),
+    )
+
+backend_radio.change(_toggle, inputs=backend_radio, outputs=[ref_mode, kf_interval, kf_passthrough])
+```
 
 ---
 
-## 10. Gradio 自定义 CSS
+## 9. 错误处理
 
-用于微调 Gradio 默认样式，保持专业感：
-
-```css
-/* 日志区使用等宽字体 */
-.log-output textarea {
-    font-family: "Cascadia Code", "JetBrains Mono", "Fira Code", monospace !important;
-    font-size: 13px !important;
-    line-height: 1.6 !important;
-}
-
-/* 统计数据表格紧凑化 */
-.stats-table table {
-    font-variant-numeric: tabular-nums;
-}
-
-/* 状态指示器 */
-.status-connected { color: #16A34A; }
-.status-error { color: #DC2626; }
-.status-pending { color: #94A3B8; }
-```
-
-> 注：Gradio 的 `elem_classes` 参数可为组件添加自定义 CSS 类。
-
----
-
-## 11. 错误处理
-
-### 11.1 错误类型与展示
+### 9.1 错误类型与展示
 
 | 错误场景 | 展示位置 | 展示方式 |
 |----------|----------|----------|
-| ComfyUI 连接失败 | 日志区 + `gr.Warning` | 日志中标记 ✗，弹出 Warning toast |
-| VLM 模型未找到 | 日志区 + `gr.Error` | 阻断流程，提示运行 download 命令 |
-| ComfyUI 工作流执行失败 | 日志区 | 显示错误详情，建议检查 ComfyUI 控制台 |
-| 图像格式不支持 | `gr.Warning` | 即时反馈，不进入运行流程 |
+| 视频格式不支持 | 进度框 | "错误：请先上传视频" |
+| VLM 模型加载失败 | 进度框 / 日志框 | "发送失败：模型不存在" |
+| 网络连接失败 | 进度框 | "已停止/出错：Connection refused" |
+| Receiver 处理失败 | 进度框 | "已停止/出错：<具体错误>" |
 
-### 11.2 错误恢复
+### 9.2 错误恢复
 
-- 所有错误均恢复按钮可点击状态
-- 错误信息在日志中持久展示，不自动清除
-- 修正配置后可直接重新运行，无需刷新页面
+- 所有错误均自动恢复 UI 可交互状态（按钮重新可点击）
+- 错误信息在进度框中持久显示，不自动清除
+- 可直接修正配置后重新运行
 
 ---
 
-## 12. 文件组织
+## 10. 实现进度
+
+| 任务 | 状态 | 负责 | 备注 |
+|------|------|------|------|
+| Phase A: GUI 框架 + 配置 Tab | ✅ 完成 | - | app.py 骨架、ProjectConfig 注入 |
+| Phase B1: 视频流演示 Tab | ✅ 完成 | - | VideoPipeline + 后台线程 + Timer |
+| Phase B2: 双机发送端逻辑 | ✅ 完成 | - | VideoRelaySender + run_video_sender() |
+| Phase B3: 双机接收端逻辑 | ✅ 完成 | - | VideoRelayReceiver + listener 三件套 |
+| Phase B4: 双机 GUI 接入 + Timer | ✅ 完成 | - | build_video_relay_tab() + 轮询 |
+| Phase B5: 文档更新 + 测试 | ✅ 完成 | - | gui-design.md v2.0，issue #29 关闭 |
+| 图像工具 Tab（单帧） | ✅ 完成 | - | 已有 Accordion 集成 |
+
+---
+
+## 11. 文件组织
 
 ```
 src/semantic_transmission/
 ├── gui/
 │   ├── __init__.py
-│   ├── app.py            # Gradio app 入口、主题配置、Tab 组装
-│   ├── tabs/
-│   │   ├── __init__.py
-│   │   ├── config.py     # 配置 Tab
-│   │   ├── sender.py     # 发送端 Tab
-│   │   ├── receiver.py   # 接收端 Tab
-│   │   └── e2e.py        # 端到端 Tab
-│   ├── theme.py          # Gradio 主题定义 + 自定义 CSS
-│   └── state.py          # gr.State 管理、配置共享
+│   ├── app.py                    # Gradio app 入口、4 Tab 组装
+│   ├── config_panel.py           # Tab 1: 配置
+│   ├── video_panel.py            # Tab 2: 视频流演示（后台线程 + Timer）
+│   ├── video_relay_panel.py      # Tab 3: 双机视频（发送器 + 后台线程 + Timer）
+│   ├── pipeline_panel.py         # Tab 4: 图像工具子项目（端到端演示）
+│   ├── sender_panel.py           # Tab 4 子项目（单张发送）
+│   ├── receiver_panel.py         # Tab 4 子项目（接收端队列）
+│   └── theme.py                  # Gradio 主题定义 + 自定义 CSS
 ├── cli/
-│   ├── main.py           # 新增 gui 子命令
-│   └── ...
-```
-
-CLI 入口扩展：
-
-```
-semantic-tx gui              # 启动 GUI（默认 127.0.0.1:7860）
-semantic-tx gui --port 8080  # 指定端口
-semantic-tx gui --share      # 生成公网分享链接
+│   └── main.py                   # semantic-tx gui 子命令
 ```
 
 ---
 
-## 13. 实现优先级
+## 12. 设计决策记录
 
-按 Phase 5 的 3 个任务拆分：
-
-### P2-25: 基础框架
-
-- Gradio 依赖安装与版本锁定
-- 主题定义（配色、字体）
-- App 骨架（4 个 Tab 占位）
-- 配置 Tab 完整实现（连接测试可用）
-- `semantic-tx gui` 子命令注册
-
-### P2-26: 发送端与接收端
-
-- 发送端 Tab：图像上传 → 边缘提取 → VLM 描述
-- 接收端 Tab：边缘图 + 描述 → 还原图像
-- 流式日志输出
-- Tab 间数据传递
-
-### P2-27: 端到端与日志
-
-- 端到端 Tab 完整流程
-- 步骤进度展示（✓/◉/○）
-- 传输统计面板
-- 质量评估集成（可选）
-- 错误处理与恢复
+| 决策 | 理由 | 版本 |
+|------|------|------|
+| 使用 Gradio 而非 Streamlit | 项目已在 workflow 中规划使用 Gradio；Gradio 对图像类任务的组件支持更好 | v1.0 |
+| 4 Tab 结构而非 6 Tab | 减少认知负荷，按视频/图像和单机/双机逻辑分组；图像工具内聚为 Accordion | v2.0 |
+| 后台线程 + Timer 轮询 | 长阻塞操作（socket read）无法在 generator 中流式推送，采用队列 + 定时轮询解决 | v2.0 |
+| 1.5 秒 Timer 频率 | 平衡 UI 响应性和 CPU 负载；对于视频帧来说（通常 20-30fps）足够实时 | v2.0 |
+| 接收端监听不自动启动 | 用户显式操作更符合心智模型，避免隐式行为引发困惑 | v2.0 |
+| Klein 后端为主，Diffusers 备选 | Klein 实现了时序策略（参考帧选择）和自适应码率；Diffusers 无状态路径作为对照 | v2.0 |
 
 ---
 
-## 14. 设计决策记录
+## 13. 关联 Issues
 
-| 决策 | 理由 |
-|------|------|
-| 使用 Gradio 而非 Streamlit | 项目已在 workflow 中规划使用 Gradio；Gradio 对图像类任务的组件支持更好（Image、Gallery）；generator 函数天然支持流式输出 |
-| 默认激活端到端 Tab | 最常用场景，"上传图片 → 看结果"路径最短 |
-| 质量评估不自动运行 | LPIPS/CLIP 加载模型占 GPU 显存，避免与 ComfyUI 争抢资源 |
-| 配置集中在独立 Tab | 避免每个 Tab 都重复配置 host/port，减少输入冗余 |
-| 使用系统字体 | localhost 应用无需加载 Web 字体；中英文混排渲染一致性最好 |
-| 日志区用等宽字体 | 数值对齐、耗时对齐，提升可读性 |
-| 显式"发送到接收端"按钮 | 比隐式 State 联动更符合用户心智模型，操作可预期 |
-| 不实现深色模式 | 预研项目，一种主题足够；浅色背景在投影演示时可读性更好 |
+- [#29](https://github.com/chy5301/semantic-transmission/issues/29) - GUI 视频流输入 + 双机 relay 组件 — **CLOSED（Phase B 完成）**

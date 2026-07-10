@@ -5,6 +5,9 @@ from __future__ import annotations
 import queue
 import threading
 
+import gradio as gr
+
+from semantic_transmission.common.config import load_config
 from semantic_transmission.gui.video_panel import build_video_prompt_fn
 from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
 from semantic_transmission.pipeline.video_relay import (
@@ -146,3 +149,138 @@ def stop_listening(state):
         return state, "已请求停止监听"
     except Exception as e:
         return state, f"停止出错：{e}"
+
+
+def build_video_relay_tab(config_components: dict, project_config=None) -> dict:
+    """双机 video→video relay Tab：发送端上传 + 接收端后台监听 + Timer 轮询。"""
+    config = project_config if project_config is not None else load_config()
+    gr.Markdown(
+        "### 双机视频传输\n"
+        "发送端：上传视频 → 发送到对端接收机（TCP）。"
+        "接收端：后台线程监听 → 还原视频。"
+    )
+
+    sender_state = gr.State(value={})
+    receiver_state = gr.State(value={})
+
+    with gr.Row():
+        with gr.Column(scale=1):
+            gr.Markdown("#### 发送端")
+            video_input = gr.Video(label="输入视频")
+            sender_host = gr.Textbox(
+                value="127.0.0.1",
+                label="接收机地址（host）",
+            )
+            sender_port = gr.Number(
+                value=9000,
+                precision=0,
+                label="接收机端口",
+            )
+            sender_mode = gr.Radio(
+                choices=[("VLM 自动生成", "auto"), ("手动输入", "manual")],
+                value="manual",
+                label="描述模式",
+            )
+            sender_prompt = gr.Textbox(label="描述文本", lines=2)
+            sender_kf_interval = gr.Number(value=12, precision=0, label="关键帧间隔 N")
+            sender_seed = gr.Number(label="随机种子", precision=0, value=None)
+            sender_fps = gr.Number(label="输出帧率（空=沿用）", value=None)
+            send_btn = gr.Button("▶ 发送视频", variant="primary")
+
+        with gr.Column(scale=1):
+            gr.Markdown("#### 接收端")
+            receiver_host = gr.Textbox(
+                value="0.0.0.0",
+                label="监听地址（host）",
+            )
+            receiver_port = gr.Number(
+                value=9000,
+                precision=0,
+                label="监听端口",
+            )
+            backend_radio = gr.Radio(
+                choices=[
+                    ("klein（关键帧主线）", "klein"),
+                    ("diffusers（Z-Image 备选）", "diffusers"),
+                ],
+                value="klein",
+                label="接收端后端",
+            )
+            ref_mode = gr.Dropdown(
+                choices=["none", "prev", "keyframe", "prev_keyframe"],
+                value="prev",
+                label="参考帧模式（仅 klein）",
+            )
+            timeout_input = gr.Number(label="监听超时（秒）", value=None)
+            listen_btn = gr.Button("▶ 开始监听", variant="primary")
+            stop_btn = gr.Button("■ 停止监听", variant="secondary")
+
+    progress_box = gr.Textbox(label="发送进度", interactive=False)
+    sender_stats = gr.Dataframe(headers=["指标", "值"], interactive=False)
+    sender_log = gr.Textbox(label="发送日志", lines=3, interactive=False)
+
+    receiver_progress = gr.Textbox(label="接收进度", interactive=False)
+    video_output = gr.Video(label="输出视频", interactive=False)
+
+    timer = gr.Timer(value=1.5, active=True)
+
+    def _sender_bound(state, video_path, host, port, mode, prompt, kf, seed, fps):
+        gen = run_video_sender(
+            video_path,
+            host,
+            int(port),
+            mode,
+            prompt,
+            kf,
+            seed,
+            fps,
+            config,
+        )
+        for progress, stats_rows, log in gen:
+            yield state, progress, stats_rows, log
+
+    def _receiver_bound(state, host, port, backend, rm, timeout):
+        return start_listening(state, host, int(port), backend, rm, None, timeout)
+
+    send_btn.click(
+        _sender_bound,
+        inputs=[
+            sender_state,
+            video_input,
+            sender_host,
+            sender_port,
+            sender_mode,
+            sender_prompt,
+            sender_kf_interval,
+            sender_seed,
+            sender_fps,
+        ],
+        outputs=[sender_state, progress_box, sender_stats, sender_log],
+    )
+
+    listen_btn.click(
+        _receiver_bound,
+        inputs=[
+            receiver_state,
+            receiver_host,
+            receiver_port,
+            backend_radio,
+            ref_mode,
+            timeout_input,
+        ],
+        outputs=[receiver_state, receiver_progress],
+    )
+
+    stop_btn.click(
+        stop_listening,
+        inputs=[receiver_state],
+        outputs=[receiver_state, receiver_progress],
+    )
+
+    timer.tick(
+        poll_listening,
+        inputs=[receiver_state],
+        outputs=[receiver_progress, video_output],
+    )
+
+    return {}
