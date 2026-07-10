@@ -1,8 +1,11 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+import queue as _q
 import numpy as np
 from semantic_transmission.gui.video_panel import (
     unload_video_receiver,
     build_video_prompt_fn,
+    start_video,
+    poll_video,
 )
 
 
@@ -40,3 +43,64 @@ class TestBuildVideoPromptFn:
         fn = build_video_prompt_fn("auto", None, vlm)
         assert fn(2, np.zeros((4, 4, 3), dtype=np.uint8)) == "auto desc"
         vlm.describe.assert_called_once()
+
+
+def test_start_video_empty_path_no_thread():
+    with patch("semantic_transmission.gui.video_panel.threading.Thread") as T:
+        state, status = start_video(
+            {}, None, "klein", "manual", "x", "prev", 12, True, None, None, MagicMock()
+        )
+        assert "请先上传" in status
+        T.assert_not_called()
+
+
+def test_start_video_rejects_when_running():
+    alive = MagicMock()
+    alive.is_alive.return_value = True
+    state, status = start_video(
+        {"thread": alive},
+        "in.mp4",
+        "klein",
+        "manual",
+        "x",
+        "prev",
+        12,
+        True,
+        None,
+        None,
+        MagicMock(),
+    )
+    assert "已在运行" in status
+
+
+def test_poll_video_progress_then_done():
+    q = _q.Queue()
+    q.put((0, 3, {}))
+    q.put((1, 3, {}))
+    state = {"progress_q": q, "done": False, "error": None, "result": None}
+    text, out, rows, log = poll_video(state)
+    assert "2/3" in text and out is None
+
+    state2 = {
+        "progress_q": _q.Queue(),
+        "done": True,
+        "error": None,
+        "result": {
+            "out_path": "o.mp4",
+            "stats": {
+                "total": 3,
+                "success": 3,
+                "keyframe_count": 1,
+                "generated_frames": 2,
+            },
+        },
+    }
+    text2, out2, rows2, log2 = poll_video(state2)
+    assert out2 == "o.mp4"
+    assert ["总帧数", "3"] in rows2
+
+
+def test_poll_video_error():
+    state = {"progress_q": _q.Queue(), "done": True, "error": "boom", "result": None}
+    text, out, rows, log = poll_video(state)
+    assert "boom" in text and out is None
