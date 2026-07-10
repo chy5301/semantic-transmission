@@ -27,16 +27,17 @@ def run_video_sender(
             model_name=project_config.vlm_model_name,
             model_path=project_config.vlm_model_path or None,
         )
-    prompt_fn = build_video_prompt_fn(mode, prompt, vlm_sender)
-    policy = None
-    if int(kf_interval) > 0:
-        policy = TemporalPolicyConfig(
-            keyframe_interval=int(kf_interval),
-            reference_mode="prev",
-            keyframe_passthrough=True,
-        )
-    yield "发送中...", [], "开始发送...\n"
     try:
+        prompt_fn = build_video_prompt_fn(mode, prompt, vlm_sender)
+        kf = int(kf_interval) if kf_interval not in (None, "") else 0
+        policy = None
+        if kf > 0:
+            policy = TemporalPolicyConfig(
+                keyframe_interval=kf,
+                reference_mode="prev",
+                keyframe_passthrough=True,
+            )
+        yield "发送中...", [], "开始发送...\n"
         stats = VideoRelaySender(extractor).run(
             video_path,
             host,
