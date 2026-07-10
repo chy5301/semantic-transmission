@@ -81,7 +81,7 @@ def start_video(
     # H2 防崩：非 klein 后端强制无时序，避免 resolve_reference_mode 抛错
     if backend != "klein":
         ref_mode = "none"
-    resolved = resolve_reference_mode(backend, None if ref_mode == "none" else ref_mode)
+    resolved = resolve_reference_mode(backend, ref_mode)
     policy = None
     if resolved is not None:
         policy = TemporalPolicyConfig(
