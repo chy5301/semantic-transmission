@@ -531,6 +531,37 @@ def test_temporal_non_passthrough_keyframe_updates_anchor(tmp_path):
     assert stats.keyframe_indices == []
 
 
+def test_temporal_progress_callback_covers_passthrough_frames(tmp_path):
+    """回归测试：progress_callback 须覆盖全部下标，含透传关键帧（非仅生成帧）。
+
+    修复前：透传分支在 continue 前不调用 progress_callback，导致 GUI 进度条
+    在关键帧下标处“卡住”。驱动真实 _run_temporal（不 monkeypatch），
+    keyframe_interval=2 保证关键帧 {0,2} 透传、非关键帧 {1,3} 生成，
+    两类分支都被覆盖。
+    """
+    src = tmp_path / "in.mp4"
+    _make_input_video(src, 4)
+    pipe = VideoPipeline(_FakeReferenceReceiver(), LocalCannyExtractor())
+    calls = []
+
+    pipe.run(
+        src,
+        tmp_path / "out.mp4",
+        prompt_fn=lambda i, f: "p",
+        temporal_policy=_temporal_cfg(keyframe_interval=2),  # 关键帧 {0,2} 透传
+        progress_callback=lambda i, t, info: calls.append((i, t, info)),
+    )
+
+    # 每个下标 0..n-1 恰好回调一次，透传帧不再被跳过。
+    assert [c[0] for c in calls] == [0, 1, 2, 3]
+    assert all(c[1] == 4 for c in calls)
+    # stage 标签区分透传帧（keyframe）与生成帧（generate）。
+    assert calls[0][2]["stage"] == "keyframe"
+    assert calls[1][2]["stage"] == "generate"
+    assert calls[2][2]["stage"] == "keyframe"
+    assert calls[3][2]["stage"] == "generate"
+
+
 def _patch_io(monkeypatch, n):
     frames = [np.zeros((8, 8, 3), dtype=np.uint8) for _ in range(n)]
     meta = SimpleNamespace(fps=30.0)

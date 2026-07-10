@@ -355,6 +355,8 @@ class VideoPipeline:
                         timings={"process": 0.0},
                     )
                 )
+                if progress_callback is not None:
+                    progress_callback(i, n, {"stage": "keyframe"})
                 continue
             if i in kf_set:
                 # 关键帧但 passthrough=False：仍更新锚，正常生成。
