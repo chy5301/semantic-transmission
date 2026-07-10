@@ -90,6 +90,7 @@ def start_listening(state, host, port, backend, ref_mode, output_path, timeout):
     progress_q = queue.Queue()
     new_state = {
         "thread": None,
+        # 与单机不同：每次监听重新加载 receiver（监听场景少见，不复用以简化状态）
         "receiver": None,
         "progress_q": progress_q,
         "result": None,

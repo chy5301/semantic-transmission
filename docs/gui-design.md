@@ -151,7 +151,7 @@ graph TB
     run_btn -->|触发| thread
     pipe -->|progress_callback| queue
     thread -->|执行| pipe
-    timer -->|poll_listening| queue
+    timer -->|poll_video| queue
     queue -->|更新| progress
     queue -->|返回视频路径| output
 ```

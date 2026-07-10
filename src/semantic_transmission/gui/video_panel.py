@@ -304,6 +304,8 @@ def build_video_tab(config_components: dict, project_config=None) -> dict:
 
     def _unload_bound(state):
         state = state or {}
+        if state.get("thread") is not None and state["thread"].is_alive():
+            return state, "生成进行中，请等待完成后再卸载"
         _, msg = unload_video_receiver(state.get("receiver"))
         state["receiver"] = None
         return state, msg
