@@ -8,8 +8,6 @@ import gradio as gr
 
 from semantic_transmission import __version__
 from semantic_transmission.common.config import ProjectConfig, load_config
-from semantic_transmission.gui.batch_panel import build_batch_tab
-from semantic_transmission.gui.batch_sender_panel import build_batch_sender_tab
 from semantic_transmission.gui.config_panel import build_config_tab
 from semantic_transmission.gui.pipeline_panel import build_pipeline_tab
 from semantic_transmission.gui.receiver_panel import (
@@ -45,20 +43,22 @@ def create_app(project_config: ProjectConfig | None = None) -> gr.Blocks:
             with gr.TabItem("⚙ 配置"):
                 config_components = build_config_tab(config)
 
-            with gr.TabItem("▲ 单张发送"):
-                sender_components = build_sender_tab(config_components, config)
+            with gr.TabItem("◈ 视频流演示"):
+                gr.Markdown("_单机 video→video 面板（Task A6 接入）_")
 
-            with gr.TabItem("📦 批量发送"):
-                build_batch_sender_tab(config_components, config)
+            with gr.TabItem("⇄ 双机视频"):
+                gr.Markdown("_双机 relay 视频面板（Task B5 接入）_")
 
-            with gr.TabItem("▼ 接收端"):
-                receiver_components = build_receiver_tab(config_components)
-
-            with gr.TabItem("◆ 端到端演示"):
-                build_pipeline_tab(config_components, config)
-
-            with gr.TabItem("◇ 批量端到端"):
-                build_batch_tab(config_components, config)
+            with gr.TabItem("🖼 图像工具（单帧）"):
+                gr.Markdown(
+                    "### 图像工具（单帧）\n单帧图像的端到端演示、发送与接收，供调试/对照。"
+                )
+                with gr.Accordion("端到端演示", open=True):
+                    build_pipeline_tab(config_components, config)
+                with gr.Accordion("单张发送", open=False):
+                    sender_components = build_sender_tab(config_components, config)
+                with gr.Accordion("接收端队列", open=False):
+                    receiver_components = build_receiver_tab(config_components)
 
         # Tab 间传递：发送端 → 接收端队列（M-13：append 到接收端 gr.State 队列）
         sender_components["send_to_receiver_btn"].click(
