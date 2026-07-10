@@ -299,6 +299,7 @@ graph TB
 | 监听端口 | `gr.Number` | 默认 9000（配置项） |
 | 后端选择 | `gr.Radio` | klein / diffusers，默认 klein |
 | 参考帧模式 | `gr.Dropdown` | 仅 klein 专用 |
+| 输出路径 | `gr.Textbox` | 默认 `output/video_relay/gui_out.mp4` |
 | 监听超时 | `gr.Number` | socket timeout 秒数，可选 |
 | 开始监听按钮 | `gr.Button` | 触发 start_listening() |
 | 停止监听按钮 | `gr.Button` | 触发 stop_listening() |
@@ -465,21 +466,29 @@ sequenceDiagram
     SG->>UI: 统计表更新
 ```
 
-### 8.2 后端门控（H2）
+### 8.2 后端门控（H2，仅单机 Tab）
 
-Klein 专用参数（参考帧模式、关键帧间隔）在 diffusers 后端应禁用：
+该门控逻辑仅存在于 **Tab 2 单机视频流演示**（`video_panel.py` - `build_video_tab()`）。
+Klein 专用参数（参考帧模式、关键帧间隔、关键帧透传）在 diffusers 后端应禁用：
 
 ```python
-def _toggle(backend):
-    on = (backend == "klein")
+def _toggle(b):
+    on = b == "klein"
     return (
         gr.update(interactive=on, value=("prev" if on else "none")),
         gr.update(interactive=on),
         gr.update(interactive=on),
     )
 
-backend_radio.change(_toggle, inputs=backend_radio, outputs=[ref_mode, kf_interval, kf_passthrough])
+backend_radio.change(
+    _toggle, inputs=backend_radio, outputs=[ref_mode, kf_interval, kf_passthrough]
+)
 ```
+
+> **Tab 3 双机视频（`video_relay_panel.py` - `build_video_relay_tab()`）无此门控**：
+> 接收端 `backend_radio` 未绑定 `.change()` 处理器，且接收端不含 `kf_passthrough` 组件，
+> `ref_mode`（参考帧模式）在 diffusers 后端下始终保持可交互，仅在语义上"仅 klein 生效"，
+> 不做 UI 层禁用。若后续需要与单机 Tab 对齐的门控行为，需单独实现。
 
 ---
 

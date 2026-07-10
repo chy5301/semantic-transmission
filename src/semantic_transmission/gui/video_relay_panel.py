@@ -211,6 +211,9 @@ def build_video_relay_tab(config_components: dict, project_config=None) -> dict:
                 value="prev",
                 label="参考帧模式（仅 klein）",
             )
+            output_path_input = gr.Textbox(
+                value="output/video_relay/gui_out.mp4", label="输出路径"
+            )
             timeout_input = gr.Number(label="监听超时（秒）", value=None)
             listen_btn = gr.Button("▶ 开始监听", variant="primary")
             stop_btn = gr.Button("■ 停止监听", variant="secondary")
@@ -239,8 +242,10 @@ def build_video_relay_tab(config_components: dict, project_config=None) -> dict:
         for progress, stats_rows, log in gen:
             yield state, progress, stats_rows, log
 
-    def _receiver_bound(state, host, port, backend, rm, timeout):
-        return start_listening(state, host, int(port), backend, rm, None, timeout)
+    def _receiver_bound(state, host, port, backend, rm, output_path, timeout):
+        return start_listening(
+            state, host, int(port), backend, rm, output_path, timeout
+        )
 
     send_btn.click(
         _sender_bound,
@@ -266,6 +271,7 @@ def build_video_relay_tab(config_components: dict, project_config=None) -> dict:
             receiver_port,
             backend_radio,
             ref_mode,
+            output_path_input,
             timeout_input,
         ],
         outputs=[receiver_state, receiver_progress],
