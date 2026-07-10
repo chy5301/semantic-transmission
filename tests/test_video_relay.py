@@ -336,3 +336,46 @@ def test_sender_progress_callback_per_frame(monkeypatch):
     )
     assert [i for i, _ in calls] == [0, 1, 2]
     assert all(t == 3 for _, t in calls)
+
+
+def test_receiver_stop_closes_relay():
+    from unittest.mock import MagicMock
+
+    from semantic_transmission.pipeline.video_relay import VideoRelayReceiver
+
+    r = VideoRelayReceiver(MagicMock())
+    fake = MagicMock()
+    r._relay = fake
+    r.stop()
+    fake.close.assert_called_once()
+
+
+def test_receiver_stop_noop_when_no_relay():
+    from unittest.mock import MagicMock
+
+    from semantic_transmission.pipeline.video_relay import VideoRelayReceiver
+
+    VideoRelayReceiver(MagicMock()).stop()  # 不应抛错
+
+
+def test_receiver_run_passes_callback_to_temporal(monkeypatch, tmp_path):
+    from unittest.mock import MagicMock
+
+    from semantic_transmission.pipeline.video_relay import VideoRelayReceiver
+
+    r = VideoRelayReceiver(MagicMock())
+    captured = {}
+    monkeypatch.setattr(
+        r,
+        "_run_temporal",
+        lambda *a, **k: captured.update(k) or MagicMock(),
+    )
+    cb = lambda i, t, info: None  # noqa: E731
+    r.run(
+        "0.0.0.0",
+        9000,
+        str(tmp_path / "o.mp4"),
+        reference_mode="prev",
+        progress_callback=cb,
+    )
+    assert captured.get("progress_callback") is cb

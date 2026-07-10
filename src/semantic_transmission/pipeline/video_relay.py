@@ -210,6 +210,7 @@ class VideoRelayReceiver:
 
     def __init__(self, receiver: BaseReceiver):
         self.receiver = receiver
+        self._relay: SocketRelayReceiver | None = None
 
     def run(
         self,
@@ -219,6 +220,7 @@ class VideoRelayReceiver:
         *,
         timeout: float | None = None,
         reference_mode: str | None = None,
+        progress_callback=None,
     ) -> VideoReceiveResult:
         """监听端口、逐帧接收并还原，收齐 total_frames 后合成视频。
 
@@ -247,9 +249,14 @@ class VideoRelayReceiver:
             reference_mode = None
         if reference_mode is not None:
             return self._run_temporal(
-                host, port, output_path, reference_mode, timeout=timeout
+                host,
+                port,
+                output_path,
+                reference_mode,
+                timeout=timeout,
+                progress_callback=progress_callback,
             )
-        relay = SocketRelayReceiver(host, port)
+        self._relay = SocketRelayReceiver(host, port)
 
         buffer: dict[int, Image.Image | None] = {}
         prompt_buffer: dict[int, str] = {}
@@ -259,12 +266,12 @@ class VideoRelayReceiver:
         failed_indices: list[int] = []
 
         try:
-            relay.start()
-            relay.accept(timeout=timeout)
+            self._relay.start()
+            self._relay.accept(timeout=timeout)
             t_start = time.time()
             while total is None or len(buffer) < total:
                 try:
-                    packet = relay.receive(timeout=timeout)
+                    packet = self._relay.receive(timeout=timeout)
                 except ConnectionError:
                     raise
                 except (TimeoutError, OSError, EOFError) as exc:
@@ -308,8 +315,11 @@ class VideoRelayReceiver:
                 batch.add_sample(sample)
                 buffer[idx] = img
                 prompt_buffer[idx] = packet.prompt_text
+                if progress_callback is not None:
+                    progress_callback(idx, total, {"stage": "receive"})
         finally:
-            relay.close()
+            self._relay.close()
+            self._relay = None
 
         if batch is None or total is None:
             raise ValueError("未收到任何数据包，无法合成视频")
@@ -334,6 +344,7 @@ class VideoRelayReceiver:
         reference_mode: str,
         *,
         timeout: float | None = None,
+        progress_callback=None,
     ) -> VideoReceiveResult:
         """有状态串行时序路径：关键帧透传复位锚点 + 生成帧带参考帧补偿。
 
@@ -347,7 +358,7 @@ class VideoRelayReceiver:
         # （temporal_policy.require_temporal_capable），保证提示文案一致。
         max_side = require_temporal_capable(self.receiver)
 
-        relay = SocketRelayReceiver(host, port)
+        self._relay = SocketRelayReceiver(host, port)
         buffer: dict[int, Image.Image | None] = {}
         prompt_buffer: dict[int, str] = {}
         total: int | None = None
@@ -359,12 +370,12 @@ class VideoRelayReceiver:
         last_kf: Image.Image | None = None
 
         try:
-            relay.start()
-            relay.accept(timeout=timeout)
+            self._relay.start()
+            self._relay.accept(timeout=timeout)
             t_start = time.time()
             while total is None or len(buffer) < total:
                 try:
-                    packet = relay.receive(timeout=timeout)
+                    packet = self._relay.receive(timeout=timeout)
                 except ConnectionError:
                     raise
                 except (TimeoutError, OSError, EOFError) as exc:
@@ -408,6 +419,8 @@ class VideoRelayReceiver:
                                 timings={"process": time.time() - t0},
                             )
                         )
+                        if progress_callback is not None:
+                            progress_callback(idx, total, {"stage": "receive"})
                         continue
                     buffer[idx] = kf
                     prompt_buffer[idx] = ""
@@ -421,6 +434,8 @@ class VideoRelayReceiver:
                             timings={"process": time.time() - t0},
                         )
                     )
+                    if progress_callback is not None:
+                        progress_callback(idx, total, {"stage": "receive"})
                     continue
                 elif md["frame_type"] == FRAME_TYPE_GENERATED:
                     # 生成帧：带参考帧补偿。
@@ -446,12 +461,15 @@ class VideoRelayReceiver:
                     prev_out = (
                         img if img is not None else prev_out
                     )  # 失败帧不污染 prev 链
+                    if progress_callback is not None:
+                        progress_callback(idx, total, {"stage": "receive"})
                 else:
                     # 未知 frame_type：fail-fast，不静默当生成帧处理（拼写漂移等
                     # 场景的防御——隐式 else 会悄悄吞掉未来协议漂移）。
                     raise ConnectionError(f"未知 frame_type: {md['frame_type']!r}")
         finally:
-            relay.close()
+            self._relay.close()
+            self._relay = None
 
         if batch is None or total is None:
             raise ValueError("未收到任何数据包，无法合成视频")
@@ -471,6 +489,11 @@ class VideoRelayReceiver:
             output_path=output_path,
             failed_indices=sorted(failed_indices),
         )
+
+    def stop(self) -> None:
+        """从外部线程中断监听：关闭 socket 使阻塞的 accept/receive 抛错退出。"""
+        if self._relay is not None:
+            self._relay.close()
 
 
 __all__ = [
