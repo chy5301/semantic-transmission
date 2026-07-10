@@ -16,6 +16,7 @@ from semantic_transmission.gui.receiver_panel import (
 )
 from semantic_transmission.gui.sender_panel import build_sender_tab
 from semantic_transmission.gui.theme import CUSTOM_CSS
+from semantic_transmission.gui.video_panel import build_video_tab
 
 
 def get_launch_kwargs() -> dict:
@@ -44,7 +45,7 @@ def create_app(project_config: ProjectConfig | None = None) -> gr.Blocks:
                 config_components = build_config_tab(config)
 
             with gr.TabItem("◈ 视频流演示"):
-                gr.Markdown("_单机 video→video 面板（Task A6 接入）_")
+                build_video_tab(config_components, config)
 
             with gr.TabItem("⇄ 双机视频"):
                 gr.Markdown("_双机 relay 视频面板（Task B5 接入）_")

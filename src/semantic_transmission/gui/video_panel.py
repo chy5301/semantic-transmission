@@ -13,7 +13,9 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from semantic_transmission.common.config import ProjectConfig
+import gradio as gr
+
+from semantic_transmission.common.config import ProjectConfig, load_config
 from semantic_transmission.common.video_io import read_frames
 from semantic_transmission.evaluation.video_eval import evaluate_video
 from semantic_transmission.pipeline.temporal_policy import (
@@ -198,3 +200,120 @@ def run_video_evaluation(input_video, output_video) -> tuple[list, str]:
         mean = summary.get(key, {}).get("mean")
         rows.append([name, f"{mean:.4f}" if mean is not None else "—"])
     return rows, "质量评估完成\n"
+
+
+def build_video_tab(config_components: dict, project_config=None) -> dict:
+    """单机 video→video 演示 Tab（后台线程 + gr.Timer 轮询）。"""
+    config = project_config if project_config is not None else load_config()
+    gr.Markdown("### 视频流演示（单机）\n上传视频，逐帧语义还原为 video→video 闭环。")
+
+    run_state = gr.State(value={})
+
+    with gr.Row():
+        with gr.Column(scale=1):
+            video_input = gr.Video(label="输入视频")
+            backend_radio = gr.Radio(
+                choices=[
+                    ("klein（关键帧主线）", "klein"),
+                    ("diffusers（Z-Image 备选）", "diffusers"),
+                ],
+                value="klein",
+                label="接收端后端",
+            )
+        with gr.Column(scale=1):
+            mode_radio = gr.Radio(
+                choices=[("VLM 自动生成", "auto"), ("手动输入", "manual")],
+                value="manual",
+                label="描述模式",
+            )
+            prompt_input = gr.Textbox(label="描述文本（整段共用）", lines=2)
+            ref_mode = gr.Dropdown(
+                choices=["none", "prev", "keyframe", "prev_keyframe"],
+                value="prev",
+                label="参考帧模式（仅 klein）",
+            )
+            with gr.Row():
+                kf_interval = gr.Number(value=12, precision=0, label="关键帧间隔 N")
+                kf_passthrough = gr.Checkbox(value=True, label="关键帧透传")
+            with gr.Row():
+                seed_input = gr.Number(label="随机种子", precision=0, value=None)
+                fps_input = gr.Number(label="输出帧率（空=沿用）", value=None)
+
+    with gr.Row():
+        run_btn = gr.Button("▶ 运行", variant="primary")
+        unload_btn = gr.Button("卸载 Receiver 模型", variant="secondary")
+    unload_status = gr.Markdown("")
+
+    progress_box = gr.Textbox(label="进度", interactive=False)
+    video_output = gr.Video(label="输出视频", interactive=False)
+    stats_table = gr.Dataframe(headers=["指标", "值"], interactive=False)
+    timer = gr.Timer(value=1.5, active=True)
+
+    with gr.Accordion("质量评估（可选）", open=False):
+        eval_btn = gr.Button("运行质量评估", variant="secondary")
+        eval_table = gr.Dataframe(headers=["指标", "值"], interactive=False)
+        eval_log = gr.Textbox(label="评估日志", lines=3, interactive=False)
+
+    with gr.Accordion("运行日志", open=False):
+        log_output = gr.Textbox(label="详细日志", lines=6, interactive=False)
+
+    # backend 门控（H2）：diffusers 时禁用并把 ref_mode 值置 none
+    def _toggle(b):
+        on = b == "klein"
+        return (
+            gr.update(interactive=on, value=("prev" if on else "none")),
+            gr.update(interactive=on),
+            gr.update(interactive=on),
+        )
+
+    backend_radio.change(
+        _toggle, inputs=backend_radio, outputs=[ref_mode, kf_interval, kf_passthrough]
+    )
+    mode_radio.change(
+        lambda m: gr.update(visible=(m == "manual")),
+        inputs=mode_radio,
+        outputs=prompt_input,
+    )
+
+    def _start_bound(state, vp, backend, mode, prompt, rm, ki, kp, seed, fps):
+        return start_video(
+            state, vp, backend, mode, prompt, rm, ki, kp, seed, fps, config
+        )
+
+    run_btn.click(
+        _start_bound,
+        inputs=[
+            run_state,
+            video_input,
+            backend_radio,
+            mode_radio,
+            prompt_input,
+            ref_mode,
+            kf_interval,
+            kf_passthrough,
+            seed_input,
+            fps_input,
+        ],
+        outputs=[run_state, progress_box],
+    )
+    timer.tick(
+        poll_video,
+        inputs=[run_state],
+        outputs=[progress_box, video_output, stats_table, log_output],
+    )
+
+    def _unload_bound(state):
+        state = state or {}
+        _, msg = unload_video_receiver(state.get("receiver"))
+        state["receiver"] = None
+        return state, msg
+
+    unload_btn.click(
+        _unload_bound, inputs=[run_state], outputs=[run_state, unload_status]
+    )
+    eval_btn.click(
+        run_video_evaluation,
+        inputs=[video_input, video_output],
+        outputs=[eval_table, eval_log],
+    )
+    return {}
