@@ -55,7 +55,7 @@ graph LR
 
 ### 4.1 视频流演示 Tab（单机，封装 `VideoPipeline`）
 
-范式复用现有 `pipeline_panel`（端到端演示）：`gr.State` 持久化 receiver、generator 逐步 `yield`、显存错峰、卸载按钮、Accordion 收纳日志/评估。
+**进度架构（关键）**：单机生成一次视频约 33min（klein 7–9s/帧），必须有逐帧反馈。但 Gradio 事件生成器只能从自身 `yield` 点产出，**无法**从内部同步阻塞的 `VideoPipeline.run()` 里把 `progress_callback` 转发出来。因此单机面板采用与双机接收端**同构**的 **后台线程 + `queue` + `gr.Timer` 轮询**：「▶ 运行」起 daemon 线程跑 `VideoPipeline.run(progress_callback=写队列)`，`gr.Timer` 周期性 `poll` 队列刷新进度与结果。receiver 与线程句柄经 `gr.State` 持久化（跨次复用避免重载）、显存错峰仍在线程内 `on_prompts_ready` 处理、保留显式卸载按钮。
 
 **输入区**：
 
@@ -72,15 +72,15 @@ graph LR
 | 输出帧率 | `gr.Number`（空=沿用输入） | `--fps` |
 | 高级（折叠） | Canny 阈值、`vlm_max_tokens` | `--threshold1/2`、`--vlm-max-tokens` |
 
-**门控**：时序参数（参考帧模式/N/透传）仅 backend=klein 生效，diffusers 时禁用（`gr.update(interactive=False)`），与 `resolve_reference_mode` 的 backend 门控对齐。
+**门控（防崩）**：时序参数（参考帧模式/N/透传）仅 backend=klein 生效。diffusers 时不仅禁用交互，**必须同时把 `reference_mode` 值置为 `none`**（`gr.update(interactive=False, value="none")`）——否则残留的默认值 "prev" 会让 `resolve_reference_mode("diffusers", "prev")` 抛 `ValueError` 使运行崩溃；运行逻辑再加一道兜底：`backend != "klein"` 时强制 `ref_mode="none"`。
 
 **数据流**：`gr.Video` → `VideoPipeline(receiver, extractor).run(...)`，`prompt_fn` 按描述模式构造（auto 时 `QwenVLSender.describe` 逐帧 / manual 时整段共用）。**显存错峰**复刻 CLI：`on_prompts_ready=vlm_sender.unload`，VLM 描述完卸载再加载生成模型。receiver 经 `create_receiver(backend=...)` 创建、`gr.State` 持久化跨次复用。
 
-**进度**：`VideoPipeline.run` 新增 `progress_callback`（见 §5）驱动逐帧进度文本；无回调时退化为阶段级进度（描述中/生成中/合成中）。
+**进度**：`VideoPipeline.run` 的 `progress_callback`（见 §5）由后台线程写入队列，`gr.Timer` 轮询产出逐帧进度文本。注意无状态路径（diffusers）走一次性 `process_batch`，只能给出阶段级进度；klein 时序路径串行生成，天然逐帧粒度。
 
 **输出区**：`gr.Video`（输出视频）+ 逐帧进度 `gr.Textbox` + 统计 `gr.Dataframe`（帧数 / 关键帧数 / 生成帧数 / 总耗时 / 码率，取自 `BatchResult.to_dict()` + 时序统计）+ 运行日志 Accordion。
 
-**质量评估**（可选 Accordion，默认折叠）：复用 `evaluation` 模块，输入视频 vs 输出视频逐帧对照，汇总 PSNR / SSIM / LPIPS / CLIP，展示逐帧表 + 整段均值。不阻塞主流程。
+**质量评估**（可选 Accordion，默认折叠）：复用 `evaluation.video_eval.evaluate_video`，输入视频 vs 输出视频逐帧对照，汇总 PSNR / SSIM / LPIPS。**CLIP 需逐帧 prompt**：`evaluate_video(with_clip=True)` 但 `prompts=None` 时 CLIP 恒为 None（`video_eval` 内 `with_clip and prompts is not None and any(prompts)` 门控）——因此评估默认 `with_clip=False`、不列恒空的 CLIP 列；仅当运行采用 auto-prompt 且逐帧 prompt 可透出时才启用 CLIP。不阻塞主流程。
 
 ### 4.2 双机视频 Tab（真实分机，各机开 GUI 用对应子区）
 
@@ -121,8 +121,9 @@ def run(self, ..., progress_callback: ... = None) -> VideoReceiveResult
 
 - 回调签名 `(index, total, info)`：`index` 当前帧序、`total` 总帧、`info` 携带阶段/耗时/frame_type 等
 - 单机 `VideoPipeline`：无状态路径在 `process_batch` 前后回调阶段级；时序路径 `_run_temporal` 串行生成循环内逐帧回调（天然逐帧粒度）
+- **分派透传（易漏）**：`VideoPipeline.run` 与 `VideoRelayReceiver.run` 在 `reference_mode`/`temporal_policy` 非空时会分派到各自的 `_run_temporal`——分派调用**必须透传 `progress_callback`**，否则 klein 默认时序路径（主路径）进度全丢
 - `VideoRelaySender`：逐帧发包循环内回调
-- `VideoRelayReceiver`：收包→process 循环内回调；GUI 后台线程消费回调写入线程安全队列，主线程 `gr.Timer` 轮询
+- `VideoRelayReceiver`：收包→process 循环内回调（无状态与 `_run_temporal` 两条路径都要回调）；GUI 后台线程消费回调写入线程安全队列，主线程 `gr.Timer` 轮询
 
 ## 6. 关键实现细节
 
@@ -157,8 +158,8 @@ def run(self, ..., progress_callback: ... = None) -> VideoReceiveResult
 
 对应 ROADMAP C **第一批**，内部再分两个批次（可各自独立 PR）：
 
-- **批次 A**：信息架构重排（app.py）+ 图像 Tab 压缩（保留核心 3 面板、删 2 批量面板）+ **视频流演示 Tab**（单机，含质量评估 Accordion）
-- **批次 B**：**双机视频 Tab**（发送端 + 接收端监听）+ 三个 `run` 的 `progress_callback` 接口 + `VideoRelayReceiver` 可中断能力
+- **批次 A**：信息架构重排（app.py）+ 图像 Tab 压缩（保留核心 3 面板、删 2 批量面板）+ **`VideoPipeline.run` 的 `progress_callback`**（单机逐帧进度依赖，故随批次 A）+ **视频流演示 Tab**（单机，后台线程 + `gr.Timer` 轮询，含质量评估 Accordion）
+- **批次 B**：**双机视频 Tab**（发送端 + 接收端监听）+ `VideoRelaySender/Receiver.run` 的 `progress_callback` 接口 + `VideoRelayReceiver` 可中断 `stop()` 能力
 
 **验收口径**：
 - GUI 启动后视频流演示 Tab 可完成一次 klein 单机 video→video 闭环，输出视频可播放、统计与评估正常
