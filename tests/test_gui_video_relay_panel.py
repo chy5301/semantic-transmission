@@ -1,5 +1,12 @@
+import queue as _q
 from unittest.mock import MagicMock, patch
-from semantic_transmission.gui.video_relay_panel import run_video_sender
+
+from semantic_transmission.gui.video_relay_panel import (
+    poll_listening,
+    run_video_sender,
+    start_listening,
+    stop_listening,
+)
 
 
 def test_sender_empty_path_yields_error():
@@ -86,3 +93,39 @@ def test_sender_blank_kf_interval_does_not_raise():
     progress, rows, log = outputs[-1]
     assert "完成" in log
     assert any(r[0] == "总帧数" for r in rows)
+
+
+def test_start_listening_rejects_double_start():
+    alive = MagicMock()
+    alive.is_alive.return_value = True
+    state = {"thread": alive}
+    new_state, status = start_listening(
+        state, "0.0.0.0", 9000, "klein", "prev", "o.mp4", None
+    )
+    assert "已在监听" in status and new_state is state
+
+
+def test_stop_listening_calls_receiver_stop():
+    rcv = MagicMock()
+    new_state, status = stop_listening({"receiver": rcv})
+    rcv.stop.assert_called_once()
+    assert "停止" in status
+
+
+def test_poll_listening_drains_queue():
+    q = _q.Queue()
+    q.put((1, 3, {}))
+    q.put((2, 3, {}))
+    text, out = poll_listening(
+        {"progress_q": q, "done": False, "result": None, "error": None}
+    )
+    assert "3/3" in text and out is None
+
+
+def test_poll_listening_done_returns_output():
+    result = MagicMock()
+    result.output_path = "out.mp4"
+    text, out = poll_listening(
+        {"progress_q": _q.Queue(), "done": True, "result": result, "error": None}
+    )
+    assert out == "out.mp4"
