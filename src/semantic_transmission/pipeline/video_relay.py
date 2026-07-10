@@ -84,6 +84,7 @@ class VideoRelaySender:
         fps: float | None = None,
         save_frames_dir: Path | None = None,
         temporal_policy: "TemporalPolicyConfig | None" = None,
+        progress_callback=None,
     ) -> VideoSendStats:
         """跑通发送端：解码视频、逐帧提边缘+取 prompt、逐帧发送。
 
@@ -98,6 +99,8 @@ class VideoRelaySender:
             temporal_policy: 非 None 时按 is_keyframe 分流——关键帧发整帧 RGB
                 PNG（空 prompt），生成帧发 Canny 边缘图 + prompt；metadata 打
                 frame_type 标签。None 时保持无状态逐帧路径（不加 frame_type）。
+            progress_callback: 非 None 时逐帧发包后回调
+                ``(i, total, {"frame_type": ...})``，用于 GUI 展示发送进度。
 
         Returns:
             VideoSendStats 逐帧统计（含时序码率账本）。
@@ -176,6 +179,10 @@ class VideoRelaySender:
                         "packet_bytes": len(payload_bytes) + prompt_bytes,
                     }
                 )
+                if progress_callback is not None:
+                    progress_callback(
+                        i, total, {"frame_type": metadata.get("frame_type")}
+                    )
         stats.total_time = time.time() - t_all
         return stats
 

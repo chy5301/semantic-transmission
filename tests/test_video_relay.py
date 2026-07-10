@@ -3,7 +3,10 @@
 import io
 import threading
 import time
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.video_io import read_frames, write_frames
@@ -293,3 +296,43 @@ def test_sender_receiver_end_to_end(tmp_path):
     frames, _ = read_frames(out)
     assert len(frames) == 4
     assert box[0].stats.success == 4
+
+
+class _FakeRelay:
+    def __init__(self, *a, **k):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def send(self, packet):
+        pass
+
+
+def test_sender_progress_callback_per_frame(monkeypatch):
+    from semantic_transmission.pipeline.video_relay import VideoRelaySender
+
+    frames = [np.zeros((8, 8, 3), dtype=np.uint8) for _ in range(3)]
+    monkeypatch.setattr(
+        "semantic_transmission.pipeline.video_relay.read_frames",
+        lambda p: (frames, SimpleNamespace(fps=30.0)),
+    )
+    monkeypatch.setattr(
+        "semantic_transmission.pipeline.video_relay.SocketRelaySender", _FakeRelay
+    )
+    extractor = MagicMock()
+    extractor.extract.return_value = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    calls = []
+    VideoRelaySender(extractor).run(
+        "in.mp4",
+        "127.0.0.1",
+        9000,
+        lambda i, f: "p",
+        progress_callback=lambda i, t, info: calls.append((i, t)),
+    )
+    assert [i for i, _ in calls] == [0, 1, 2]
+    assert all(t == 3 for _, t in calls)
