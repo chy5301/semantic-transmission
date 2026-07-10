@@ -2,6 +2,9 @@
 
 import pytest
 from PIL import Image
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+import numpy as np
 
 from semantic_transmission.common.video_io import read_frames, write_frames
 from semantic_transmission.pipeline.video_pipeline import (
@@ -526,3 +529,65 @@ def test_temporal_non_passthrough_keyframe_updates_anchor(tmp_path):
     assert stats.keyframe_count == 0
     assert stats.generated_frames == 4
     assert stats.keyframe_indices == []
+
+
+def _patch_io(monkeypatch, n):
+    frames = [np.zeros((8, 8, 3), dtype=np.uint8) for _ in range(n)]
+    meta = SimpleNamespace(fps=30.0)
+    monkeypatch.setattr(
+        "semantic_transmission.pipeline.video_pipeline.read_frames",
+        lambda p: (frames, meta),
+    )
+    monkeypatch.setattr(
+        "semantic_transmission.pipeline.video_pipeline.write_frames",
+        lambda *a, **k: None,
+    )
+    return frames
+
+
+def test_run_stateless_progress_callback_per_frame(monkeypatch, tmp_path):
+    from semantic_transmission.pipeline.video_pipeline import VideoPipeline
+    from semantic_transmission.pipeline.batch_processor import BatchResult
+
+    _patch_io(monkeypatch, 3)
+    receiver = MagicMock()
+    out = MagicMock()
+    out.images = [Image.new("RGB", (8, 8)) for _ in range(3)]
+    out.stats = BatchResult(total=3, success=3)
+    receiver.process_batch.return_value = out
+    extractor = MagicMock()
+    extractor.extract.return_value = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    calls = []
+    VideoPipeline(receiver, extractor).run(
+        "in.mp4",
+        str(tmp_path / "o.mp4"),
+        lambda i, f: "p",
+        progress_callback=lambda i, t, info: calls.append((i, t)),
+    )
+    assert [c[0] for c in calls] == [0, 1, 2]
+    assert all(c[1] == 3 for c in calls)
+
+
+def test_run_passes_callback_to_temporal(monkeypatch, tmp_path):
+    from semantic_transmission.pipeline.video_pipeline import VideoPipeline
+    from semantic_transmission.pipeline.temporal_policy import TemporalPolicyConfig
+
+    pipe = VideoPipeline(MagicMock(), MagicMock())
+    captured = {}
+    monkeypatch.setattr(
+        pipe,
+        "_run_temporal",
+        lambda *a, **k: captured.update(k) or MagicMock(),
+    )
+    cb = lambda i, t, info: None  # noqa: E731
+    pipe.run(
+        "in.mp4",
+        str(tmp_path / "o.mp4"),
+        lambda i, f: "p",
+        temporal_policy=TemporalPolicyConfig(
+            keyframe_interval=12, reference_mode="prev"
+        ),
+        progress_callback=cb,
+    )
+    assert captured.get("progress_callback") is cb
