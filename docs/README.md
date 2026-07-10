@@ -33,6 +33,7 @@
 | 文档 | 说明 |
 |------|------|
 | [research/README.md](research/README.md) | 调研成果总索引 |
+| [research/2026-07-08-teleoperation-video-route-survey.md](research/2026-07-08-teleoperation-video-route-survey.md) | 遥操作视频传输方案选型：路线决策报告（含需求锚定 + 候选方案表 + 三条推荐路线） |
 | [research/selection-report.md](research/selection-report.md) | 模型与方案选型报告（阶段一结论） |
 | [research/evaluation-metrics.md](research/evaluation-metrics.md) | 质量评估指标体系说明 |
 | [research/comfyui-workflow-analysis.md](research/comfyui-workflow-analysis.md) | ComfyUI 工作流结构分析（阶段二历史材料） |
