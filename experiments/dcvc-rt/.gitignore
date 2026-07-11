@@ -1,4 +1,6 @@
 results/
+results_v2/
 frames/
 __pycache__/
 *.pyc
+*.bin
