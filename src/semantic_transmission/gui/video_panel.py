@@ -88,8 +88,11 @@ def start_video(
     resolved = resolve_reference_mode(backend, ref_mode)
     policy = None
     if resolved is not None:
+        # 空数字框守卫：kf_interval 被清空（None/""）时回退到默认 12，避免
+        # int(None)/int("") 在主线程崩溃（与 seed/fps、run_video_sender 一致）
+        kf = int(kf_interval) if kf_interval not in (None, "") else 12
         policy = TemporalPolicyConfig(
-            keyframe_interval=int(kf_interval),
+            keyframe_interval=kf,
             reference_mode=resolved,
             keyframe_passthrough=bool(kf_passthrough),
         )
@@ -98,6 +101,7 @@ def start_video(
     new_state = {
         "thread": None,
         "receiver": state.get("receiver"),
+        "backend": state.get("backend"),
         "progress_q": progress_q,
         "result": None,
         "error": None,
@@ -121,9 +125,19 @@ def start_video(
                 )
             prompt_fn = build_video_prompt_fn(mode, prompt, vlm_sender)
             receiver = new_state["receiver"]
-            if receiver is None:
+            if receiver is None or new_state.get("backend") != backend:
+                # backend 切换或无缓存：卸载旧 receiver 释放显存后按当前 backend
+                # 重建，避免复用旧后端模型（界面选 diffusers 却仍用 klein 生成）
+                if receiver is not None:
+                    try:
+                        unload = getattr(receiver, "unload", None)
+                        if callable(unload):
+                            unload()
+                    except Exception:
+                        pass
                 receiver = create_receiver(backend=backend)
                 new_state["receiver"] = receiver
+                new_state["backend"] = backend
             t0 = time.time()
             stats = VideoPipeline(receiver, extractor).run(
                 video_path,
@@ -168,6 +182,11 @@ def poll_video(state):
     if state.get("error"):
         return f"失败：{state['error']}", None, [], state["error"]
     if state.get("done") and state.get("result") is not None:
+        if state.get("_emitted"):
+            # 已推送过完成结果：返回无变更，避免 gr.Timer 每 tick 重复
+            # re-fetch 输出视频
+            return gr.update(), gr.update(), gr.update(), gr.update()
+        state["_emitted"] = True
         d = state["result"]["stats"]
         rows = [
             ["总帧数", str(d.get("total"))],

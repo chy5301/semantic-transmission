@@ -139,6 +139,146 @@ class TestStartVideoTemporalPolicyResolution:
         assert policy.reference_mode == "prev"
 
 
+def test_start_video_blank_kf_interval_defaults_not_crash():
+    """finding: klein 默认配置下清空 kf_interval（""）曾在主线程 int("") 崩溃。
+
+    修复后应回退默认 12 且 start_video 不抛异常（守卫与 seed/fps 一致）。
+    """
+    captured = {}
+
+    def _fake_run(*args, **kwargs):
+        captured["temporal_policy"] = kwargs.get("temporal_policy")
+        stats = MagicMock()
+        stats.to_dict.return_value = {"total": 1, "success": 1}
+        return stats
+
+    with (
+        patch("semantic_transmission.gui.video_panel.VideoPipeline") as MockPipeline,
+        patch("semantic_transmission.gui.video_panel.create_receiver") as mock_cr,
+        patch("semantic_transmission.gui.video_panel.LocalCannyExtractor"),
+    ):
+        MockPipeline.return_value.run.side_effect = _fake_run
+        mock_cr.return_value = MagicMock()
+        # kf_interval="" 若无守卫会在此调用（主线程）抛 ValueError
+        state, _ = start_video(
+            {},
+            "in.mp4",
+            "klein",
+            "manual",
+            "x",
+            "prev",
+            "",
+            True,
+            None,
+            None,
+            ProjectConfig(),
+        )
+        state["thread"].join(timeout=5)
+
+    assert state.get("error") is None, f"worker 出错：{state.get('error')}"
+    policy = captured.get("temporal_policy")
+    assert policy is not None
+    assert policy.keyframe_interval == 12
+
+
+def test_start_video_recreates_receiver_on_backend_switch():
+    """finding: 复用缓存 receiver 时不校验 backend，切换后端会静默沿用旧模型。"""
+    kfake = MagicMock(name="klein_receiver")
+    dfake = MagicMock(name="diffusers_receiver")
+
+    def _fake_run(*args, **kwargs):
+        stats = MagicMock()
+        stats.to_dict.return_value = {"total": 1, "success": 1}
+        return stats
+
+    with (
+        patch("semantic_transmission.gui.video_panel.VideoPipeline") as MockPipeline,
+        patch("semantic_transmission.gui.video_panel.create_receiver") as mock_cr,
+        patch("semantic_transmission.gui.video_panel.LocalCannyExtractor"),
+    ):
+        MockPipeline.return_value.run.side_effect = _fake_run
+        mock_cr.side_effect = lambda backend: kfake if backend == "klein" else dfake
+
+        s1, _ = start_video(
+            {},
+            "in.mp4",
+            "klein",
+            "manual",
+            "x",
+            "none",
+            12,
+            True,
+            None,
+            None,
+            ProjectConfig(),
+        )
+        s1["thread"].join(timeout=5)
+        assert s1.get("error") is None
+        assert s1["receiver"] is kfake and s1["backend"] == "klein"
+
+        # 同后端第二次运行：复用缓存，不重建
+        mock_cr.reset_mock()
+        s2, _ = start_video(
+            s1,
+            "in.mp4",
+            "klein",
+            "manual",
+            "x",
+            "none",
+            12,
+            True,
+            None,
+            None,
+            ProjectConfig(),
+        )
+        s2["thread"].join(timeout=5)
+        assert s2.get("error") is None
+        mock_cr.assert_not_called()
+        assert s2["receiver"] is kfake
+
+        # 切到 diffusers：必须卸载旧 klein receiver 并按新 backend 重建（修复点）
+        mock_cr.reset_mock()
+        s3, _ = start_video(
+            s2,
+            "in.mp4",
+            "diffusers",
+            "manual",
+            "x",
+            "none",
+            12,
+            True,
+            None,
+            None,
+            ProjectConfig(),
+        )
+        s3["thread"].join(timeout=5)
+        assert s3.get("error") is None
+        mock_cr.assert_called_once_with(backend="diffusers")
+        assert s3["receiver"] is dfake and s3["backend"] == "diffusers"
+        kfake.unload.assert_called_once()
+
+
+def test_poll_video_done_stops_reemitting_after_first():
+    """finding: gr.Timer 完成后不停用会每 tick 重复 re-fetch 视频。
+
+    修复后首次 done 返回真实 out_path，之后返回 gr.update() 无变更（不再推路径）。
+    """
+    state = {
+        "progress_q": _q.Queue(),
+        "done": True,
+        "error": None,
+        "result": {
+            "out_path": "o.mp4",
+            "stats": {"total": 1, "success": 1},
+        },
+    }
+    _, out1, _, _ = poll_video(state)
+    assert out1 == "o.mp4"  # 首次推送真实路径
+    assert state.get("_emitted") is True
+    _, out2, _, _ = poll_video(state)
+    assert out2 != "o.mp4"  # 二次不再重复推送同一视频路径
+
+
 def test_poll_video_progress_then_done():
     q = _q.Queue()
     q.put((0, 3, {}))

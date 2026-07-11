@@ -62,7 +62,10 @@ def run_video_sender(
         return
     finally:
         if vlm_sender is not None:
-            vlm_sender.unload()
+            try:
+                vlm_sender.unload()
+            except Exception:
+                pass
     d = stats.to_dict()
     ratio = (
         (d["keyframe_bytes"] / d["generated_bytes"]) if d.get("generated_bytes") else 0
@@ -135,6 +138,10 @@ def poll_listening(state):
     if state.get("error"):
         return f"已停止/出错：{state['error']}", None
     if state.get("done") and state.get("result") is not None:
+        if state.get("_emitted"):
+            # 已推送过完成结果：返回无变更，避免 Timer 每 tick 重复 re-fetch 视频
+            return gr.update(), gr.update()
+        state["_emitted"] = True
         return "接收完成", str(state["result"].output_path)
     if last is not None:
         return f"接收中 {last[0] + 1}/{last[1]}", None
@@ -229,10 +236,11 @@ def build_video_relay_tab(config_components: dict, project_config=None) -> dict:
     timer = gr.Timer(value=1.5, active=True)
 
     def _sender_bound(state, video_path, host, port, mode, prompt, kf, seed, fps):
+        # port 由 run_video_sender 内部统一 int() 归一，此处不重复转换
         gen = run_video_sender(
             video_path,
             host,
-            int(port),
+            port,
             mode,
             prompt,
             kf,
@@ -244,9 +252,8 @@ def build_video_relay_tab(config_components: dict, project_config=None) -> dict:
             yield state, progress, stats_rows, log
 
     def _receiver_bound(state, host, port, backend, rm, output_path, timeout):
-        return start_listening(
-            state, host, int(port), backend, rm, output_path, timeout
-        )
+        # port 由 start_listening 内部统一 int() 归一，此处不重复转换
+        return start_listening(state, host, port, backend, rm, output_path, timeout)
 
     send_btn.click(
         _sender_bound,
