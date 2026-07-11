@@ -194,6 +194,7 @@ class VideoPipeline:
         on_prompts_ready: Callable[[], None] | None = None,
         save_artifacts_to: Path | None = None,
         temporal_policy: TemporalPolicyConfig | None = None,
+        progress_callback: Callable[[int, int, dict], None] | None = None,
     ) -> BatchResult:
         """跑通一段视频的 video→video 闭环，返回逐帧/整段统计。
 
@@ -228,6 +229,7 @@ class VideoPipeline:
                 fps=fps,
                 on_prompts_ready=on_prompts_ready,
                 save_artifacts_to=save_artifacts_to,
+                progress_callback=progress_callback,
             )
 
         frames, meta = read_frames(input_path)
@@ -248,6 +250,8 @@ class VideoPipeline:
                     metadata={"name": f"frame_{i:04d}", "index": i},
                 )
             )
+            if progress_callback is not None:
+                progress_callback(i, len(frames), {"stage": "encode"})
 
         # 保存语义中间产物（prompt 码流 + 边缘图）须在 on_prompts_ready 释放
         # VLM 前完成——此时 frame_inputs 已含全部 prompt 文本。
@@ -275,6 +279,7 @@ class VideoPipeline:
         fps: float | None = None,
         on_prompts_ready: Callable[[], None] | None = None,
         save_artifacts_to: Path | None = None,
+        progress_callback: Callable[[int, int, dict], None] | None = None,
     ) -> BatchResult:
         """有状态串行时序路径：关键帧透传 + 中间帧带参考帧生成。
 
@@ -350,6 +355,8 @@ class VideoPipeline:
                         timings={"process": 0.0},
                     )
                 )
+                if progress_callback is not None:
+                    progress_callback(i, n, {"stage": "keyframe"})
                 continue
             if i in kf_set:
                 # 关键帧但 passthrough=False：仍更新锚，正常生成。
@@ -374,6 +381,8 @@ class VideoPipeline:
             batch.add_sample(sample)
             outputs[i] = img
             prev_out = img if img is not None else prev_out  # 失败帧不污染 prev 链
+            if progress_callback is not None:
+                progress_callback(i, n, {"stage": "generate"})
 
         batch.total_time = sum(s.timings.get("process", 0) for s in batch.samples)
         # keyframe_indices 记录“透传关键帧”下标（沿用 spec §7 / PoC run_policy 口径）。
