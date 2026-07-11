@@ -63,6 +63,15 @@ uv run semantic-tx gui
 
 浏览器打开 http://127.0.0.1:7860 即可使用可视化界面，支持模型配置、发送端/接收端独立操作和一键端到端演示。
 
+> **启动报错 `ValueError: Unknown scheme for proxy URL 'socks://...'`？**
+> 这是本机代理变量导致的，与项目无关：Gradio 依赖的 httpx 会读取 `all_proxy`/`ALL_PROXY`，但不认识裸的 `socks://` 协议。GUI 是本机服务，无需走代理，临时清空代理变量再启动即可：
+>
+> ```bash
+> all_proxy= ALL_PROXY= uv run semantic-tx gui
+> ```
+>
+> 若要彻底解决，把代理开关脚本里的 `socks://` 改成 `socks5h://`（并 `uv add socksio`），或在启动前 `export no_proxy=localhost,127.0.0.1,::1`。
+
 > 命令行用法见 [CLI 参考](docs/cli-reference.md)；单机/双机演示步骤见 [演示手册](docs/demo-handbook.md)。
 
 ## 文档导航
