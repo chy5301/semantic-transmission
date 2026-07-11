@@ -1,7 +1,7 @@
 # DCVC-RT 神经编解码实验设计
 
 > 日期: 2026-07-11
-> 状态: 已确认（经对抗性审核修正）
+> 状态: 已确认（经对抗性审核修正 + 环境调查验证）
 > 对应: EXPERIMENT_BRIEF.md ② DCVC-RT 神经编解码
 > 可信度说明: #68 调研报告的对抗验证(Verify)阶段未跑完，其"高"就绪度评级是单源带引用发现 + 领域研判，非三票交叉验证定论
 
@@ -19,7 +19,7 @@
 
 | Phase | 内容 | 预计耗时 |
 |-------|------|----------|
-| Phase 1 | 前置门禁：仓库状态、预训练权重、CUDA 工具链与扩展编译、依赖兼容性、最小示例跑通 | 45-90 min |
+| Phase 1 | 前置门禁：仓库状态、预训练权重、CUDA 扩展编译、依赖兼容性、最小示例跑通 | 30-60 min |
 | Phase 2 | 编解码管线 + H.265 头对头对比 | 1-2 h |
 
 大运动稳定性评估融入 Phase 2：在测试素材中选取含有大背景运动的片段，使用量化指标（下述）而非"顺便观察"得出结论。若素材运动多样性不足，在结论中标注"单一片段，不具统计意义"。
@@ -70,7 +70,7 @@ resources/test_videos/C104/20260115121711.h265 (裸码流)
 |------|------|------|
 | PSNR-Y (dB) | `pixel_metrics.compute_psnr` | **仅 Y 通道**（亮度），与 DCVC-RT 论文一致，避免 RGB 色彩空间转换引入系统误差 |
 | SSIM | `pixel_metrics.compute_ssim` | 结构相似度 |
-| LPIPS | `perceptual_metrics.compute_lpips` | 感知质量，需确认与 PyTorch 2.9+ 兼容 |
+| LPIPS | `perceptual_metrics.compute_lpips` | 感知质量，需确认与 PyTorch 2.10 兼容 |
 | 码率 (Mbps) | 编码输出文件大小 ÷ 视频时长 | 实际比特率 |
 | 编码延迟 (ms/frame) | wall-clock 计时（含文件 I/O） | DCVC-RT 侧用 subprocess 前后时间戳；H.265 侧用 ffmpeg 输出日志的 frame=xxx fps=xxx |
 | 解码延迟 (ms/frame) | wall-clock 计时（含文件 I/O） | 同上 |
@@ -112,9 +112,30 @@ resources/test_videos/C104/20260115121711.h265 (裸码流)
 ## 9. Phase 1 门禁检查清单
 
 ### 9.1 环境准备
-- [ ] 确认系统 CUDA 工具链版本（`nvcc --version`），记录与 CUDA 13.0 的差异
-- [ ] 确认 g++/cmake/pybind11 可用（DCVC-RT CUDA 扩展编译依赖）
-- [ ] 若 CUDA 13.0 编译失败，准备降级方案：独立 conda/uv 环境使用 CUDA 12.6 PyTorch
+
+**已验证的环境状态**（2026-07-11）：
+
+| 组件 | 实际状态 |
+|------|----------|
+| CUDA Toolkit | 13.3（`/usr/local/cuda`，nvcc 可用） |
+| PyTorch | 2.10.0+cu130（CUDA 13.0 索引） |
+| GPU | RTX 4090, SM 8.9（Ada Lovelace） |
+| 驱动 | 595.71.05 |
+| GCC | 11.4.0（CUDA 13 支持范围 6–15，兼容） |
+| uv | `no-build-isolation-package` 配置解决 PyTorch 构建隔离问题 |
+
+**F2 兼容性结论**：经调查，CUDA 13.x 不需要降级。GCC 11.4 在 CUDA 13 支持范围内（6–15），驱动 595 兼容，`-arch=native` 在 SM 8.9 上安全。DCVC-RT 官方虽标注 CUDA 12.6，但同大版本内的已知坑（libcudart 冲突、GCC 不兼容）我们恰好都避开了。
+
+**F1 编译方式**：DCVC-RT 有两个扩展需编译：
+- `src/cpp/` → `MLCodec_extensions_cpp`（纯 C++ pybind11，无需 nvcc）
+- `src/layers/extensions/inference/` → `inference_extensions_cuda`（`torch.utils.cpp_extension.CUDAExtension`，需要 nvcc）
+
+uv 默认的 PEP 517 构建隔离会导致 `import torch` 失败，解决方法是在 `pyproject.toml` 加 `[tool.uv] no-build-isolation-package = ["dcvc-rt"]`。vLLM 等大型项目采用同一方案。
+
+- [x] CUDA Toolkit 已安装，nvcc 13.3 可用
+- [x] GCC 11.4 兼容，无需降级
+- [ ] 确认 pybind11 可用（`pip install pybind11`）
+- [ ] 配置 uv `no-build-isolation-package`
 
 ### 9.2 仓库与权重
 - [ ] clone DCVC 官方仓库（`git clone https://github.com/microsoft/DCVC`），记录 commit hash
