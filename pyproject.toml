@@ -43,6 +43,9 @@ dev = [
     "ruff>=0.15.7",
 ]
 
+[tool.uv]
+no-build-isolation-package = ["dcvc-rt"]
+
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
