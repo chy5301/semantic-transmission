@@ -63,9 +63,10 @@ src/semantic_transmission/
     ├── app.py           #   主应用组装（Blocks + Tabs）
     ├── theme.py         #   主题定义
     ├── config_panel.py  #   配置面板（模型就绪检测）
-    ├── sender_panel.py / batch_sender_panel.py  # 单图 / 批量发送
+    ├── sender_panel.py  #   单图发送
     ├── receiver_panel.py / pipeline_panel.py    # 接收 / 端到端
-    └── batch_panel.py   #   批量端到端
+    ├── video_panel.py   #   视频流演示（单机 video→video）
+    └── video_relay_panel.py #   双机视频传输（发送端 + 接收端监听）
 
 scripts/                 # 工具脚本
 ├── download_models.py   #   模型下载（亦可用 semantic-tx download）

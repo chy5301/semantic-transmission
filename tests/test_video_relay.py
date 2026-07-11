@@ -3,7 +3,10 @@
 import io
 import threading
 import time
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+import numpy as np
 from PIL import Image
 
 from semantic_transmission.common.video_io import read_frames, write_frames
@@ -293,3 +296,86 @@ def test_sender_receiver_end_to_end(tmp_path):
     frames, _ = read_frames(out)
     assert len(frames) == 4
     assert box[0].stats.success == 4
+
+
+class _FakeRelay:
+    def __init__(self, *a, **k):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def send(self, packet):
+        pass
+
+
+def test_sender_progress_callback_per_frame(monkeypatch):
+    from semantic_transmission.pipeline.video_relay import VideoRelaySender
+
+    frames = [np.zeros((8, 8, 3), dtype=np.uint8) for _ in range(3)]
+    monkeypatch.setattr(
+        "semantic_transmission.pipeline.video_relay.read_frames",
+        lambda p: (frames, SimpleNamespace(fps=30.0)),
+    )
+    monkeypatch.setattr(
+        "semantic_transmission.pipeline.video_relay.SocketRelaySender", _FakeRelay
+    )
+    extractor = MagicMock()
+    extractor.extract.return_value = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    calls = []
+    VideoRelaySender(extractor).run(
+        "in.mp4",
+        "127.0.0.1",
+        9000,
+        lambda i, f: "p",
+        progress_callback=lambda i, t, info: calls.append((i, t)),
+    )
+    assert [i for i, _ in calls] == [0, 1, 2]
+    assert all(t == 3 for _, t in calls)
+
+
+def test_receiver_stop_closes_relay():
+    from unittest.mock import MagicMock
+
+    from semantic_transmission.pipeline.video_relay import VideoRelayReceiver
+
+    r = VideoRelayReceiver(MagicMock())
+    fake = MagicMock()
+    r._relay = fake
+    r.stop()
+    fake.close.assert_called_once()
+
+
+def test_receiver_stop_noop_when_no_relay():
+    from unittest.mock import MagicMock
+
+    from semantic_transmission.pipeline.video_relay import VideoRelayReceiver
+
+    VideoRelayReceiver(MagicMock()).stop()  # 不应抛错
+
+
+def test_receiver_run_passes_callback_to_temporal(monkeypatch, tmp_path):
+    from unittest.mock import MagicMock
+
+    from semantic_transmission.pipeline.video_relay import VideoRelayReceiver
+
+    r = VideoRelayReceiver(MagicMock())
+    captured = {}
+    monkeypatch.setattr(
+        r,
+        "_run_temporal",
+        lambda *a, **k: captured.update(k) or MagicMock(),
+    )
+    cb = lambda i, t, info: None  # noqa: E731
+    r.run(
+        "0.0.0.0",
+        9000,
+        str(tmp_path / "o.mp4"),
+        reference_mode="prev",
+        progress_callback=cb,
+    )
+    assert captured.get("progress_callback") is cb
